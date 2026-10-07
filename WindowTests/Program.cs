@@ -7,9 +7,34 @@ internal static class Program
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
     static void Check(bool pass, string message) { if (!pass) throw new Exception(message); Console.WriteLine("PASS " + message); }
+    static void KillSwitchChecks()
+    {
+        bool Connect()
+        {
+            using var socket = new System.Net.Sockets.TcpClient();
+            try { socket.ConnectAsync("1.1.1.1", 443).WaitAsync(TimeSpan.FromSeconds(4)).GetAwaiter().GetResult(); return true; }
+            catch { return false; }
+        }
+        Check(Connect(), "WFP test baseline: direct TCP is reachable");
+        try
+        {
+            KillSwitch.ArmForTests(Environment.ProcessPath!, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
+            Check(KillSwitch.Detect(), "persistent filters remain after the WFP engine handle closes");
+            Check(!Connect(), "native WFP blocks direct TCP for the scoped fixture");
+            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0); listener.Start();
+            using var loopback = new System.Net.Sockets.TcpClient();
+            loopback.Connect(System.Net.IPAddress.Loopback, ((System.Net.IPEndPoint)listener.LocalEndpoint).Port);
+            Check(loopback.Connected, "kill switch preserves loopback access to the core API and proxy");
+            KillSwitch.ArmForTests(Environment.ProcessPath!, Environment.ProcessPath!);
+            Check(Connect(), "higher priority core permission allows the nominated executable");
+        }
+        finally { KillSwitch.Release(); }
+        Check(!KillSwitch.Detect() && Connect(), "removing only kot filters restores direct access");
+    }
     [STAThread] static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        KillSwitchChecks();
         using var window = new WindowChrome { FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = true, Size = new Size(600, 400) };
         window.Show(); Application.DoEvents();
         Check((GetWindowLong(window.Handle, -16) & 0xb0000) == 0xb0000, "shell system, minimize and maximize styles are present");

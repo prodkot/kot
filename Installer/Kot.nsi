@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.4.2"
+!define VERSION "0.5.0"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
@@ -48,8 +48,13 @@ Section "kot." SEC_MAIN
   SetRegView 64
   SetShellVarContext all
   ${If} ${FileExists} "$INSTDIR\Kot.exe"
-    MessageBox MB_OKCANCEL "Закройте предыдущую версию kot. и отключите соединение перед установкой." IDOK +2
-    Abort
+    ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
+    ${If} $0 != 0
+      IfSilent +2
+      MessageBox MB_ICONSTOP "Не удалось закрыть kot. Закройте приложение и повторите установку."
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
   ${EndIf}
   SetOutPath "$INSTDIR"
   !ifdef NSIS_WIN32_MAKENSIS
@@ -81,6 +86,11 @@ Section "Uninstall"
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-startup' $0
   ${If} $0 != 0
     MessageBox MB_ICONSTOP "Не удалось отключить автозапуск kot. Удаление остановлено."
+    Abort
+  ${EndIf}
+  ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-kill-switch' $0
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "Не удалось снять блокировку сети. Удаление остановлено."
     Abort
   ${EndIf}
   !include "uninstall-files.nsh"

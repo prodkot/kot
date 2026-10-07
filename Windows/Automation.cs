@@ -37,7 +37,7 @@ public sealed partial class MainWindow
         connectionNotice = "";
         if (reconnect.Desired || tunnel.State != "idle")
         {
-            reconnect.Stop(); importAttempt?.Cancel(); await tunnel.Stop(); Snapshot();
+            reconnect.Stop(); importAttempt?.Cancel(); await tunnel.Stop(); KillSwitch.Release(); Snapshot();
         }
         else if (profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); Snapshot(); }
     }
@@ -162,7 +162,7 @@ public sealed partial class MainWindow
         if (restored.Startup != profile.Startup) await Startup.Set(restored.Startup);
         // Keep a recoverable encrypted copy before replacing a working profile.
         string old = Path.Combine(Store.Folder, "profile.bin"); if (File.Exists(old)) File.Copy(old, Path.Combine(Store.Folder, "profile-before-restore.bin"), true);
-        Store.Save(restored); profile = restored; warnings = []; backgroundError = ""; refreshAttempts.Clear(); lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
+        KillSwitch.Release(); Store.Save(restored); profile = restored; warnings = []; backgroundError = ""; refreshAttempts.Clear(); lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
     }
     void DisposeAutomation()
     {

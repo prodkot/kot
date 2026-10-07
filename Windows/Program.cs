@@ -14,6 +14,7 @@ static class Program
         ApplicationConfiguration.Initialize();
         try
         {
+            if (args.Contains("--disable-kill-switch")) { KillSwitch.Release(); return; }
             if (args.Contains("--shutdown"))
             {
                 SendNotifyMessage((IntPtr)0xffff, (uint)ShutdownMessage, IntPtr.Zero, IntPtr.Zero);

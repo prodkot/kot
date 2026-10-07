@@ -8,7 +8,7 @@ public sealed partial class MainWindow
     async Task InstallUpdate()
     {
         if (updateBusy) throw new UserError("Обновление уже выполняется.");
-        using var choose = new OpenFileDialog { Filter = "Обновление kot. (*.zip)|*.zip", Title = "Выберите подписанный архив новой версии kot." };
+        using var choose = new OpenFileDialog { Filter = "Установщик kot. (*.exe)|*.exe", Title = "Выберите установщик новой версии kot." };
         if (choose.ShowDialog(this) != DialogResult.OK) return;
         updateBusy = true; Snapshot();
         try { await InstallPackage(choose.FileName, ct: lifetime.Token); }
@@ -16,12 +16,12 @@ public sealed partial class MainWindow
     }
     async Task InstallPackage(string path, string? advertisedVersion = null, CancellationToken ct = default)
     {
-        if (new FileInfo(path).Length > RemoteUpdates.MaximumArchive) throw new UserError("Архив обновления слишком большой.");
+        if (new FileInfo(path).Length > RemoteUpdates.MaximumArchive) throw new UserError("Установщик обновления слишком большой.");
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+        using var archive = await Task.Run(() => SetupPackage.Open(file, new Version(ClientIdentity.Version), advertisedVersion), ct);
         var manifest = await Task.Run(() => ReleasePackage.Validate(archive, new Version(ClientIdentity.Version)), ct);
         ct.ThrowIfCancellationRequested();
-        if (advertisedVersion != null && manifest.Version != advertisedVersion) throw new UserError("Версия архива не совпадает с источником обновления.");
+        if (advertisedVersion != null && manifest.Version != advertisedVersion) throw new UserError("Версия пакета не совпадает с источником обновления.");
         string root = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
         UpdateTransaction.SafePath(root);
         string work = Path.Combine(root, ".kot-update-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(work);
@@ -29,13 +29,13 @@ public sealed partial class MainWindow
         try
         {
             // Copy the exact already-validated bytes, rather than reopening a mutable source path.
-            file.Position = 0; using (var output = new FileStream(Path.Combine(work, "package.zip"), FileMode.CreateNew, FileAccess.Write)) await file.CopyToAsync(output, ct);
+            file.Position = 0; using (var output = new FileStream(Path.Combine(work, "package.exe"), FileMode.CreateNew, FileAccess.Write)) await file.CopyToAsync(output, ct);
             File.Copy(Environment.ProcessPath!, Path.Combine(work, "Updater.exe"));
             using var current = Process.GetCurrentProcess();
             File.WriteAllText(Path.Combine(work, "request.json"), JsonSerializer.Serialize(new UpdateRequest(manifest.Version, current.Id, current.StartTime.ToUniversalTime().Ticks, reconnect.Desired, profile.Startup)));
             ct.ThrowIfCancellationRequested();
             var start = new ProcessStartInfo(Path.Combine(work, "Updater.exe")) { UseShellExecute = false, WorkingDirectory = work }; start.ArgumentList.Add("--apply-update");
-            using var helper = Process.Start(start) ?? throw new UserError("Не удалось запустить установку обновления."); launched = true;
+            using var helper = Process.Start(start) ?? throw new UserError("Не удалось запустить установку обновления."); launched = true; preserveKillSwitch = true;
             AppLog.Write("update", "verified " + manifest.Version + "; stopping tunnel and restarting"); await ExitApp();
         }
         finally { if (!launched) Directory.Delete(work, true); }
@@ -63,7 +63,8 @@ internal static class UpdateInstaller
             request = JsonSerializer.Deserialize<UpdateRequest>(File.ReadAllText(requestPath)) ?? throw new UserError("Пустой запрос установки.");
             try { using var parent = Process.GetProcessById(request.ParentPid); if (parent.StartTime.ToUniversalTime().Ticks != request.ParentStarted || !parent.WaitForExit(60000)) throw new UserError("Предыдущая версия не закрылась."); } catch (ArgumentException) { }
             parentClosed = true;
-            using (var zip = ZipFile.OpenRead(Path.Combine(work, "package.zip"))) transaction.Apply(zip, new Version(ClientIdentity.Version), request.Version);
+            using (var package = File.OpenRead(Path.Combine(work, "package.exe")))
+            using (var zip = SetupPackage.Open(package, new Version(ClientIdentity.Version), request.Version)) transaction.Apply(zip, new Version(ClientIdentity.Version), request.Version);
             applied = true;
             var start = new ProcessStartInfo(Path.Combine(root, "Kot.exe")) { UseShellExecute = false, WorkingDirectory = root };
             start.ArgumentList.Add("--update-receipt"); start.ArgumentList.Add(work);

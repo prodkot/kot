@@ -90,6 +90,7 @@ public sealed class Tunnel
             bool automatic = profile.Selected == "auto";
             if (automatic) node = profile.Nodes.FirstOrDefault();
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
+            if (profile.KillSwitch) KillSwitch.Arm();
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.Mode);
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
@@ -156,6 +157,7 @@ public sealed class Tunnel
             }
             ct.ThrowIfCancellationRequested();
             try { File.Delete(path); } catch { }
+            if (profile.KillSwitch) KillSwitch.Arm(KillSwitch.TunnelInterface());
             Set("connected");
             _ = Watch(core);
         }

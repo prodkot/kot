@@ -16,6 +16,7 @@ public sealed partial class MainWindow : WindowChrome
     readonly SemaphoreSlim operations = new(1);
     Profile profile;
     readonly bool startup, resumeConnection;
+    bool preserveKillSwitch;
     bool exiting, allowClose, bridgeReady, initialized;
     List<string> warnings = [];
     CancellationTokenSource? importAttempt;
@@ -23,6 +24,7 @@ public sealed partial class MainWindow : WindowChrome
     public MainWindow(bool startup, bool resumeConnection = false)
     {
         this.startup = startup; this.resumeConnection = resumeConnection; profile = Store.Load();
+        if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
@@ -124,7 +126,7 @@ public sealed partial class MainWindow : WindowChrome
         telemetry = TelemetryModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation, backgroundError,
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
-        settings = new { profile.Theme, profile.Accent, profile.Mode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, bypass = string.Join('\n', profile.Bypass) },
+        settings = new { profile.Theme, profile.Accent, profile.Mode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
@@ -226,6 +228,11 @@ public sealed partial class MainWindow : WindowChrome
                     case "startup": bool enabled = value.GetBoolean(); if (enabled != profile.Startup) await Startup.Set(enabled); profile.Startup = enabled; break;
                     case "autoConnect": profile.AutoConnect = value.GetBoolean(); break;
                     case "tray": profile.Tray = value.GetBoolean(); break;
+                    case "killSwitch":
+                        bool protect = value.GetBoolean();
+                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" ? KillSwitch.TunnelInterface() : 0);
+                        if (!protect) KillSwitch.Release();
+                        profile.KillSwitch = protect; break;
                     case "sendHwid": profile.SendHwid = value.GetBoolean(); break;
                     default: throw new UserError("Неизвестная настройка.");
                 }
@@ -283,7 +290,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
-        try { await ping.Stop(); await tunnel.Stop(); }
+        try { await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
         finally { tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();

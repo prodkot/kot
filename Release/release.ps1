@@ -20,5 +20,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Uninstaller file list generation failed.' }
 $setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"
 & $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DOUTPUT=$setup" Installer/Kot.nsi
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-Get-ChildItem artifacts -File | Where-Object {$_.Extension -in '.zip','.exe'} | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_.Name } | Set-Content artifacts/SHA256SUMS.txt
-Write-Host "Release ready: $archive and $setup"
+./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
+dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version
+if ($LASTEXITCODE -ne 0) { throw 'The client rejected the signed Setup.' }
+Remove-Item $archive -Force
+Write-Host "Release ready: $setup"

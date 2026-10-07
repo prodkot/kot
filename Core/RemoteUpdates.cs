@@ -38,9 +38,9 @@ public static class RemoteUpdates
         if (source == "github")
         {
             if (root.TryGetProperty("draft", out var draft) && draft.GetBoolean() || root.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean()) return null;
-            string expected = "Kot-Client-" + version + "-beta-Windows-x64.zip";
+            string expected = "Kot-Setup-" + version + "-Windows-x64.exe";
             var assets = root.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == expected).ToArray();
-            if (assets.Length != 1) throw new UserError("В релизе не найден архив kot. для Windows x64.");
+            if (assets.Length != 1) throw new UserError("В релизе не найден установщик kot. для Windows x64.");
             url = assets[0].GetProperty("browser_download_url").GetString() ?? ""; size = assets[0].GetProperty("size").GetInt64();
         }
         else { url = root.GetProperty("url").GetString() ?? ""; size = root.TryGetProperty("size", out var bytes) ? bytes.GetInt64() : 0; }

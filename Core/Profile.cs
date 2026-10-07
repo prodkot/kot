@@ -12,6 +12,7 @@ public sealed class Profile
     public bool Startup { get; set; }
     public bool AutoConnect { get; set; }
     public bool Tray { get; set; } = true;
+    public bool KillSwitch { get; set; }
     public bool SendHwid { get; set; } = true;
     public PingOptions Ping { get; set; } = new();
     public DateTimeOffset? Updated { get; set; }

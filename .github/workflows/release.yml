@@ -56,13 +56,26 @@ jobs:
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
             ./Release/release.ps1 -Key $key -Repository $env:GITHUB_REPOSITORY
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
+      - name: Install and uninstall the signed Setup
+        shell: pwsh
+        run: |
+          $setup=Get-ChildItem artifacts/Kot-Setup-*-Windows-x64.exe | Select-Object -First 1
+          $target=Join-Path $env:RUNNER_TEMP 'kot-setup-test'
+          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru -Wait
+          if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Kot.exe") -or !(Test-Path "$target/Uninstall.exe")) { throw 'Signed Setup installation failed.' }
+          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          foreach ($file in Get-ChildItem $publish -File -Recurse) {
+            $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
+            if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
+          }
+          $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru -Wait
+          if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
+          Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-release
           path: |
-            artifacts/*.zip
             artifacts/*.exe
-            artifacts/SHA256SUMS.txt
       - name: Publish release
         if: github.ref_type == 'tag'
         shell: pwsh
@@ -70,4 +83,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version=$env:GITHUB_REF_NAME -replace '^v',''
-          gh release create $env:GITHUB_REF_NAME artifacts/*.zip artifacts/*.exe artifacts/SHA256SUMS.txt --title "kot. $version" --notes-file Release/NOTES.md --verify-tag
+          gh release create $env:GITHUB_REF_NAME artifacts/*.exe --title "kot. $version" --notes-file Release/NOTES.md --verify-tag

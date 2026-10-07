@@ -35,7 +35,7 @@ public static class ProductTests
         check(conf["experimental"]?["clash_api"]?["access_control_allow_origin"]?[0]?.ToString() == "https://kot.local", "telemetry API CORS restricted to local UI");
         bool weak = false; try { Configuration.Controller(conf, 19224, "weak"); } catch(UserError) { weak = true; } check(weak, "controller refuses missing or weak secret");
         File.WriteAllText(Path.Combine(fixtureFolder, "telemetry-manual.json"), conf.ToJsonString());
-        var github = JsonSerializer.Serialize(new { tag_name = "v0.3.1", draft = false, assets = new[] { new { name = "Kot-Client-0.3.1-beta-Windows-x64.zip", browser_download_url = "https://github.com/owner/repo/releases/download/v0.3.1/Kot-Client-0.3.1-beta-Windows-x64.zip", size = 1234 } } });
+        var github = JsonSerializer.Serialize(new { tag_name = "v0.3.1", draft = false, assets = new[] { new { name = "Kot-Setup-0.3.1-Windows-x64.exe", browser_download_url = "https://github.com/owner/repo/releases/download/v0.3.1/Kot-Setup-0.3.1-Windows-x64.exe", size = 1234 } } });
         var update = RemoteUpdates.Parse(github,"github",new Version("0.3.0")); check(update?.Version == "0.3.1" && update.Size == 1234, "GitHub release selects exact Windows asset");
         check(RemoteUpdates.Parse(github,"github",new Version("0.3.1")) == null && RemoteUpdates.Parse(github,"github",new Version("0.4.0")) == null, "remote update ignores same and older versions");
         string feed = "{\"version\":\"0.3.1\",\"url\":\"https://cdn.example/latest.zip\",\"size\":1234}";

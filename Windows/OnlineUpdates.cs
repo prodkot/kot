@@ -36,7 +36,7 @@ public sealed partial class MainWindow
     {
         var release = remoteRelease ?? throw new UserError("Сначала проверьте обновления.");
         if (updateBusy) throw new UserError("Обновление уже загружается.");
-        string temporary = Path.Combine(Store.Folder, "update-" + Guid.NewGuid().ToString("N") + ".zip");
+        string temporary = Path.Combine(Store.Folder, "update-" + Guid.NewGuid().ToString("N") + ".exe");
         updateBusy = true; updateBytes = 0; updateError = ""; updateStatus = "Загрузка " + release.Version; Snapshot();
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); updateAttempt = attempt;
         try
