@@ -6,6 +6,8 @@ internal static class Program
 {
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
+    [DllImport("iphlpapi.dll")] static extern uint GetBestInterface(uint address, out uint index);
+    [DllImport("iphlpapi.dll")] static extern uint ConvertInterfaceIndexToLuid(uint index, out ulong luid);
     static void Check(bool pass, string message) { if (!pass) throw new Exception(message); Console.WriteLine("PASS " + message); }
     static void KillSwitchChecks()
     {
@@ -25,6 +27,10 @@ internal static class Program
             using var loopback = new System.Net.Sockets.TcpClient();
             loopback.Connect(System.Net.IPAddress.Loopback, ((System.Net.IPEndPoint)listener.LocalEndpoint).Port);
             Check(loopback.Connected, "kill switch preserves loopback access to the core API and proxy");
+            Check(GetBestInterface(0x01010101, out var index) == 0 && ConvertInterfaceIndexToLuid(index, out var route) == 0, "resolve the real outgoing network interface");
+            ConvertInterfaceIndexToLuid(index, out var allowedInterface);
+            KillSwitch.ArmForTests(Environment.ProcessPath!, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"), allowedInterface);
+            Check(Connect(), "WFP permits traffic routed through the nominated interface");
             KillSwitch.ArmForTests(Environment.ProcessPath!, Environment.ProcessPath!);
             Check(Connect(), "higher priority core permission allows the nominated executable");
         }

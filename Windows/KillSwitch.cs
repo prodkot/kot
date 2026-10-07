@@ -27,7 +27,7 @@ public static class KillSwitch
         if (result != 0) throw new UserError("Kill switch: сетевой интерфейс kot-tun не появился.");
         return luid;
     }
-    internal static void ArmForTests(string application, string allowed) => Configure(true, 0, application, allowed);
+    internal static void ArmForTests(string application, string allowed, ulong tun = 0) => Configure(true, tun, application, allowed);
     static void Configure(bool enabled, ulong tun, string? testApplication = null, string? testAllowed = null)
     {
         using var engine = new Engine(); Error(FwpmTransactionBegin0(engine.Handle, 0));
