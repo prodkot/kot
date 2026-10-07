@@ -13,3 +13,4 @@ artifacts/
 *.bin
 *.log
 Installer/uninstall-files.nsh
+.local/
