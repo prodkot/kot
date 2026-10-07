@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = {
-    'version': '0.5.3', 'name': 'Личная подписка', 'hasSubscription': True,
+    'version': '0.5.4', 'name': 'Личная подписка', 'hasSubscription': True,
     'nodes': [
         {'id': 'kr', 'name': '🇰🇷 Wi-Fi локации', 'protocol': 'vless', 'code': 'VL'},
         {'id': 'fi', 'name': '🇫🇮 Финляндия [ ⚡ ]', 'protocol': 'trojan', 'code': 'TR'},
@@ -44,24 +44,26 @@ def check():
         page.on('request', lambda request: requests.append(request.url))
         page.add_init_script(MOCK)
         page.goto((ROOT / 'Windows/ui/index.html').as_uri())
-        expect(page.locator('#selectedName img')).to_have_attribute('alt', 'DE')
+        expect(page.locator('#selectedCountry img')).to_have_attribute('alt', 'DE')
+        expect(page.locator('#selectedName')).to_have_text('Германия [ ⚡ ]')
         page.locator('[data-page=servers]').click()
-        expect(page.locator('#serverList .server-copy img')).to_have_count(5)
-        assert page.locator('#serverList .server-copy img').evaluate_all('(images)=>images.map(i=>i.alt)') == ['KR', 'FI', 'LV', 'DE', 'NL']
+        expect(page.locator('#serverList .server-copy img')).to_have_count(0)
+        expect(page.locator('#serverList .country img')).to_have_count(5)
+        assert page.locator('#serverList .country img').evaluate_all('(images)=>images.map(i=>i.alt)') == ['KR', 'FI', 'LV', 'DE', 'NL']
         page.wait_for_function("[...document.querySelectorAll('.country-flag')].every(i=>i.complete&&i.naturalWidth>0)")
         # Protocol badges must not become flags for Turkey or South Sudan.
-        expect(page.locator('[data-node=fi] .country')).to_have_text('TR')
-        assert page.locator('#serverList .country img').count() == 0
-        expect(page.locator('[data-node=fi] strong')).to_have_text(' Финляндия [ ⚡ ]')
+        expect(page.locator('[data-node=fi] .country img')).to_have_attribute('alt', 'FI')
+        expect(page.locator('[data-node=fi] strong')).to_have_text('Финляндия [ ⚡ ]')
         page.locator('#serverSearch').fill('Финляндия')
         expect(page.locator('#serverList .server-card')).to_have_count(1)
         page.locator('#serverList .server-card').click()
-        expect(page.locator('#selectedName img')).to_have_attribute('alt', 'FI')
+        expect(page.locator('#selectedCountry img')).to_have_attribute('alt', 'FI')
         # A telemetry tick must preserve loaded images instead of rebuilding them.
-        assert page.evaluate("()=>{const image=document.querySelector('#selectedName img');for(let n=0;n<30;n++)fixtureSnapshot({});return image===document.querySelector('#selectedName img');}")
+        assert page.evaluate("()=>{const image=document.querySelector('#selectedCountry img');for(let n=0;n<30;n++)fixtureSnapshot({});return image===document.querySelector('#selectedCountry img');}")
         page.evaluate("fixtureSnapshot({selected:'auto',automaticNode:'nl'})")
-        expect(page.locator('#selectedCity img')).to_have_attribute('alt', 'NL')
-        page.evaluate("fixtureSnapshot({selected:'de'})")
+        expect(page.locator('#selectedCity')).to_have_text('Нидерланды [ ⚡ ]')
+        expect(page.locator('#selectedCountry')).to_have_text('A')
+        page.evaluate('(nodes)=>fixtureSnapshot({selected:"de",nodes})', MODEL['nodes'] + [{'id':'plain','name':'Без флага','code':'SS','protocol':'shadowsocks'}])
         page.locator('[data-page=servers]').click()
         page.locator('#serverSearch').fill('')
         for theme in ('dark', 'light'):
@@ -78,14 +80,55 @@ def check():
         # Malicious names stay text, including names mixed with genuine flag pairs.
         bad = "🇩🇪 <img src=https://example.org/x onerror=alert(1)> 🇿🇿 plain TR SS"
         page.evaluate('(name)=>fixtureSnapshot({selected:"bad",nodes:[{id:"bad",name,code:"SS",protocol:"shadowsocks"}]})', bad)
-        expect(page.locator('#serverList strong img')).to_have_count(1)
-        expect(page.locator('#serverList strong')).to_contain_text('<img src=https://example.org/x onerror=alert(1)> ZZ plain TR SS')
-        expect(page.locator('#serverList .country')).to_have_text('SS')
+        expect(page.locator('#serverList strong img')).to_have_count(0)
+        expect(page.locator('#serverList .country img')).to_have_attribute('alt', 'DE')
+        expect(page.locator('#serverList strong')).to_contain_text('<img src=https://example.org/x onerror=alert(1)> plain TR SS')
+        # Every missing/unknown flag uses the same offline white-circle fallback.
+        fixtures = [
+            {'id':'ss','name':'Без флага','code':'SS','protocol':'shadowsocks'},
+            {'id':'tr','name':'TR сервер','code':'TR','protocol':'trojan'},
+            {'id':'unknown','name':'🇿🇿 Неизвестный флаг','code':'VL','protocol':'vless'},
+            {'id':'explicit','name':'Без эмодзи','countryCode':'DE','protocol':'vless'},
+            {'id':'middle','name':'Сервер 🇳🇱 [ ⚡ ]','countryCode':'DE','protocol':'vless'},
+            {'id':'only','name':'🇫🇮️','protocol':'vless'},
+            {'id':'multiple','name':'🇿🇿 🇩🇪 Германия 🇫🇮','protocol':'vless'},
+            {'id':'invalid','name':'Без флага','countryCode':'../../bad','protocol':'vless'},
+        ]
+        page.evaluate('(nodes)=>fixtureSnapshot({selected:"ss",nodes})', fixtures)
+        for node in ['ss','tr','unknown','invalid']:
+            expect(page.locator(f'[data-node={node}] .country-fallback')).to_have_count(1)
+            expect(page.locator(f'[data-node={node}] .country img')).to_have_count(0)
+        expect(page.locator('#selectedCountry .country-fallback')).to_have_count(1)
+        expect(page.locator('[data-node=unknown] strong')).to_have_text('Неизвестный флаг')
+        expect(page.locator('[data-node=explicit] .country img')).to_have_attribute('alt', 'DE')
+        expect(page.locator('[data-node=middle] .country img')).to_have_attribute('alt', 'NL')
+        expect(page.locator('[data-node=middle] strong')).to_have_text('Сервер [ ⚡ ]')
+        expect(page.locator('[data-node=only] strong')).to_have_text('Сервер')
+        expect(page.locator('[data-node=multiple] .country img')).to_have_attribute('alt', 'DE')
+        expect(page.locator('[data-node=multiple] strong')).to_have_text('Германия')
+        expect(page.locator('#serverList strong img')).to_have_count(0)
+        # A broken asset also falls back to a circle, without reloading on telemetry ticks.
+        page.evaluate("fixtureSnapshot({selected:'middle'})")
+        page.locator('#selectedCountry img').evaluate("image=>image.dispatchEvent(new Event('error'))")
+        expect(page.locator('#selectedCountry .country-fallback')).to_have_count(1)
+        assert page.evaluate("()=>{const icon=document.querySelector('#selectedCountry .country-fallback');for(let n=0;n<30;n++)fixtureSnapshot({});return icon===document.querySelector('#selectedCountry .country-fallback');}")
+        page.locator('[data-node=explicit] .country img').evaluate("image=>image.dispatchEvent(new Event('error'))")
+        expect(page.locator('[data-node=explicit] .country-fallback')).to_have_count(1)
+        # Source names stay intact and searching by their flag still works.
+        page.evaluate("fixtureSnapshot({selected:'ss'})")
+        page.locator('#serverSearch').fill('🇳🇱')
+        expect(page.locator('#serverList .server-card')).to_have_count(1)
+        page.locator('#serverList .server-card').click()
+        expect(page.locator('#selectedName')).to_have_text('Сервер [ ⚡ ]')
+        expect(page.locator('#selectedCountry img')).to_have_attribute('alt', 'NL')
+        page.evaluate('fixtureSnapshot({nodes:[],selected:"",hasSubscription:false})')
+        expect(page.locator('#selectedName')).to_have_text('Добавить подписку')
+        expect(page.locator('#selectedCountry .country-fallback')).to_have_count(1)
         assert not page.locator('#serverList script, #serverList [onerror]').count()
         assert all(url.startswith('file:') for url in requests), requests
         assert not errors, errors
         browser.close()
-    print('Flags: subscription names, offline assets, search/select, automatic node, themes, stable snapshots and untrusted text passed.')
+    print('Flags: badge extraction, clean names, white-circle fallbacks, offline assets, search/select, automatic node, themes, stable snapshots and untrusted text passed.')
 
 
 if __name__ == '__main__':
