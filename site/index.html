@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111515">
+  <meta name="description" content="kot. Приложение для Windows на базе sing-box. Добавь подписку, выбери сервер и подключись. Скачать установщик с GitHub.">
+  <meta property="og:title" content="kot. / Всё нужное для подключения">
+  <meta property="og:description" content="Приложение для Windows на базе sing-box. Подписки, серверы, логи и обновления в одном окне.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://prodkot.github.io/kot/">
+  <meta property="og:image" content="https://prodkot.github.io/kot/assets/home.png">
+  <title>kot. / Приложение на базе sing-box</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/Manrope.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Перейти к содержимому</a>
+  <header class="header wrap">
+    <a class="wordmark" href="#" aria-label="kot. На главную">kot<span>.</span></a>
+    <nav aria-label="Навигация">
+      <a class="nav-detail" href="#inside">Внутри</a>
+      <a class="nav-detail" href="#start">Как начать</a>
+      <a href="https://github.com/prodkot/kot">GitHub <span aria-hidden="true">↗</span></a>
+      <a class="nav-download" href="#download">Скачать <span aria-hidden="true">↓</span></a>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> НА БАЗЕ SING-BOX <span class="eyebrow-divider" aria-hidden="true">/</span> WINDOWS</div>
+      <div class="hero-copy">
+        <h1 id="hero-title">Твой сервер.<br><span>Один клик.</span></h1>
+        <div class="hero-description">
+          <p>Добавь подписку, выбери сервер<br class="desktop-break"> и подключись. Всё остальное<br class="desktop-break"> уже под рукой.</p>
+          <a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a>
+          <p class="download-meta"><span data-release-version>Последняя версия</span><span aria-hidden="true">·</span> Windows 10 / 11, x64</p>
+        </div>
+      </div>
+      <div class="hero-screen">
+        <div class="screen-label"><span><span class="status-dot" aria-hidden="true"></span> ПРОСТО ОТКРЫЛ И ПОДКЛЮЧИЛСЯ</span><span class="screen-label-right">01 / ГЛАВНЫЙ ЭКРАН</span></div>
+        <img src="assets/home.png" width="960" height="640" alt="Главный экран kot.: подключение к серверу, скорость скачивания и отправки" fetchpriority="high">
+      </div>
+      <p class="screenshot-note">Скриншоты интерфейса. Серверы, соединения и значения показаны для примера.</p>
+    </section>
+    <section class="inside wrap" id="inside" aria-labelledby="inside-title">
+      <div class="section-heading"><p class="eyebrow">ВНУТРИ ПРИЛОЖЕНИЯ</p><h2 id="inside-title">Всё на своих местах.</h2><p>Серверы отдельно. Соединения отдельно.<br>Нужное не приходится искать.</p></div>
+      <div class="showcase">
+        <div class="showcase-text">
+          <div class="tabs" role="tablist" aria-label="Посмотреть интерфейс">
+            <button id="tab-servers" class="feature-tab" role="tab" aria-selected="true" aria-controls="panel-servers" tabindex="0"><span class="tab-number">01</span><span><strong>Серверы</strong><small>Пинг, поиск и избранное.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
+            <button id="tab-connections" class="feature-tab" role="tab" aria-selected="false" aria-controls="panel-connections" tabindex="-1"><span class="tab-number">02</span><span><strong>Соединения</strong><small>Видно, что и куда подключено.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
+            <button id="tab-settings" class="feature-tab" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1"><span class="tab-number">03</span><span><strong>Настройки</strong><small>Тема, автозапуск и защита.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
+          </div>
+          <p class="feature-description" id="feature-description">Проверь задержку и сохрани любимые серверы. Режим «Авто» сам выберет быстрый доступный сервер.</p>
+        </div>
+        <div class="showcase-screens">
+          <div id="panel-servers" role="tabpanel" aria-labelledby="tab-servers"><img src="assets/servers.png" width="960" height="640" alt="Список серверов в kot. с пингом, поиском и избранным" loading="lazy"></div>
+          <div id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" hidden><img src="assets/connections.png" width="960" height="640" alt="Текущие соединения: адрес, процесс и маршрут" loading="lazy"></div>
+          <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><img src="assets/settings.png" width="960" height="640" alt="Настройки kot.: оформление, автозапуск, Kill switch и обновления" loading="lazy"></div>
+        </div>
+      </div>
+      <div class="extras">
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg><h3>Kill switch</h3><p>При сбое подключения блокирует прямой интернет. Включается в настройках.</p></article>
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg><h3>Обновляется сам</h3><p>Скачивает новые версии с GitHub и устанавливает их. Подписки и настройки сохраняются.</p></article>
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h3m-3 6h8m-3-6h3"/></svg><h3>Логи под рукой</h3><p>Если что-то пошло не так, открой журнал. Полный лог можно скопировать одной кнопкой.</p></article>
+      </div>
+    </section>
+    <section class="start wrap" id="start" aria-labelledby="start-title">
+      <div class="section-heading"><p class="eyebrow">ПЕРВЫЙ ЗАПУСК</p><h2 id="start-title">Три шага. И готово.</h2></div>
+      <ol class="steps">
+        <li><span class="step-number">01</span><h3>Установи</h3><p>Скачай Setup и запусти его.<br>Как обычную программу.</p></li>
+        <li><span class="step-number">02</span><h3>Добавь подписку</h3><p>Нажми «+» и вставь свою ссылку<br>на подписку или сервер.</p></li>
+        <li><span class="step-number">03</span><h3>Подключись</h3><p>Выбери сервер и нажми<br>кнопку подключения.</p></li>
+      </ol>
+      <p class="start-note">Серверы и подписки в комплект не входят. Используй свою ссылку.</p>
+    </section>
+    <section class="questions wrap" aria-labelledby="questions-title">
+      <h2 id="questions-title">Пара вопросов</h2>
+      <div class="faq-list">
+        <details><summary>На какой Windows работает?</summary><p>На Windows 10 и 11, x64. Для подключения через TUN нужны права администратора. Установщик поставит необходимые компоненты.</p></details>
+        <details><summary>Нужно ли что-то покупать в kot.?</summary><p>Само приложение бесплатное. Доступ к серверу или подписку ты добавляешь сам: kot. их не продаёт и не выдаёт.</p></details>
+        <details><summary>Как приходят обновления?</summary><p>Приложение проверяет GitHub при запуске и раз в сутки. Новую версию скачивает и устанавливает само, проверив подпись. В настройках есть кнопка «Проверить обновления».</p></details>
+        <details><summary>Что происходит, если включён Kill switch?</summary><p>При ошибке подключения или падении программы прямой интернет остаётся заблокирован. Подключись снова или выключи защиту в настройках. Ручное отключение и обычный выход снимают блокировку. Явно настроенные прямые маршруты sing-box продолжают действовать.</p></details>
+        <details><summary>Где сообщить о проблеме?</summary><p>Открой <a href="https://github.com/prodkot/kot/issues">Issues на GitHub</a> и опиши, что случилось. Если прикладываешь лог, сначала убери из него личные данные и ссылки на подписки.</p></details>
+      </div>
+    </section>
+    <section class="download-section wrap" id="download" aria-labelledby="download-title">
+      <div><p class="eyebrow">KOT. ДЛЯ WINDOWS</p><h2 id="download-title">Можно подключаться.</h2><p>Обычный установщик. Всё нужное внутри.</p></div>
+      <div class="download-actions"><a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать Setup <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a><p class="download-meta"><span data-release-version>Последняя версия</span><span aria-hidden="true">·</span><span id="download-size">Windows x64</span></p><a class="changelog" href="https://github.com/prodkot/kot/releases/latest">Что нового <span aria-hidden="true">↗</span></a></div>
+    </section>
+  </main>
+  <footer class="footer wrap"><a class="wordmark" href="#" aria-label="kot. На главную">kot<span>.</span></a><p>Приложение на базе <a href="https://sing-box.sagernet.org/">sing-box</a>.</p><div><a href="https://github.com/prodkot/kot">Исходный код ↗</a><a href="https://github.com/prodkot/kot/blob/main/LICENSE.txt">MIT</a></div></footer>
+</body>
+</html>
