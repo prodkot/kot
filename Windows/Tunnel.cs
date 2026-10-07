@@ -90,9 +90,9 @@ public sealed class Tunnel
             bool automatic = profile.Selected == "auto";
             if (automatic) node = profile.Nodes.FirstOrDefault();
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
-            if (profile.KillSwitch) KillSwitch.Arm();
+            if (profile.KillSwitch) KillSwitch.Arm(); else if (KillSwitch.Active) KillSwitch.Release();
             AppLog.Register(profile);
-            AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.Mode);
+            AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
             attempt = new CancellationTokenSource(); var ct = attempt.Token;
             Set("connecting");
@@ -102,11 +102,9 @@ public sealed class Tunnel
             do { apiPort = ReservePort(); } while (apiPort == port);
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             AppLog.Secret(apiSecret);
-            var candidates = profile.Favorites.Count > 0 ? profile.Nodes.Where(n => profile.Favorites.Contains(n.Id)).ToList() : profile.Nodes;
-            if (candidates.Count == 0) candidates = profile.Nodes;
-            var config = automatic ? Configuration.BuildAutomatic(candidates, port, profile.Mode == "smart", profile.Bypass, profile.Automation, apiPort, apiSecret)
-                : Configuration.Build(node, port, profile.Mode == "smart", profile.Bypass);
-            Configuration.Controller(config, apiPort, apiSecret);
+            int systemPort = 0;
+            if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
+            var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret);
             ProxyPort = port; AutomaticNode = "";
             Directory.CreateDirectory(Store.Folder);
             File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -157,7 +155,8 @@ public sealed class Tunnel
             }
             ct.ThrowIfCancellationRequested();
             try { File.Delete(path); } catch { }
-            if (profile.KillSwitch) KillSwitch.Arm(KillSwitch.TunnelInterface());
+            if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
+            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
             Set("connected");
             _ = Watch(core);
         }
@@ -192,7 +191,21 @@ public sealed class Tunnel
     async Task StopCore()
     {
         Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = "";
-        try { if (old != null) await old.Stop(); }
+        try
+        {
+            try { SystemProxy.Restore(); }
+            finally { if (old != null) await StopProcess(old); else { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } } }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("restore system proxy", ex);
+            Set("idle", "Не удалось восстановить настройки прокси Windows. " + Store.Friendly(ex));
+            throw;
+        }
+    }
+    async Task StopProcess(NativeCore old)
+    {
+        try { await old.Stop(); }
         catch (Exception ex) { AppLog.Error("stop core", ex); old?.Dispose(); }
         finally { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } }
     }

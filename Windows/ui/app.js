@@ -55,7 +55,7 @@
     motion.finished.then(()=>{if(motions.get(el)===motion)motions.delete(el);}).catch(()=>{}); return motion;
   }
   reduce.addEventListener('change',()=>{if(reduce.matches){motions.forEach(a=>a.cancel());motions.clear();}});
-  let model={nodes:[],selected:'',state:'idle',settings:{theme:'dark',accent:'lime',mode:'all'}}, current='home', toastTimer, sequence=0, importBusy=false, refreshBusy=false, updateCheckBusy=false, renderedServers='';
+  let model={nodes:[],selected:'',state:'idle',settings:{theme:'dark',accent:'lime',mode:'tun'}}, current='home', toastTimer, sequence=0, importBusy=false, refreshBusy=false, updateCheckBusy=false, renderedServers='';
   const pending=new Map(), host=window.chrome?.webview;
   function rpc(action,data={}) {
     if(!host) return Promise.reject(new Error('Откройте интерфейс через Kot.exe.'));
@@ -90,7 +90,7 @@
     document.body.classList.toggle('theme-light',data.settings.theme==='light');document.body.dataset.accent=data.settings.accent;
     document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===data.settings.theme));document.querySelector('.theme-control').dataset.selected=data.settings.theme==='dark'?'0':'1';
     document.querySelectorAll('input[name=accent]').forEach(b=>b.checked=b.value===data.settings.accent);
-    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='all'?'0':'1';
+    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='tun'?'0':'1';
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));
     label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);

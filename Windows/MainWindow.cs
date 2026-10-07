@@ -120,7 +120,7 @@ public sealed partial class MainWindow : WindowChrome
         telemetry = TelemetryModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation, backgroundError,
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
-        settings = new { profile.Theme, profile.Accent, profile.Mode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
+        settings = new { profile.Theme, profile.Accent, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
@@ -217,14 +217,14 @@ public sealed partial class MainWindow : WindowChrome
                 {
                     case "theme": string theme = value.GetString()!; if (theme is not ("dark" or "light")) throw new UserError("Неизвестная тема."); profile.Theme = theme; break;
                     case "accent": string accent = value.GetString()!; if (accent is not ("lime" or "gray" or "green" or "purple")) throw new UserError("Неизвестный акцент."); profile.Accent = accent; break;
-                    case "mode": string mode = value.GetString()!; if (mode is not ("all" or "smart")) throw new UserError("Неизвестный режим."); restart = mode != profile.Mode; if (restart) await tunnel.Stop(); profile.Mode = mode; break;
-                    case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass); if (restart) await tunnel.Stop(); profile.Bypass = domains; break;
+                    case "mode": string mode = value.GetString()!; if (mode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим."); restart = mode != profile.ConnectionMode; if (restart) await tunnel.Stop(); profile.ConnectionMode = mode; break;
+                    case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass) || profile.Mode != "smart"; if (restart) await tunnel.Stop(); profile.Bypass = domains; profile.Mode = "smart"; break;
                     case "startup": bool enabled = value.GetBoolean(); if (enabled != profile.Startup) await Startup.Set(enabled); profile.Startup = enabled; break;
                     case "autoConnect": profile.AutoConnect = value.GetBoolean(); break;
                     case "tray": profile.Tray = value.GetBoolean(); break;
                     case "killSwitch":
                         bool protect = value.GetBoolean();
-                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" ? KillSwitch.TunnelInterface() : 0);
+                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
                         if (!protect) KillSwitch.Release();
                         profile.KillSwitch = protect; break;
                     case "sendHwid": profile.SendHwid = value.GetBoolean(); break;
