@@ -6,6 +6,17 @@ public static class ProductTests
 {
     public static async Task Run(Action<bool, string> check, Node node, string fixtureFolder)
     {
+        var old = JsonSerializer.Deserialize<Profile>("{\"Mode\":\"smart\",\"Bypass\":[\"example.org\"]}")!;
+        old.Normalize(); check(old.ConnectionMode == "tun" && old.Mode == "smart", "legacy routing profile remains in TUN with saved rules");
+        var connection = new Profile { Nodes = [node], Selected = node.Id, Mode = "smart", Bypass = ["example.org"] };
+        var tunConfig = Configuration.BuildConnection(connection, 18730);
+        check(tunConfig["inbounds"]!.AsArray().Any(i => i!["type"]!.ToString() == "tun"), "TUN mode has virtual network ingress");
+        connection.ConnectionMode = "proxy";
+        var proxyConfig = Configuration.BuildConnection(connection, 18730, 18731);
+        check(!proxyConfig["inbounds"]!.AsArray().Any(i => i!["type"]!.ToString() == "tun") && proxyConfig["inbounds"]!.AsArray().Any(i => i!["tag"]!.ToString() == "system-in" && i["listen"]!.ToString() == "127.0.0.1"), "system proxy has loopback ingress and no TUN");
+        check(proxyConfig["route"]!["rules"]!.AsArray().Any(r => r!["domain_suffix"] != null) && !proxyConfig["route"]!["rules"]!.AsArray().Any(r => r!["inbound"]?.ToJsonString().Contains("system-in") == true), "system proxy honors bypass rules while the independent health listener always probes the server");
+        connection.Selected = "auto"; var autoProxy = Configuration.BuildConnection(connection, 18730, 18731);
+        check(autoProxy["outbounds"]!.AsArray().Any(i => i!["type"]!.ToString() == "urltest") && autoProxy["inbounds"]!.AsArray().Count == 2, "automatic server selection also works without TUN");
         var fixture = JsonSerializer.Serialize(new
         {
             downloadTotal = 10000, uploadTotal = 2000,

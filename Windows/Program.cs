@@ -14,13 +14,15 @@ static class Program
         ApplicationConfiguration.Initialize();
         try
         {
+            if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return; }
+            if (args.Contains("--restore-proxy")) { SystemProxy.Restore(); return; }
             if (args.Contains("--disable-kill-switch")) { KillSwitch.Release(); return; }
             if (args.Contains("--shutdown"))
             {
                 SendNotifyMessage((IntPtr)0xffff, (uint)ShutdownMessage, IntPtr.Zero, IntPtr.Zero);
                 using var running = new Mutex(false, "Local\\KotVPN-" + WindowsIdentity.GetCurrent().User!.Value);
                 bool closed; try { closed = running.WaitOne(30000); } catch (AbandonedMutexException) { closed = true; }
-                if (!closed) { Environment.ExitCode = 1; return; } running.ReleaseMutex(); return;
+                if (!closed) { Environment.ExitCode = 1; return; } running.ReleaseMutex(); SystemProxy.Restore(); return;
             }
             if (args.Contains("--apply-update")) { UpdateInstaller.Apply(); return; }
             if (args.Contains("--disable-startup")) { Startup.Set(false).GetAwaiter().GetResult(); var saved = Store.Load(); saved.Startup = false; Store.Save(saved); return; }
@@ -47,6 +49,7 @@ static class Program
             string sid = WindowsIdentity.GetCurrent().User!.Value;
             using Mutex mutex = new(true, "Local\\KotVPN-" + sid, out bool first);
             if (!first) { SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
+            SystemProxy.Restore();
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
             foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
@@ -60,7 +63,7 @@ static class Program
         catch (Exception ex)
         {
             Environment.ExitCode = 1;
-            if (args.Any(a => a is "--shutdown" or "--disable-startup" or "--disable-kill-switch"))
+            if (args.Any(a => a is "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch"))
             {
                 AppLog.Error("maintenance", ex);
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }

@@ -30,6 +30,22 @@ public static class Configuration
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
     }
+    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "")
+    {
+        if (profile.ConnectionMode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим подключения.");
+        bool tun = profile.ConnectionMode == "tun";
+        if (!tun && (proxyPort is < 1 or > 65535 || proxyPort == healthPort)) throw new UserError("Некорректный порт системного прокси.");
+        bool smart = profile.Mode == "smart";
+        var candidates = profile.Favorites.Count > 0 ? profile.Nodes.Where(n => profile.Favorites.Contains(n.Id)).ToList() : profile.Nodes;
+        if (candidates.Count == 0) candidates = profile.Nodes;
+        var node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
+        var config = profile.Selected == "auto" ? BuildAutomatic(candidates, healthPort, smart, profile.Bypass, profile.Automation, tun: tun)
+            : Build(node ?? throw new UserError("Выберите сервер."), healthPort, smart, profile.Bypass, tun);
+        // A separate listener keeps the health probe on the selected server even when rules bypass its domain.
+        if (!tun) ((JsonArray)config["inbounds"]!).Add(new JsonObject { ["type"] = "mixed", ["tag"] = "system-in", ["listen"] = "127.0.0.1", ["listen_port"] = proxyPort });
+        if (apiPort > 0) Controller(config, apiPort, apiSecret);
+        return config;
+    }
     public static void Controller(JsonObject config, int port, string secret)
     {
         if (port is < 1 or > 65535 || secret.Length < 32) throw new UserError("Небезопасные настройки локального API.");

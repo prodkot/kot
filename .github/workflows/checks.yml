@@ -19,6 +19,7 @@ jobs:
           python3 -m pip install playwright==1.63.0
           python3 -m playwright install --with-deps chromium
           python3 site/demo_browser_check.py
+          python3 Tests/ui.py
           python3 Tests/flags_ui.py
           python3 Tests/subscriptions_ui.py
   tests:

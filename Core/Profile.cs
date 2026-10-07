@@ -7,7 +7,9 @@ public sealed class Profile
     public string Selected { get; set; } = "";
     public string Theme { get; set; } = "dark";
     public string Accent { get; set; } = "lime";
+    // Legacy routing preference remains independent from the connection method.
     public string Mode { get; set; } = "all";
+    public string ConnectionMode { get; set; } = "tun";
     public string[] Bypass { get; set; } = [];
     public bool Startup { get; set; }
     public bool AutoConnect { get; set; }
@@ -22,6 +24,7 @@ public sealed class Profile
     public AutomationOptions Automation { get; set; } = new();
     public void Normalize()
     {
+        ConnectionMode ??= "tun";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
         foreach (var subscription in Subscriptions)
@@ -76,7 +79,7 @@ public sealed class Profile
                 NodeSecurity.Validate(node);
             }
         }
-        if (Theme is not ("dark" or "light") || Accent is not ("gray" or "lime" or "green" or "purple") || Mode is not ("all" or "smart")) throw new UserError("Некорректные настройки интерфейса.");
+        if (Theme is not ("dark" or "light") || Accent is not ("gray" or "lime" or "green" or "purple") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
     }
     static void RejectFiles(System.Text.Json.Nodes.JsonNode? node)
     {
