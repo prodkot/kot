@@ -33,9 +33,15 @@ jobs:
         run: |
           gh api repos/prodkot/kot/releases/latest > "$RUNNER_TEMP/kot-release.json"
           python3 site/build.py --release "$RUNNER_TEMP/kot-release.json" --output artifacts/site
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      # Keep the nested artifact action pinned as required by repository policy.
+      - name: Archive the static site
+        run: tar --dereference --hard-dereference --directory artifacts/site -cf "$RUNNER_TEMP/artifact.tar" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          path: artifacts/site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
   deploy:
     needs: build
     runs-on: ubuntu-latest
