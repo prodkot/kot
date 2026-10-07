@@ -36,24 +36,32 @@ public static class ProductTests
         bool weak = false; try { Configuration.Controller(conf, 19224, "weak"); } catch(UserError) { weak = true; } check(weak, "controller refuses missing or weak secret");
         File.WriteAllText(Path.Combine(fixtureFolder, "telemetry-manual.json"), conf.ToJsonString());
         var github = JsonSerializer.Serialize(new { tag_name = "v0.3.1", draft = false, assets = new[] { new { name = "Kot-Setup-0.3.1-Windows-x64.exe", browser_download_url = "https://github.com/owner/repo/releases/download/v0.3.1/Kot-Setup-0.3.1-Windows-x64.exe", size = 1234 } } });
-        var update = RemoteUpdates.Parse(github,"github",new Version("0.3.0")); check(update?.Version == "0.3.1" && update.Size == 1234, "GitHub release selects exact Windows asset");
-        check(RemoteUpdates.Parse(github,"github",new Version("0.3.1")) == null && RemoteUpdates.Parse(github,"github",new Version("0.4.0")) == null, "remote update ignores same and older versions");
-        string feed = "{\"version\":\"0.3.1\",\"url\":\"https://cdn.example/latest.zip\",\"size\":1234}";
-        check(RemoteUpdates.Parse(feed,"https",new Version("0.3.0"))?.Url == "https://cdn.example/latest.zip", "VPS JSON feed parsed");
-        foreach (var options in new[] { new UpdateOptions { Source = "github", Address = "https://github.com/a/b" }, new UpdateOptions { Source = "github", Address = "a/.." }, new UpdateOptions { Source = "https", Address = "http://example.com/feed" }, new UpdateOptions { Source = "https", Address = "https://user:password@example.com/feed" } })
-        { bool rejected = false; try { options.Validate(); } catch(UserError) { rejected = true; } check(rejected,"invalid update source rejected"); }
-        new UpdateOptions { Address = "owner/repo" }.Validate(); new UpdateOptions { Source = "https", Address = "https://example.com/feed" }.Validate();
-        using var redirect = new HttpClient(new UpdateHandler((request, index) => index == 0 ? new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("/next", UriKind.Relative) } } : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(feed) }));
-        check((await RemoteUpdates.Check(new UpdateOptions { Source="https", Address="https://example.com/feed" }, new Version("0.3.0"), CancellationToken.None, redirect))?.Version == "0.3.1", "feed fetch follows safe relative HTTPS redirect");
+        var update = RemoteUpdates.Parse(github,new Version("0.3.0")); check(update?.Version == "0.3.1" && update.Size == 1234, "GitHub release selects exact Windows asset");
+        check(RemoteUpdates.Parse(github,new Version("0.3.1")) == null && RemoteUpdates.Parse(github,new Version("0.4.0")) == null, "remote update ignores same and older versions");
+        foreach (string address in new[] { "http://example.com/feed", "https://user:password@example.com/feed", "https://example.com/feed#fragment" })
+        { bool rejected = false; try { RemoteUpdates.Https(address); } catch(UserError) { rejected = true; } check(rejected,"unsafe update URL rejected"); }
+        var requests = new List<string>();
+        using var redirect = new HttpClient(new UpdateHandler((request, index) =>
+        {
+            requests.Add(request.RequestUri!.AbsoluteUri);
+            return index == 0 ? new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("/next", UriKind.Relative) } } : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(github) };
+        }));
+        check((await RemoteUpdates.Check(new Version("0.3.0"), CancellationToken.None, redirect))?.Version == "0.3.1", "release fetch follows safe relative HTTPS redirect");
+        check(requests.SequenceEqual(new[] { "https://api.github.com/repos/prodkot/kot/releases/latest", "https://api.github.com/next" }), "update check always starts at the official GitHub repository");
         using var downgrade = new HttpClient(new UpdateHandler((_,_) => new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("http://example.com/plain") } }));
-        bool blocked = false; try { await RemoteUpdates.Check(new UpdateOptions { Source="https", Address="https://example.com/feed" }, new Version("0.3.0"), CancellationToken.None, downgrade); } catch(UserError) { blocked=true; } check(blocked,"update HTTPS downgrade redirect blocked");
+        bool blocked = false; try { await RemoteUpdates.Check(new Version("0.3.0"), CancellationToken.None, downgrade); } catch(UserError) { blocked=true; } check(blocked,"update HTTPS downgrade redirect blocked");
         using var oversized = new HttpClient(new UpdateHandler((_,_) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(new string('x',1024*1024+1)) }));
-        blocked=false; try { await RemoteUpdates.Check(new UpdateOptions { Source="https", Address="https://example.com/feed" }, new Version("0.3.0"), CancellationToken.None, oversized); } catch(UserError) { blocked=true; } check(blocked,"oversized metadata rejected before parsing");
+        blocked=false; try { await RemoteUpdates.Check(new Version("0.3.0"), CancellationToken.None, oversized); } catch(UserError) { blocked=true; } check(blocked,"oversized metadata rejected before parsing");
         using var client = new HttpClient(new UpdateHandler((_,_) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[] {1,2,3,4}) }));
         using var output = new MemoryStream(); long progress = 0; await RemoteUpdates.Download(update! with { Size = 4 },output,CancellationToken.None,n=>progress=n,client); check(output.ToArray().SequenceEqual(new byte[]{1,2,3,4}) && progress==4,"update download writes actual bytes and reports progress");
         using var stalled = new HttpClient(new UpdateHandler((_,_) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody()) }));
         using var deadline = new CancellationTokenSource(100); blocked=false; try { await RemoteUpdates.Download(update!,new MemoryStream(),deadline.Token,client:stalled); } catch(OperationCanceledException) { blocked=true; } check(blocked,"cancel interrupts stalled update response body");
-        var saved = new Profile { Updates = new UpdateOptions { Address="owner/repo", Automatic=false } }; var loaded=JsonSerializer.Deserialize<Profile>(JsonSerializer.Serialize(saved))!; loaded.Normalize(); check(loaded.Updates.Address=="owner/repo"&&!loaded.Updates.Automatic,"update preferences survive profile serialization");
+        foreach (string source in new[] { "github", "https" })
+        {
+            string legacy = JsonSerializer.Serialize(new { Name = "Моя подписка", KillSwitch = true, Updates = new { Source = source, Address = "https://old.example/feed", Automatic = false } });
+            var loaded = JsonSerializer.Deserialize<Profile>(legacy)!; loaded.Normalize(); loaded.Validate();
+            check(loaded.Name == "Моя подписка" && loaded.KillSwitch && !JsonSerializer.Serialize(loaded).Contains("Updates"), "old update preferences are discarded while the profile is preserved");
+        }
         var journal = new SessionLog(1000); journal.Write("test",new string('a',900)); journal.Write("test","last-entry"); check(journal.Tail(80).Contains("last-entry") && journal.Tail(80).Length < 180,"log view bounded tail preserves newest entries");
     }
     sealed class UpdateHandler(Func<HttpRequestMessage,int,HttpResponseMessage> reply) : HttpMessageHandler

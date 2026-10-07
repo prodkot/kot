@@ -20,11 +20,10 @@ public sealed class Profile
     public string ActiveSubscription { get; set; } = "";
     public List<string> Favorites { get; set; } = [];
     public AutomationOptions Automation { get; set; } = new();
-    public UpdateOptions Updates { get; set; } = new();
     public void Normalize()
     {
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
-        Updates ??= new(); Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
+        Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
         foreach (var subscription in Subscriptions)
         {
             if (subscription == null) throw new UserError("Некорректная подписка в профиле.");
@@ -61,7 +60,7 @@ public sealed class Profile
     }
     public void Validate()
     {
-        Normalize(); Updates.Validate(); Automation.Validate(); Ping.Validate(); Configuration.Domains(string.Join('\n', Bypass));
+        Normalize(); Automation.Validate(); Ping.Validate(); Configuration.Domains(string.Join('\n', Bypass));
         if (Subscriptions.Count == 0 && Nodes.Count > 0) throw new UserError("Серверы без подписки в резервной копии.");
         if (Subscriptions.Count > 50) throw new UserError("Максимум 50 подписок.");
         if (Subscriptions.Select(s => s.Id).Distinct().Count() != Subscriptions.Count) throw new UserError("Повторяющиеся ID подписок.");

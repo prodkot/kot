@@ -60,7 +60,7 @@ public static class UpdateTests
         try{await RemoteUpdates.Download(new("0.4.1","https://example.com/update.zip",10),output,CancellationToken.None,client:client);}catch(UserError){truncated=true;}
         check(truncated,"download rejects bytes differing from advertised release size");
         string json="{\"tag_name\":\"v0.4.1\",\"prerelease\":true,\"assets\":[]}";
-        check(RemoteUpdates.Parse(json,"github",new Version("0.4.0"))==null,"automatic channel ignores GitHub prereleases");
+        check(RemoteUpdates.Parse(json,new Version("0.4.0"))==null,"automatic channel ignores GitHub prereleases");
     }
     sealed class Fixture:HttpMessageHandler { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent([1,2,3])}); }
 }

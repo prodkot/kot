@@ -1,11 +1,11 @@
-param([Parameter(Mandatory)][string]$Key,[string]$Repository='',[string]$Nsis=(Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'))
+param([Parameter(Mandatory)][string]$Key,[string]$Nsis=(Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'))
 $ErrorActionPreference='Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 if (!(Test-Path $Nsis)) { throw 'Install NSIS 3 or pass -Nsis path/to/makensis.exe.' }
 $version=[regex]::Match([IO.File]::ReadAllText('Core/ClientIdentity.cs'),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
 if (!$version -or [IO.File]::ReadAllText('Windows/Kot.Windows.csproj') -notmatch "<Version>$([regex]::Escape($version))</Version>") { throw 'Version constants disagree.' }
 if ([IO.File]::ReadAllText('Windows/app.manifest') -notmatch ('assemblyIdentity version="'+[regex]::Escape($version)+'.0"')) { throw 'Manifest version disagrees.' }
-./build.ps1 -Repository $Repository
+./build.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $publish=(Get-ChildItem 'publish-*' -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 ./Release/sign.ps1 -Folder $publish -Version $version -Key $Key

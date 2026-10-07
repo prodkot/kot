@@ -11,7 +11,7 @@ Workflow соберёт Setup, подпишет вложенный пакет к
 Для локального выпуска на Windows нужны NSIS 3, Python 3, .NET 10 SDK и PowerShell 7:
 
 ```powershell
-pwsh ./Release/release.ps1 -Key 'C:\private\kot-release.pem' -Repository 'prodkot/kot'
+pwsh ./Release/release.ps1 -Key 'C:\private\kot-release.pem'
 ```
 
 В `artifacts` останется только Setup. ZIP используется внутри сборки и встраивается в Setup, отдельно не публикуется. Перед публикацией Setup повторно проверяется клиентским валидатором.
