@@ -140,10 +140,11 @@ def check():
                 frame.locator('#profileLink').fill('https://not-a-subscription.example/private')
                 frame.locator('#addForm [type=submit]').click()
                 expect(frame.locator('#addDialog')).not_to_be_visible()
-                expect(frame.locator('#subscriptionSelect')).to_have_value('sample-2')
+                expect(frame.locator('#subscriptionSelect')).to_have_attribute('data-subscription','sample-2')
                 assert not frame.locator('#subscriptionSelect img').count()
-                frame.locator('#subscriptionSelect').select_option('sample-1')
-                expect(frame.locator('#subscriptionSelect')).to_have_value('sample-1')
+                frame.locator('#subscriptionSelect').click()
+                frame.locator('#subscriptionOptions [data-subscription=sample-1]').click()
+                expect(frame.locator('#subscriptionSelect')).to_have_attribute('data-subscription','sample-1')
                 assert all(urlsplit(request).netloc == urlsplit(url).netloc for request in network), network
                 # CSP rejects any connection attempted from inside the sandbox.
                 assert frame.locator('body').evaluate("async () => { try {await fetch('https://example.org');return false;}catch{return true;} }")

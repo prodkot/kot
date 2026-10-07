@@ -20,6 +20,7 @@ jobs:
           python3 -m playwright install --with-deps chromium
           python3 site/demo_browser_check.py
           python3 Tests/flags_ui.py
+          python3 Tests/subscriptions_ui.py
   tests:
     runs-on: windows-latest
     steps:
