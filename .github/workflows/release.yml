@@ -56,6 +56,12 @@ jobs:
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
             ./Release/release.ps1 -Key $key -Repository $env:GITHUB_REPOSITORY
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
+      - name: Kill switch with the bundled core and a real TUN
+        shell: pwsh
+        run: |
+          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
         shell: pwsh
         run: |

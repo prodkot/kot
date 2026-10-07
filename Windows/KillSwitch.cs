@@ -16,7 +16,7 @@ public static class KillSwitch
     public static bool Detect()
     {
         using var engine = new Engine(); var key = Key(2); uint result = FwpmFilterGetByKey0(engine.Handle, ref key, out var pointer);
-        if (result == 0) FwpmFreeMemory0(ref pointer); else if (result != 0x80320008) Error(result);
+        if (result == 0) FwpmFreeMemory0(ref pointer); else if (result != 0x80320003) Error(result);
         return Active = result == 0;
     }
     public static void Arm(ulong tun = 0) => Configure(true, tun);
@@ -33,7 +33,7 @@ public static class KillSwitch
         using var engine = new Engine(); Error(FwpmTransactionBegin0(engine.Handle, 0));
         try
         {
-            for (int n = 0; n < 12; n++) { var key = Key(n); uint r = FwpmFilterDeleteByKey0(engine.Handle, ref key); if (r != 0 && r != 0x80320008) Error(r); }
+            for (int n = 0; n < 12; n++) { var key = Key(n); uint r = FwpmFilterDeleteByKey0(engine.Handle, ref key); if (r != 0 && r != 0x80320003) Error(r); }
             if (enabled)
             {
                 var layer = new SubLayer { Key = Sublayer, Display = new() { Name = "kot. kill switch" }, Flags = 1, Weight = 0x7fff };

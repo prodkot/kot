@@ -9,14 +9,14 @@ internal static class Program
     [DllImport("iphlpapi.dll")] static extern uint GetBestInterface(uint address, out uint index);
     [DllImport("iphlpapi.dll")] static extern uint ConvertInterfaceIndexToLuid(uint index, out ulong luid);
     static void Check(bool pass, string message) { if (!pass) throw new Exception(message); Console.WriteLine("PASS " + message); }
-    static void KillSwitchChecks()
-    {
-        bool Connect()
+    static bool Connect()
         {
             using var socket = new System.Net.Sockets.TcpClient();
             try { socket.ConnectAsync("1.1.1.1", 443).WaitAsync(TimeSpan.FromSeconds(4)).GetAwaiter().GetResult(); return true; }
             catch { return false; }
         }
+    static void KillSwitchChecks()
+    {
         Check(Connect(), "WFP test baseline: direct TCP is reachable");
         try
         {
@@ -37,9 +37,34 @@ internal static class Program
         finally { KillSwitch.Release(); }
         Check(!KillSwitch.Detect() && Connect(), "removing only kot filters restores direct access");
     }
+    static void TunnelChecks(string exe)
+    {
+        string config = Path.Combine(Path.GetTempPath(), "kot-wfp-tun-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(config, """
+        {"log":{"level":"info"},"inbounds":[{"type":"tun","tag":"tun-in","interface_name":"kot-tun","address":["172.28.231.1/30","fdfe:dcba:231::1/126"],"mtu":1500,"auto_route":true,"strict_route":true,"dns_mode":"hijack"}],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"auto_detect_interface":true,"final":"direct"}}
+        """);
+        try
+        {
+            KillSwitch.ArmForTests(Environment.ProcessPath!, exe);
+            using var core = new NativeCore(exe, config, Console.WriteLine);
+            ulong luid = 0; var timer = System.Diagnostics.Stopwatch.StartNew();
+            while (luid == 0 && timer.Elapsed.TotalSeconds < 15 && !core.HasExited)
+            {
+                try { luid = KillSwitch.TunnelInterface(); } catch (Kot.Core.UserError) { Thread.Sleep(200); }
+            }
+            Check(luid != 0 && !core.HasExited, "bundled sing-box creates the real Windows TUN interface");
+            KillSwitch.ArmForTests(Environment.ProcessPath!, exe, luid);
+            Check(Connect(), "protected fixture connects through the real TUN and sing-box");
+            core.Process.Kill(); core.WaitForExitAsync().Wait(TimeSpan.FromSeconds(10));
+            Check(KillSwitch.Detect() && !Connect(), "abrupt sing-box termination leaves direct TCP blocked");
+        }
+        finally { KillSwitch.Release(); File.Delete(config); }
+        Check(Connect(), "direct access is restored after intentional release following a core crash");
+    }
     [STAThread] static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--tunnel-test") { TunnelChecks(Path.GetFullPath(args[1])); return 0; }
         KillSwitchChecks();
         using var window = new WindowChrome { FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = true, Size = new Size(600, 400) };
         window.Show(); Application.DoEvents();
