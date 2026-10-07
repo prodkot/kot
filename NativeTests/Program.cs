@@ -57,7 +57,10 @@ try
         try { _ = core.ExitCode; } catch (InvalidOperationException ex) { runningRejected = ex.Message.Contains("still running"); }
         Check(runningRejected, "a running process has no termination code");
         Check(!core.HasExited, "native handle confirms the child remains alive before stopping");
-        var exited = core.Process.WaitForExitAsync();
+        // Stop disposes its own Process wrapper. Observe termination through a
+        // separate wrapper whose event subscription survives that disposal.
+        using var observer = System.Diagnostics.Process.GetProcessById(core.Process.Id);
+        var exited = observer.WaitForExitAsync();
         await core.Stop();
         await exited.WaitAsync(TimeSpan.FromSeconds(5));
         Check(true, "stop waits for a live child and always disposes its handles");
