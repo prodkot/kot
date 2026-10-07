@@ -1,31 +1,51 @@
-The client launches an unmodified official sing-box release as a separate process.
-It is not an official SagerNet app or an endorsement by SagerNet.
+Компоненты kot.
 
-sing-box 1.14.2 / SagerNet: GPL-3.0-or-later with upstream notice.
-Official release and binaries:
-https://github.com/SagerNet/sing-box/releases/tag/v1.14.2
-Exact source archive, also supplied in Kot's source package:
+Лицензия MIT относится к собственному коду kot. У компонентов ниже
+свои условия. Тексты лицензий и уведомлений лежат в папке licenses.
+
+sing-box 1.14.2
+
+Ядро SagerNet запускается отдельным процессом. В комплекте официальный
+релиз без изменений, включая libcronet.dll. kot. не является официальным
+приложением SagerNet и не заявляет об одобрении со стороны SagerNet.
+
+Лицензия: GPL-3.0-or-later с уведомлениями upstream.
+Релиз: https://github.com/SagerNet/sing-box/releases/tag/v1.14.2
+Точные исходники, также включённые в пакет исходников kot.:
 https://github.com/SagerNet/sing-box/archive/refs/tags/v1.14.2.tar.gz
-Build instructions / dependency versions are in that archive (go.mod/go.sum).
-Wintun is embedded by upstream sing-tun in this release. No extra DLL needed.
-libcronet.dll from the same official release is included unchanged.
-Chromium / Cronet: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
+Инструкции сборки и версии зависимостей находятся в этом архиве.
+Wintun встроен upstream в sing-tun; отдельная DLL не требуется.
+Chromium / Cronet:
+https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 
-Microsoft.Web.WebView2 SDK 1.0.4258.31:
+WebView2
+
+SDK Microsoft.Web.WebView2 1.0.4258.31:
 https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4258.31
-Microsoft Evergreen WebView2 Bootstrapper:
+Установщик Microsoft Evergreen WebView2:
 https://go.microsoft.com/fwlink/p/?LinkId=2124703
-Distribution documentation:
+Условия распространения:
 https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
-Microsoft Runtime is installed separately under Microsoft's terms.
+Сам WebView2 Runtime устанавливается отдельно на условиях Microsoft.
 
-.NET Windows Desktop runtime 10.0.12 is distributed with this self-contained app.
+.NET и Windows Forms
+
+Приложение включает .NET Windows Desktop Runtime 10, поэтому его
+не нужно устанавливать отдельно. Точная версия зависит от сборки;
+первоначальный комплект содержит 10.0.12.
 https://github.com/dotnet/runtime
 https://github.com/dotnet/winforms
-See the accompanying runtime notices and licenses.
+Сохраняйте приложенные лицензии и уведомления runtime.
 
-Manrope variable TrueType font, Cyrillic and Latin, bundled offline.
-Source: https://github.com/google/fonts/tree/main/ofl/manrope
-SIL Open Font License 1.1; copyright Mikhail Sharanda and Mirko Velimirovic.
-Exact notice and license: licenses/Manrope-OFL.txt.
-This is Manrope, not Google Sans. No remote font requests are made at runtime.
+Manrope
+
+Шрифт с кириллицей и латиницей входит в приложение и работает офлайн.
+Исходник: https://github.com/google/fonts/tree/main/ofl/manrope
+Лицензия SIL Open Font License 1.1.
+Copyright Mikhail Sharanda and Mirko Velimirovic.
+Полный текст: licenses/Manrope-OFL.txt.
+
+При распространении сохраняйте лицензии и уведомления. Исходники
+приложенного sing-box доступны по точной ссылке выше и в upstream/.
+Прежние сведения сохранены в docs/history/THIRD-PARTY-before-rewrite.txt
+в репозитории https://github.com/prodkot/kot.

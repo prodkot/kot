@@ -1,0 +1,210 @@
+kot. 0.4.1 validation, 2026-10-07.
+
+GitHub Windows checks run 37637530636 passed on windows-latest:
+https://github.com/prodkot/kot/actions/runs/37637530636
+180 Core assertions passed. 29 native launcher assertions passed against
+production NativeCore: natural exits including 259 and 0xC0000005, original
+error capture, parallel launches, live-child shutdown observed independently,
+cleanup and missing executable. No VPN/network/administrator required by this
+fixture. A fixture cannot substitute for testing real TUN/WFP cleanup.
+
+The shutdown code now waits on the original CreateProcess handle and reads
+the exit code after native termination. If a normal console interrupt times
+out, the app terminates its own job including descendant core processes.
+
+Chromium UI checks passed on the Linux build host with an emulated bridge:
+8 themes/accents, three window sizes, titlebar version, update settings,
+HWID copy, logs, traffic, server selection/ping and hostile labels as text.
+No JavaScript errors. This is browser/bridge-contract coverage, not a native
+Windows clipboard or WebView2 GUI run.
+
+GitHub release workflow builds the Windows x64 application and NSIS installer,
+signs the archive with the same publisher key as 0.4.0, and validates the final
+ZIP using the application's pinned-key ReleasePackage validator before upload.
+The publisher private key is held in the encrypted Actions secret and is not
+part of the repository or downloadable assets. GitHub repository metadata is
+compiled into the client as prodkot/kot for the official build.
+
+NOT EXECUTED: interactive Windows installer/uninstaller, native clipboard/DPAPI,
+full updater parent/helper/new-app handshake, live provider/TUN and DNS/IPv6
+leak testing. Before calling a public release stable, test a same-key
+0.4.0 -> 0.4.1 upgrade on Windows with VPN active and verify rollback there.
+Rollback handles caught failures, not arbitrary power loss. Beta status retained.
+
+HISTORICAL VALIDATION
+
+kot. 0.4.0 validation, 2026-10-07, Linux build host.
+
+180 Core assertions passed. Signed in-place transaction tests cover failure
+at each write, fresh-process journal rollback, unchanged unrelated files,
+bad key/payload/version, ZIP path collisions, existing junction/symlink and
+destination file/directory collisions before writes, wrong download size,
+and ignored GitHub prereleases. Prior subscription/security/configuration,
+traffic/HWID/backup tests remain included.
+
+Chromium UI checks passed with an emulated native bridge: 8 theme/accent
+combinations, 800x600/960x640/1200x800 layouts, titlebar version positioning,
+delayed native actions while snapshots arrive, duplicate refresh prevention,
+update-source saving, and earlier HWID/logs/traffic/settings scenarios.
+No JavaScript errors. Screenshot contains synthetic connection/traffic data.
+
+Windows x64 self-contained single-file compilation, packaged Core signature
+verification and NSIS installer compilation checked. Official Linux sing-box
+1.14.2 checked all 12 generated configurations. PowerShell publisher scripts
+are parsed and the real signing/key-generation scripts exercised locally.
+
+NOT EXECUTED: Windows installer/uninstaller, UAC/native clipboard/DPAPI,
+full updater parent/helper/new-app handshake, live provider/TUN and DNS/IPv6
+leak testing. Before calling a public release stable, test a same-key
+0.4.0 -> 0.4.1 upgrade on Windows with VPN active and verify rollback there.
+Rollback is tested for handled failures, not arbitrary power loss; backups
+and unfinished journals are kept if recovery cannot finish.
+
+HISTORICAL VALIDATION
+
+kot. 0.3.1 HWID validation, 2026-10-07, Linux build host.
+
+163 Core assertions passed. New checks verify the exact device name,
+brand User-Agent and retained v2rayN compatibility token, no HWID in that
+User-Agent, unchanged historical machine ID hash/salt, same-origin headers,
+disabled HWID and cross-origin/port redirect protections. Existing security,
+subscription, configuration, backup, traffic and update checks also passed.
+
+Chromium UI checks passed with an emulated native bridge: HWID display/copy
+while sending is disabled, exact 64-character copied value, readonly display,
+read/clipboard error recovery, clearing on close/Escape, late read ignored
+when already closed. Device dialog fits 800x600 and 960x640. Existing themes,
+traffic/logs/update/settings flows and 1200x800 layouts pass without JS errors.
+The HWID screenshot uses a synthetic ID (64 A characters), not a real device.
+
+Windows x64 build/publish and signed archive verification are checked in this
+release. Native clipboard, DPAPI and panel display remain untested on this
+Linux host; the browser copy test exercises the bridge contract, not Windows.
+This release changes device metadata/UI, not the core or VPN configuration.
+
+HISTORICAL VALIDATION
+
+kot. 0.3.0 product validation, 2026-10-07, Linux build host.
+
+159 Core assertions passed: existing subscriptions/HWID/TLS/backup/release
+security plus real Clash API JSON shape, metadata sanitization, cumulative
+traffic, elapsed-time rate calculations, reconnect/reset/missing-sample rules,
+manual authenticated controller config, GitHub/VPS parsing, exact asset selection,
+HTTP downgrade/oversized metadata rejection, download progress and stalled-body
+cancellation. Official Linux sing-box 1.14.2 accepted all 12 generated configs.
+The API shape was checked against the exact upstream 1.14.2 connections.go.
+
+Chromium UI checks passed with an emulated native bridge: offline Manrope load,
+all themes/accents, original functions, throughput display/missing-data/idle,
+connection route/details/search/pause, hostile labels rendered as text,
+journal filters/copy, GitHub and VPS settings and online-update actions.
+Layouts checked at 800x600, 960x640 and 1200x800; no JavaScript errors.
+New screenshots are synthetic UI fixtures, not evidence of live VPN throughput.
+Bundled Manrope cmap was checked for Cyrillic. No runtime font network requests.
+
+Windows x64 self-contained single-file publish succeeded without warnings/errors.
+Embedded managed assembly bytes, signed release manifest and every file hash,
+archive CRC, source/package UI/font identity verified. Two external DLLs remain.
+The official core, Cronet and WebView2 bootstrapper are unchanged from 0.2.2.
+
+Windows runtime is unavailable here: real WinForms/WebView2, process metadata,
+clipboard, DPAPI, TUN/DNS, native download/install/relaunch dialogs and traffic
+sampling against a live Windows VPN have not been run. A proposed local Linux
+live API fixture was blocked by the host's private-address network policy;
+it is not counted as a passing live integration test.
+No published GitHub repository or VPS endpoint was supplied, so a live public
+update channel is not configured. The client and hosting instructions are ready.
+
+HISTORICAL VALIDATION
+
+kot. 0.2.2 security validation, 2026-10-07, Linux build host.
+
+126 Core assertions passed, including insecure TLS URI/profile/Auto rejection,
+stalled response-body cancellation at the real 35-second deadline,
+signed archives with incorrect length metadata, cryptographic backup and
+release verification, HWID redirects and existing connection configuration.
+Chromium UI checks passed with an emulated WebView bridge; 11 sing-box
+configuration checks passed against official Linux 1.14.2.
+Windows x64 single-file publish, embedded managed assembly bytes, release
+signature, all manifest hashes and archive CRC verified. Two external DLLs.
+No live Windows UI/DPAPI/TUN/firewall/leak or local-race tests performed.
+See SECURITY-AUDIT.md for findings, residual risks and dependency scope.
+
+HISTORICAL VALIDATION
+
+kot. 0.2.1 packaging validation, 2026-10-07, Linux build host.
+
+EXECUTED FOR 0.2.1
+Windows x64 self-contained single-file publish succeeded.
+108 Core assertions passed, including a regression for signed single-file
+updates without a loose Kot.dll and compatibility with multi-file packages.
+The bundle manifest was inspected. Embedded Kot.dll/Kot.Core.dll bytes match
+compiled source; runtime and WebView2 managed dependencies remain embedded.
+WebView2Loader.dll remains external and matches the previous verified build.
+Official sing-box, Cronet and WebView2 bootstrapper are unchanged.
+Shipped UI differs only in the displayed version; no UI behavior changed.
+Archive CRC, full signed manifest hashes and RSA signature verified.
+Only two external DLL files: WebView2Loader.dll and core/libcronet.dll.
+Native self-extraction is allowed via the standard .NET bundle setting.
+No trimming or managed-assembly compression enabled.
+No private signing key is included in either archive.
+Single-file startup, WebView2 loading and VPN on Windows have NOT been run here.
+Install 0.2.1 manually into a new folder; 0.2.0's update validator expects Kot.dll.
+
+PREVIOUS 0.2.0 CHECKS AND PRODUCT BOUNDARIES (historical)
+
+kot. 0.2.0 validation, 2026-10-07, Linux build host.
+
+BASELINE
+The user reported that 0.1.4 successfully connected on Windows.
+This is a user report, not a Windows run performed on this build host.
+The 0.1.4 bootstrap-DNS and original Win32-process-handle fixes are retained.
+NativeCore launcher and its console/job ownership are unchanged.
+
+EXECUTED FOR 0.2.0
+Windows x64 self-contained .NET publish succeeded without reported errors/warnings.
+107 Core assertions passed, including existing network/proxy/HWID/secret-redaction
+coverage and new profile migration, isolated provider selection, favorites/Auto,
+AES-GCM backup roundtrip, wrong password/tampering rejection, scheduler interval
+validation, bounded reconnect backoff, manual-stop suppression, automatic URLtest
+construction, original-outbound immutability, safe Windows archive paths,
+signed update verification, hash corruption, unlisted files, wrong signer,
+and downgrade/same-version rejection.
+All 11 generated configurations accepted by sing-box 1.14.2 check, including
+Auto + loopback authenticated Clash API and the original 10 fixtures.
+The official Linux core lists with_clash_api in its build tags.
+Chromium UI checks passed with a simulated WebView2 native bridge: original
+import/search/settings/theme/accent/reduced-motion/ping/log tests plus provider
+selector, favorite toggles, Auto selection, waiting/cancel status, automation
+settings, backup password validation/clearing, update action dispatch and new
+modal layout at 800x600 and 960x640. No browser JavaScript errors were reported.
+NativeTests compiled with production NativeCore, no warnings/errors.
+Archive checks: CRC; AMD64 app/loader PE headers; source/application/core DLL
+hash matches; published UI equals source; official core/Cronet/WebView2 installer
+bytes match 0.1.4; full release manifest hashes and RSA signature verified.
+No private signing key is included in the app or source archive.
+
+NOT EXECUTED ON WINDOWS HERE
+Windows runtime is unavailable. Native process tests, WinForms/WebView2,
+DPAPI, machine ID, clipboard/file dialogs, scheduled startup, actual TUN/DNS,
+network/power event handling, reconnection with real servers, Auto failover,
+and launching the next version have not been runtime-tested on Windows here.
+No successful connection for 0.2.0 is claimed from configuration check alone.
+The Linux live VLESS fixture previously could not start because netlink sockets
+are denied by this host; that blocked fixture is not reported as passing.
+The ReconnectPolicy checks validate policy rules, not the whole WinForms timer
+integration. Browser bridge checks validate the shipped UI, not native dialogs.
+
+PRODUCT BOUNDARIES
+No kill switch; a stopped tunnel can leave ordinary direct internet available.
+There is no configured public update hosting/feed or online EXE auto-download.
+Signed local ZIP installation is implemented for later releases.
+XHTTP, SS plugins, full Clash/sing-box subscriptions and provider-specific
+encrypted formats remain unsupported. No Authenticode certificate or MSI installer.
+The release remains beta until the new native workflows have Windows validation.
+
+REFERENCES
+https://sing-box.sagernet.org/configuration/outbound/urltest/
+https://sing-box.sagernet.org/configuration/experimental/clash-api/
+https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess
+Exact sing-box source is included under upstream/; licenses under licenses/.

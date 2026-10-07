@@ -54,4 +54,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME artifacts/* --title "kot. $env:GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: |
+          $version=$env:GITHUB_REF_NAME -replace '^v',''
+          gh release create $env:GITHUB_REF_NAME artifacts/* --title "kot. $version" --notes-file Release/NOTES.md --verify-tag
