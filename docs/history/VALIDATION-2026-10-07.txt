@@ -5,7 +5,7 @@ https://github.com/prodkot/kot/actions/runs/37637530636
 180 Core assertions passed. 29 native launcher assertions passed against
 production NativeCore: natural exits including 259 and 0xC0000005, original
 error capture, parallel launches, live-child shutdown observed independently,
-cleanup and missing executable. No VPN/network/administrator required by this
+cleanup and missing executable. No туннель/network/administrator required by this
 fixture. A fixture cannot substitute for testing real TUN/WFP cleanup.
 
 The shutdown code now waits on the original CreateProcess handle and reads
@@ -28,7 +28,7 @@ compiled into the client as prodkot/kot for the official build.
 NOT EXECUTED: interactive Windows installer/uninstaller, native clipboard/DPAPI,
 full updater parent/helper/new-app handshake, live provider/TUN and DNS/IPv6
 leak testing. Before calling a public release stable, test a same-key
-0.4.0 -> 0.4.1 upgrade on Windows with VPN active and verify rollback there.
+0.4.0 -> 0.4.1 upgrade on Windows with туннель active and verify rollback there.
 Rollback handles caught failures, not arbitrary power loss. Beta status retained.
 
 HISTORICAL VALIDATION
@@ -56,7 +56,7 @@ are parsed and the real signing/key-generation scripts exercised locally.
 NOT EXECUTED: Windows installer/uninstaller, UAC/native clipboard/DPAPI,
 full updater parent/helper/new-app handshake, live provider/TUN and DNS/IPv6
 leak testing. Before calling a public release stable, test a same-key
-0.4.0 -> 0.4.1 upgrade on Windows with VPN active and verify rollback there.
+0.4.0 -> 0.4.1 upgrade on Windows with туннель active and verify rollback there.
 Rollback is tested for handled failures, not arbitrary power loss; backups
 and unfinished journals are kept if recovery cannot finish.
 
@@ -80,7 +80,7 @@ The HWID screenshot uses a synthetic ID (64 A characters), not a real device.
 Windows x64 build/publish and signed archive verification are checked in this
 release. Native clipboard, DPAPI and panel display remain untested on this
 Linux host; the browser copy test exercises the bridge contract, not Windows.
-This release changes device metadata/UI, not the core or VPN configuration.
+This release changes device metadata/UI, not the core or туннель configuration.
 
 HISTORICAL VALIDATION
 
@@ -99,7 +99,7 @@ all themes/accents, original functions, throughput display/missing-data/idle,
 connection route/details/search/pause, hostile labels rendered as text,
 journal filters/copy, GitHub and VPS settings and online-update actions.
 Layouts checked at 800x600, 960x640 and 1200x800; no JavaScript errors.
-New screenshots are synthetic UI fixtures, not evidence of live VPN throughput.
+New screenshots are synthetic UI fixtures, not evidence of live туннель throughput.
 Bundled Manrope cmap was checked for Cyrillic. No runtime font network requests.
 
 Windows x64 self-contained single-file publish succeeded without warnings/errors.
@@ -109,7 +109,7 @@ The official core, Cronet and WebView2 bootstrapper are unchanged from 0.2.2.
 
 Windows runtime is unavailable here: real WinForms/WebView2, process metadata,
 clipboard, DPAPI, TUN/DNS, native download/install/relaunch dialogs and traffic
-sampling against a live Windows VPN have not been run. A proposed local Linux
+sampling against a live Windows туннель have not been run. A proposed local Linux
 live API fixture was blocked by the host's private-address network policy;
 it is not counted as a passing live integration test.
 No published GitHub repository or VPS endpoint was supplied, so a live public
@@ -148,7 +148,7 @@ Only two external DLL files: WebView2Loader.dll and core/libcronet.dll.
 Native self-extraction is allowed via the standard .NET bundle setting.
 No trimming or managed-assembly compression enabled.
 No private signing key is included in either archive.
-Single-file startup, WebView2 loading and VPN on Windows have NOT been run here.
+Single-file startup, WebView2 loading and туннель on Windows have NOT been run here.
 Install 0.2.1 manually into a new folder; 0.2.0's update validator expects Kot.dll.
 
 PREVIOUS 0.2.0 CHECKS AND PRODUCT BOUNDARIES (historical)

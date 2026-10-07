@@ -5,10 +5,12 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 namespace Kot.Windows;
-public sealed partial class MainWindow : Form
+public sealed partial class MainWindow : WindowChrome
 {
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
     readonly NotifyIcon tray;
+    readonly TrayMenu trayMenu;
+    string? pendingTrayPage;
     readonly Tunnel tunnel = new();
     readonly PingService ping = new();
     readonly SemaphoreSlim operations = new(1);
@@ -35,12 +37,10 @@ public sealed partial class MainWindow : Form
         Text = "kot."; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
         Controls.Add(web);
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Открыть", null, (_, _) => Restore());
-        menu.Items.Add("Подключить / отключить", null, async (_, _) => { if (!exiting) await ToggleConnection(); });
-        menu.Items.Add(new ToolStripSeparator()); menu.Items.Add("Выход", null, async (_, _) => await ExitApp());
-        tray = new NotifyIcon { Icon = Icon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = menu };
-        tray.DoubleClick += (_, _) => Restore();
+        trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
+        trayMenu.Opening += (_, _) => UpdateTray();
+        tray = new NotifyIcon { Icon = Icon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
+        tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Restore(); };
         tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = tunnel.State == "connected" ? "kot. · Подключено" : "kot. · Не подключено"; Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
         Shown += async (_, _) => await Initialize();
@@ -69,7 +69,20 @@ public sealed partial class MainWindow : Form
             if (hit != 0) m.Result = (IntPtr)hit;
         }
     }
-    void Restore() { Show(); if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal; Activate(); }
+    void Restore() => RestoreWindow();
+    void OpenTrayPage(string page)
+    {
+        if (page is not ("home" or "servers" or "logs" or "settings")) return;
+        Restore();
+        if (bridgeReady) Send(new { kind = "navigate", page }); else pendingTrayPage = page;
+    }
+    void UpdateTray()
+    {
+        string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
+        string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
+        trayMenu.Update(profile.Theme, profile.Accent, state, name, profile.Nodes.Count > 0);
+        tray.Text = state switch { "connected" => "kot. · Подключено", "connecting" => "kot. · Подключение", "waiting" => "kot. · Ожидание сети", _ => "kot. · Не подключено" };
+    }
     async Task Initialize()
     {
         try
@@ -115,7 +128,7 @@ public sealed partial class MainWindow : Form
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
-    void Snapshot() => Send(new { kind = "snapshot", data = Model() });
+    void Snapshot() { UpdateTray(); Send(new { kind = "snapshot", data = Model() }); }
     async Task Message(CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (exiting || e.Source != "https://kot.local/index.html") return;
@@ -130,6 +143,7 @@ public sealed partial class MainWindow : Form
             if (action == "ready")
             {
                 bool first = !bridgeReady; bridgeReady = true; Snapshot(); Send(new { kind = "reply", id, ok = true });
+                if (pendingTrayPage is { } page) { Send(new { kind = "navigate", page }); pendingTrayPage = null; }
                 if (first) UpdateInstaller.Ready();
                 if (first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
                 return;
@@ -137,12 +151,12 @@ public sealed partial class MainWindow : Form
             if (!bridgeReady) return;
             switch (action)
             {
-                case "drag": if (data.GetProperty("double").GetBoolean()) WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
+                case "drag": if (data.GetProperty("double").GetBoolean()) ToggleMaximize(); else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
                 case "resize":
                     var hit = data.GetProperty("edge").GetString() switch { "w" => 10, "e" => 11, "n" => 12, "nw" => 13, "ne" => 14, "s" => 15, "sw" => 16, "se" => 17, _ => 0 };
                     if (hit != 0 && WindowState == FormWindowState.Normal) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)hit, IntPtr.Zero); } break;
-                case "minimize": if (profile.Tray) Hide(); else WindowState = FormWindowState.Minimized; break;
-                case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
+                case "minimize": MinimizeWindow(); break;
+                case "maximize": ToggleMaximize(); break;
                 case "close": Close(); break;
                 case "toggle": _ = ToggleConnection(); break;
                 case "view":
@@ -270,7 +284,7 @@ public sealed partial class MainWindow : Form
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
         try { await ping.Stop(); await tunnel.Stop(); }
-        finally { tray.Visible = false; tray.Dispose(); allowClose = true; Close(); }
+        finally { tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);

@@ -109,7 +109,7 @@
         const meta=document.createElement('div');meta.className='connection-meta';const route=document.createElement('span');route.className='connection-route';route.textContent=(c.process?c.process+' · ':'')+(c.chains?.join(' → ')||'Маршрут неизвестен');const total=document.createElement('span');total.className='connection-bytes';total.textContent='↓ '+bytes(c.download)+'  ↑ '+bytes(c.upload);meta.append(route,total);summary.append(top,meta);
         const detail=document.createElement('div');detail.className='connection-detail';detail.textContent='Вход: '+(c.inbound||'Не определён')+'\nПравило: '+(c.rule||'final')+(c.start?'\nНачало: '+new Date(c.start).toLocaleTimeString('ru-RU'):'');detail.style.whiteSpace='pre-line';card.append(summary,detail);return card;
       }));connectionsKey=key;}
-      $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к VPN';
+      $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к серверу';
     }
   }
   function renderUpdate(){const u=model.updates||{};$('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Укажите источник обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion||!!u.busy;$('downloadUpdate').textContent='Обновить до '+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('checkUpdates').disabled=updateFormBusy||!!u.busy;$('saveUpdateSource').disabled=updateFormBusy||!!u.busy;$('updateProgress').hidden=!u.busy;if(u.bytes&&u.size){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes;}else $('updateProgress').removeAttribute('value');}
@@ -167,7 +167,7 @@
   $('saveRules').addEventListener('click',async()=>{const b=$('saveRules');b.disabled=true;try{await rpc('settings',{key:'bypass',value:$('bypassDomains').value});closeDialog($('advancedDialog'));toast('Правила сохранены');}catch(e){$('advancedError').textContent=e.message;}finally{b.disabled=false;}});
   ['diagnostics','copyErrorLog'].forEach(id=>$(id).addEventListener('click',async()=>{if(await request('copyLog'))toast('Полный лог скопирован');}));
   $('pingAll').addEventListener('click',()=>request('pingAll'));$('cancelPing').addEventListener('click',()=>request('cancelPing'));
-  function pingMethod(){const http=$('pingMode').value==='http';$('pingUrlRow').hidden=!http;$('pingUrl').required=http;$('pingUrl').disabled=!http;$('pingMethodNote').textContent=http?'Проверяет VPN и доступ к сайту.':'Проверяет TCP-порт, без проверки VPN. Для Hysteria2 нужен HTTP.';}
+  function pingMethod(){const http=$('pingMode').value==='http';$('pingUrlRow').hidden=!http;$('pingUrl').required=http;$('pingUrl').disabled=!http;$('pingMethodNote').textContent=http?'Проверяет подключение и доступ к сайту.':'Проверяет TCP-порт, без проверки подключения. Для Hysteria2 нужен HTTP.';}
   $('pingMode').addEventListener('change',pingMethod);
   $('pingSettings').addEventListener('click',()=>{
     const p=model.ping?.settings||{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'};
@@ -194,5 +194,5 @@
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){host.addEventListener('message',({data})=>{if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
+  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','logs','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
 })();

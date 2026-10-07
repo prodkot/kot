@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.4.1"
+!define VERSION "0.4.2"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
@@ -48,7 +48,7 @@ Section "kot." SEC_MAIN
   SetRegView 64
   SetShellVarContext all
   ${If} ${FileExists} "$INSTDIR\Kot.exe"
-    MessageBox MB_OKCANCEL "Закройте предыдущую версию kot. и отключите VPN перед установкой." IDOK +2
+    MessageBox MB_OKCANCEL "Закройте предыдущую версию kot. и отключите соединение перед установкой." IDOK +2
     Abort
   ${EndIf}
   SetOutPath "$INSTDIR"

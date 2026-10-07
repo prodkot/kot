@@ -33,19 +33,23 @@ public sealed class Tunnel
     }
     public async Task ReadAutomaticNode(CancellationToken ct)
     {
-        if (apiPort == 0 || State != "connected") return;
-        using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
-        client.DefaultRequestHeaders.Authorization = new("Bearer", apiSecret);
+        int port = apiPort, session = Session; string secret = apiSecret;
+        if (port == 0 || State != "connected") return;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(2));
+        using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false };
+        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/proxies/proxy");
+        request.Headers.Authorization = new("Bearer", secret);
         try
         {
-            using var response = await client.GetAsync($"http://127.0.0.1:{apiPort}/proxies/proxy", ct);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync(ct);
-            if (json.Length > 65536) return;
-            using var doc = JsonDocument.Parse(json); AutomaticNode = doc.RootElement.TryGetProperty("now", out var value) ? value.GetString()?.Replace("node-", "") ?? "" : "";
+            string json = await BoundedBody.ReadUtf8(response.Content, 65536, deadline.Token);
+            using var doc = JsonDocument.Parse(json);
+            string selection = doc.RootElement.TryGetProperty("now", out var value) ? value.GetString()?.Replace("node-", "") ?? "" : "";
+            if (Session == session && State == "connected") AutomaticNode = selection;
         }
-        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException) { AppLog.Write("auto", "selection read: " + e.GetType().Name); }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or UserError) { AppLog.Write("auto", "selection read: " + e.GetType().Name); }
     }
     public async Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct)
     {

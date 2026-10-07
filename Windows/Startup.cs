@@ -31,7 +31,7 @@ public static class Startup
                 XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
                 XElement E(string name, params object[] content) => new(ns + name, content);
                 var task = E("Task", new XAttribute("version", "1.2"),
-                    E("RegistrationInfo", E("Description", "kot. VPN client")),
+                    E("RegistrationInfo", E("Description", "kot. application based on sing-box")),
                     E("Triggers", E("LogonTrigger", E("Enabled", "true"), E("UserId", Sid))),
                     E("Principals", E("Principal", new XAttribute("id", "Author"), E("UserId", Sid), E("LogonType", "InteractiveToken"), E("RunLevel", "HighestAvailable"))),
                     E("Settings", E("MultipleInstancesPolicy", "IgnoreNew"), E("DisallowStartIfOnBatteries", "false"), E("StopIfGoingOnBatteries", "false"), E("AllowHardTerminate", "false"), E("StartWhenAvailable", "false"), E("AllowStartOnDemand", "true"), E("Enabled", "true"), E("ExecutionTimeLimit", "PT0S")),

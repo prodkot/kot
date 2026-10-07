@@ -2,7 +2,7 @@ using Kot.Windows;
 using System.Collections.Concurrent;
 
 // Windows-only integration checks of the real launcher, using this executable
-// as a fixture child. No provider, VPN driver, network or administrator is needed.
+// as a fixture child. No provider, tunnel driver, network or administrator is needed.
 if (args.Length == 3 && args[0] == "run" && args[1] == "-c")
 {
     string mode = File.ReadAllText(args[2]);

@@ -44,7 +44,7 @@ public static class Latency
         request.Headers.ConnectionClose = true;
         var watch = Stopwatch.StartNew();
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-        // A captive portal/redirect/403 is not a successful VPN test.
+        // A captive portal/redirect/403 is not a successful tunnel test.
         if (!response.IsSuccessStatusCode) throw new UserError($"HTTP {(int)response.StatusCode}");
         return Math.Max(1, (int)watch.ElapsedMilliseconds);
     }

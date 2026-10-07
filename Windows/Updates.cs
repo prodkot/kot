@@ -36,7 +36,7 @@ public sealed partial class MainWindow
             ct.ThrowIfCancellationRequested();
             var start = new ProcessStartInfo(Path.Combine(work, "Updater.exe")) { UseShellExecute = false, WorkingDirectory = work }; start.ArgumentList.Add("--apply-update");
             using var helper = Process.Start(start) ?? throw new UserError("Не удалось запустить установку обновления."); launched = true;
-            AppLog.Write("update", "verified " + manifest.Version + "; stopping VPN and restarting"); await ExitApp();
+            AppLog.Write("update", "verified " + manifest.Version + "; stopping tunnel and restarting"); await ExitApp();
         }
         finally { if (!launched) Directory.Delete(work, true); }
     }

@@ -79,7 +79,7 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
 </defs></svg>
 
 <div class="app">
-  <header class="titlebar"><div class="title-brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span><span id="titleVersion" aria-label="Версия приложения">0.4.1</span></div><div class="chrome"><button data-window="minimize" aria-label="Свернуть"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button><button data-window="maximize" aria-label="Развернуть"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button><button data-window="close" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2l-8 8"/></svg></button></div></header>
+  <header class="titlebar"><div class="title-brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span><span id="titleVersion" aria-label="Версия приложения">0.4.2</span></div><div class="chrome"><button data-window="minimize" aria-label="Свернуть"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button><button data-window="maximize" aria-label="Развернуть"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button><button data-window="close" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2l-8 8"/></svg></button></div></header>
   <aside class="sidebar">
     <div class="brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span></div>
     <nav class="nav" aria-label="Навигация">
@@ -122,7 +122,7 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
       <input class="search" id="logSearch" type="search" placeholder="Найти адрес, приложение или событие" aria-label="Поиск в логах">
       <div class="list-head"><span id="logStatus">Нет активных соединений</span><span id="logTime"></span></div>
       <div id="connectionList" class="connection-list"></div><pre id="journalText" class="journal-text" tabindex="0" hidden></pre>
-      <p class="empty" id="logEmpty">Подключитесь к VPN</p>
+      <p class="empty" id="logEmpty">Подключитесь к серверу</p>
     </section>
     <section class="view" id="page-settings" aria-label="Настройки" hidden>
       <div class="page-header"><h1>Настройки</h1></div>
@@ -136,7 +136,7 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
         </fieldset></div>
         <div class="setting-row"><span>Запуск с Windows</span><button class="switch" role="switch" aria-checked="false" aria-label="Запуск с Windows" data-setting="startup"></button></div>
         <div class="setting-row"><span>Автоподключение</span><button class="switch" role="switch" aria-checked="false" aria-label="Автоподключение" data-setting="autoConnect"></button></div>
-        <div class="setting-row"><span>Сворачивать в трей</span><button class="switch" role="switch" aria-checked="true" aria-label="Сворачивать в трей" data-setting="tray"></button></div>
+        <div class="setting-row"><span>Закрывать в трей</span><button class="switch" role="switch" aria-checked="true" aria-label="Закрывать в трей" data-setting="tray"></button></div>
       </div>
       <div class="settings-tools" data-reveal><button class="settings-link" id="automationButton">Автоматизация<svg><use href="#arrow"/></svg></button><button class="settings-link" id="hwidButton">HWID<svg><use href="#arrow"/></svg></button><button class="settings-link" id="advancedButton">Дополнительно<svg><use href="#arrow"/></svg></button><button class="settings-link" id="onlineUpdateButton">Обновления<svg><use href="#arrow"/></svg><span id="updateBadge" class="update-badge" hidden></span></button></div>
     </section>
@@ -162,18 +162,18 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
 <dialog class="dialog" id="advancedDialog" aria-labelledby="advancedTitle"><h2 id="advancedTitle">Дополнительно</h2>
 <div class="setting-row" style="padding:0;min-height:36px"><span>Передавать HWID</span><button class="switch" role="switch" aria-checked="true" aria-label="Передавать HWID" data-setting="sendHwid"></button></div>
 <p class="dialog-note">Постоянный ID для сервера подписки.</p>
-<label for="bypassDomains">Без VPN в режиме «По правилам»</label><textarea id="bypassDomains" rows="4" maxlength="25000" placeholder="example.com&#10;example.org" spellcheck="false"></textarea>
+<label for="bypassDomains">Напрямую в режиме «По правилам»</label><textarea id="bypassDomains" rows="4" maxlength="25000" placeholder="example.com&#10;example.org" spellcheck="false"></textarea>
 <p class="dialog-note">Домены и их поддомены, по одному в строке. Локальная сеть всегда напрямую.</p>
 <details id="skippedDetails" hidden><summary>Пропущенные серверы</summary><div id="skippedNodes" class="dialog-note"></div></details>
 <p class="dialog-error" id="advancedError" role="alert"></p>
 <div class="dialog-actions"><button class="quiet-button" id="diagnostics">Скопировать полный лог</button><button class="primary" id="saveRules">Сохранить</button></div>
 <div class="advanced-footer"><button class="settings-link" id="removeSubscription">Удалить подписку</button><button class="settings-link" id="closeAdvanced">Закрыть</button></div>
 <div class="compact-links"><button class="settings-link" id="backupButton">Резервная копия</button><button class="settings-link" id="updateButton">Обновить из ZIP</button></div><p id="backgroundError" class="background-error" hidden></p>
-<p class="dialog-note" id="version">kot. 0.4.1 · sing-box 1.14.2</p></dialog>
+<p class="dialog-note" id="version">kot. 0.4.2 · sing-box 1.14.2</p></dialog>
 <dialog class="dialog ping-dialog" id="pingDialog" aria-labelledby="pingTitle">
 <h2 id="pingTitle">Пинг</h2><form id="pingForm">
 <label for="pingMode">Метод</label><select id="pingMode"><option value="http">HTTP через сервер</option><option value="tcp">TCP до сервера</option></select>
-<p class="dialog-note" id="pingMethodNote">Проверяет VPN и доступ к сайту.</p>
+<p class="dialog-note" id="pingMethodNote">Проверяет подключение и доступ к сайту.</p>
 <div id="pingUrlRow"><label for="pingUrl">Адрес проверки</label><input id="pingUrl" type="url" maxlength="2048" spellcheck="false" autocomplete="off"></div>
 <div class="ping-grid"><div><label for="pingTimeout">Таймаут, мс</label><input id="pingTimeout" type="number" min="500" max="30000" step="100" required></div><div><label for="pingAttempts">Попытки</label><input id="pingAttempts" type="number" min="1" max="5" required></div><div><label for="pingParallel">Одновременно</label><input id="pingParallel" type="number" min="1" max="8" required></div><div><label for="pingSort">Порядок</label><select id="pingSort"><option value="none">Из подписки</option><option value="ping">По пингу</option><option value="name">По имени</option></select></div></div>
 <p class="dialog-error" id="pingSettingsError" role="alert"></p><div class="dialog-actions"><button type="button" class="quiet-button" id="closePing">Отмена</button><button type="submit" class="primary">Сохранить</button></div></form>
@@ -182,13 +182,13 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
 <div class="setting-row" style="padding:0"><span>Восстанавливать соединение</span><button class="switch" type="button" role="switch" aria-checked="true" id="reconnectSetting" aria-label="Восстанавливать соединение"></button></div>
 <div class="automation-grid"><div><label for="refreshHours">Подписки, часы</label><input id="refreshHours" type="number" min="0" max="168" required></div><div><label for="backgroundPing">Фоновый пинг, минуты</label><input id="backgroundPing" type="number" min="0" max="120" required></div><div><label for="autoMinutes">Проверка «Авто», минуты</label><input id="autoMinutes" type="number" min="1" max="60" required></div><div><label for="autoTolerance">Допуск «Авто», мс</label><input id="autoTolerance" type="number" min="0" max="1000" required></div></div>
 <p class="dialog-note">0 отключает обновление или фоновый пинг. «Авто» выбирает из избранного, если оно есть. Допуск уменьшает лишние переключения.</p><p class="dialog-error" id="automationError"></p><div class="dialog-actions"><button class="quiet-button" id="closeAutomation" type="button">Отмена</button><button class="primary" type="submit">Сохранить</button></div></form></dialog>
-<dialog class="dialog backup-dialog" id="backupDialog" aria-labelledby="backupTitle"><h2 id="backupTitle">Резервная копия</h2><label for="backupPassword">Пароль</label><input id="backupPassword" type="password" minlength="8" maxlength="1024" autocomplete="new-password"><p class="dialog-note">От 8 символов. Сохраняются все подписки и настройки. Восстановление заменит текущий профиль и отключит VPN; HWID этого компьютера останется прежним.</p><p class="dialog-error" id="backupError"></p><div class="dialog-actions"><button class="quiet-button" id="closeBackup">Закрыть</button><button class="quiet-button" id="restoreBackup">Восстановить</button><button class="primary" id="exportBackup">Сохранить</button></div></dialog>
+<dialog class="dialog backup-dialog" id="backupDialog" aria-labelledby="backupTitle"><h2 id="backupTitle">Резервная копия</h2><label for="backupPassword">Пароль</label><input id="backupPassword" type="password" minlength="8" maxlength="1024" autocomplete="new-password"><p class="dialog-note">От 8 символов. Сохраняются все подписки и настройки. Восстановление заменит текущий профиль и отключит соединение; HWID этого компьютера останется прежним.</p><p class="dialog-error" id="backupError"></p><div class="dialog-actions"><button class="quiet-button" id="closeBackup">Закрыть</button><button class="quiet-button" id="restoreBackup">Восстановить</button><button class="primary" id="exportBackup">Сохранить</button></div></dialog>
 <dialog class="dialog update-dialog" id="onlineUpdateDialog" aria-labelledby="updateTitle"><h2 id="updateTitle">Обновления</h2><form id="updateSourceForm">
 <label for="updateSource">Источник</label><select id="updateSource"><option value="github">GitHub Releases</option><option value="https">HTTPS на VPS</option></select>
 <label for="updateAddress" id="updateAddressLabel">Репозиторий</label><input id="updateAddress" maxlength="2048" placeholder="owner/repository" autocomplete="off" spellcheck="false"><div class="update-auto"><span>Скачивать и устанавливать автоматически</span><button type="button" id="autoUpdate" class="switch" role="switch" aria-label="Автоматически скачивать и устанавливать обновления" aria-checked="true"></button></div>
 <div class="dialog-actions"><button class="quiet-button" type="submit" id="saveUpdateSource">Сохранить источник</button><button class="quiet-button" type="button" id="checkUpdates">Проверить</button></div></form>
 <p id="updateStatus" class="dialog-note">Укажите источник обновлений</p><progress id="updateProgress" hidden></progress><p id="updateError" class="dialog-error" role="alert"></p>
-<div class="dialog-actions"><button class="quiet-button" id="closeOnlineUpdate">Закрыть</button><button class="quiet-button" id="cancelUpdate" hidden>Отменить</button><button class="primary" id="downloadUpdate" hidden>Обновить</button></div><p class="dialog-note">Проверка раз в сутки. После загрузки и проверки подписи приложение перезапустится. Активное VPN-соединение будет восстановлено.</p></dialog>
+<div class="dialog-actions"><button class="quiet-button" id="closeOnlineUpdate">Закрыть</button><button class="quiet-button" id="cancelUpdate" hidden>Отменить</button><button class="primary" id="downloadUpdate" hidden>Обновить</button></div><p class="dialog-note">Проверка раз в сутки. После загрузки и проверки подписи приложение перезапустится. Активное соединение будет восстановлено.</p></dialog>
 <dialog class="dialog" id="removeDialog"><h2>Удалить подписку?</h2><p class="dialog-note">Будет удалена текущая подписка. Остальные останутся.</p><div class="dialog-actions"><button class="quiet-button" id="cancelRemove">Отмена</button><button class="primary" id="confirmRemove">Удалить</button></div></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="resize-edge" data-edge="n"></div><div class="resize-edge" data-edge="s"></div><div class="resize-edge" data-edge="e"></div><div class="resize-edge" data-edge="w"></div><div class="resize-edge" data-edge="nw"></div><div class="resize-edge" data-edge="ne"></div><div class="resize-edge" data-edge="sw"></div><div class="resize-edge" data-edge="se"></div>

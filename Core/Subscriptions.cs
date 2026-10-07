@@ -199,11 +199,11 @@ public static class Subscriptions
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             bool Flag(string name) => response.Headers.TryGetValues(name, out var values) && values.Any(v => v.Trim().Equals("true", StringComparison.OrdinalIgnoreCase));
             if (Flag("x-hwid-max-devices-reached") || Flag("x-hwid-limit"))
-                throw new UserError("Достигнут лимит устройств подписки. Освободите место в кабинете VPN-сервиса или обратитесь в его поддержку.");
+                throw new UserError("Достигнут лимит устройств подписки. Освободите место в кабинете сервиса или обратитесь в его поддержку.");
             if (Flag("x-hwid-not-supported"))
                 throw new UserError(device == null ? "Для подписки нужен HWID. Включите «Передавать HWID» в Настройки → Дополнительно и повторите загрузку."
-                    : !deviceOrigin ? "Подписка перенаправлена на другой сервер, которому HWID не передаётся. Запросите у VPN-сервиса прямую ссылку на подписку."
-                    : "Сервер подписки не принял HWID клиента. Обратитесь в поддержку VPN-сервиса.");
+                    : !deviceOrigin ? "Подписка перенаправлена на другой сервер, которому HWID не передаётся. Запросите у сервиса прямую ссылку на подписку."
+                    : "Сервер подписки не принял HWID клиента. Обратитесь в поддержку сервиса.");
             if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
             {
                 Uri? next = response.Headers.Location; if (next == null) throw new UserError("Подписка перенаправляет без адреса.");

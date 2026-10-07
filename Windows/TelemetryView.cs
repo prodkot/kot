@@ -49,8 +49,8 @@ public sealed partial class MainWindow
     string RouteLabel(string tag)
     {
         if (tag == "direct") return "Напрямую";
-        if (tag == "proxy") return profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "VPN";
-        if (tag.StartsWith("node-", StringComparison.Ordinal)) return profile.Nodes.FirstOrDefault(n => n.Id == tag[5..])?.Name ?? "VPN";
+        if (tag == "proxy") return profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "Туннель";
+        if (tag.StartsWith("node-", StringComparison.Ordinal)) return profile.Nodes.FirstOrDefault(n => n.Id == tag[5..])?.Name ?? "Туннель";
         return AppLog.Clean(tag);
     }
 }
