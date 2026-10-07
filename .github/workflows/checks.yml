@@ -30,7 +30,7 @@ jobs:
       - name: Native window and tray checks
         shell: pwsh
         run: |
-          dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 --self-contained false -o artifacts/window-tests
+          dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 -p:SelfContained=false -p:PublishSingleFile=false -o artifacts/window-tests
           if ($LASTEXITCODE -ne 0) { throw 'Window fixture build failed.' }
           ./artifacts/window-tests/Kot.WindowTests.exe artifacts/window-ui
           if ($LASTEXITCODE -ne 0) { throw 'Window and tray checks failed.' }

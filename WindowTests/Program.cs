@@ -26,6 +26,7 @@ internal static class Program
         var power = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "power");
         Check(!power.Enabled, "connect disabled without a subscription");
         menu.Update("dark", "lime", "connected", "Test & node\nwith control", true);
+        Check(menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("Test & node") && !menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("\n"), "server label preserves ampersands and removes control characters");
         Check(power.Enabled && power.Text == "Отключить", "tray connection action follows state");
         power.PerformClick(); Check(toggled == 1, "tray action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "open").PerformClick(); Check(opened == 1, "open action executes once");

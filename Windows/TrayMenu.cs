@@ -64,7 +64,7 @@ public sealed class TrayMenu : ContextMenuStrip
         BackColor = background; ForeColor = foreground;
         string label = state switch { "connected" => "Подключено", "connecting" => "Подключение", "disconnecting" => "Отключение", "waiting" => "Ожидание сети", _ => "Не подключено" };
         string safe = new(server.Where(c => !char.IsControl(c)).Take(100).ToArray());
-        status.Text = label + (safe.Length > 0 ? " · " + safe.Replace("&", "&&") : "");
+        status.Text = label + (safe.Length > 0 ? " · " + safe : "");
         status.AccessibleName = status.Text;
         toggle.Text = state switch { "connected" => "Отключить", "connecting" or "waiting" => "Отменить подключение", "disconnecting" => "Отключение…", _ => "Подключить" };
         toggle.Enabled = !busy && state != "disconnecting" && (hasNodes || state != "idle");
