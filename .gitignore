@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/__pycache__/
+Tests/generated/
+Tests/*.png
+.build-cache/
+publish*/
+artifacts/
+*.pem
+*.pfx
+*.key
+*.bin
+*.log
+Installer/uninstall-files.nsh

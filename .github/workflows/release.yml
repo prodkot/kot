@@ -1,0 +1,49 @@
+name: Windows release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Verify tag and run core tests
+        shell: pwsh
+        run: |
+          $version=[regex]::Match((Get-Content Core/ClientIdentity.cs -Raw),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and application version disagree.' }
+          dotnet run --project Tests/Kot.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+      - name: Build signed package and installer
+        shell: pwsh
+        env:
+          KOT_RELEASE_SIGNING_KEY: ${{ secrets.KOT_RELEASE_SIGNING_KEY }}
+        run: |
+          if (!$env:KOT_RELEASE_SIGNING_KEY) { throw 'Add the publisher private key to the KOT_RELEASE_SIGNING_KEY Actions secret.' }
+          $key=Join-Path $env:RUNNER_TEMP 'kot-private.pem'
+          try {
+            [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
+            ./Release/release.ps1 -Key $key -Repository $env:GITHUB_REPOSITORY
+          } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: artifacts/*
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME artifacts/* --title "kot. $env:GITHUB_REF_NAME" --generate-notes --verify-tag
