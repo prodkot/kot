@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   release:
+    timeout-minutes: 20
     permissions:
       contents: write
     runs-on: windows-latest
@@ -63,21 +64,35 @@ jobs:
           ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
+        timeout-minutes: 5
         shell: pwsh
         run: |
+          function Wait-Installer($process, $stage) {
+            if (!$process.WaitForExit(120000)) {
+              Get-Process -Name 'Kot','Uninstall','Kot-Setup-*' -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,MainWindowTitle | Format-Table
+              throw "$stage did not finish within two minutes."
+            }
+            Write-Host "$stage exited with $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) { throw "$stage failed." }
+          }
           $setup=Get-ChildItem artifacts/Kot-Setup-*-Windows-x64.exe | Select-Object -First 1
           $target=Join-Path $env:RUNNER_TEMP 'kot-setup-test'
-          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru -Wait
+          Write-Host "Installing $($setup.Name)"
+          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru
+          Wait-Installer $process 'Installation'
           if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Kot.exe") -or !(Test-Path "$target/Uninstall.exe")) { throw 'Signed Setup installation failed.' }
           $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
           foreach ($file in Get-ChildItem $publish -File -Recurse) {
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
-          $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru -Wait
+          Write-Host 'Uninstalling verified payload'
+          $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru
+          Wait-Installer $process 'Uninstallation'
           if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
           Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
         with:
           name: windows-release
           path: |
