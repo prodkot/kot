@@ -21,7 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="../Core/Kot.Core.csproj"/>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31"/>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12"/>
     <Content Include="ui/**" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
     <Content Include="kot.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
   </ItemGroup>

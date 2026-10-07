@@ -55,8 +55,3 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 
 Go module dependencies of sing-box 1.14.2:
 - Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt
-
-System.Security.Cryptography.ProtectedData 10.0.12
-Защита профиля и квитанции восстановления прокси через DPAPI Windows.
-Лицензия MIT, тексты и уведомления .NET перечислены выше.
-https://www.nuget.org/packages/System.Security.Cryptography.ProtectedData/10.0.12
