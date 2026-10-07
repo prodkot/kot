@@ -1,21 +1,29 @@
 """Real local VLESS chain; never creates a TUN or alters host routes."""
-import sys, http.client, http.server, threading, subprocess, pathlib, urllib.request, time, json, socket
-ROOT=pathlib.Path(__file__).resolve().parents[2]
-core=ROOT/'.tools/sing-box/linux/sing-box-1.14.2-linux-amd64/sing-box'
-generated=ROOT/'kot-client/Tests/generated'
+import argparse, sys, http.client, http.server, threading, subprocess, pathlib, time, json, socket
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--core', required=True, type=pathlib.Path, help='Path to the official sing-box 1.14.2 executable')
+args = parser.parse_args()
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+core=args.core.resolve()
+generated=ROOT/'Tests/generated'
+if not core.is_file():
+    parser.error('sing-box executable not found')
+if not all((generated/name).is_file() for name in ('fixture-client.json','fixture-server.json')):
+    parser.error('Run dotnet run --project Tests/Kot.Tests.csproj -c Release -- integration first')
 class Fixture(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         body=b'kot-real-vless-fixture-ok'
         self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
     def log_message(self,*args): pass
-server=http.server.ThreadingHTTPServer(('127.0.0.1',19443),Fixture)
-threading.Thread(target=server.serve_forever,daemon=True).start()
 for path in generated.glob('*.json'):
-    p=subprocess.run([str(core),'check','-c',str(path)],capture_output=True,text=True)
+    p=subprocess.run([str(core),'check','-c',str(path)],capture_output=True,text=True,timeout=20)
     assert p.returncode==0, (path.name,p.stderr)
+print('PASS bundled core validates all generated protocol configurations')
 # Loopback fixture needs no interface discovery; the host prohibits netlink.
 fixture=json.loads((generated/'fixture-client.json').read_text());fixture['route']['auto_detect_interface']=False
 (generated/'fixture-client-local.json').write_text(json.dumps(fixture))
+server=http.server.ThreadingHTTPServer(('127.0.0.1',19443),Fixture)
+threading.Thread(target=server.serve_forever,daemon=True).start()
 processes=[]
 try:
     for name in ('fixture-server','fixture-client-local'):
@@ -31,6 +39,8 @@ try:
         try:
             with socket.create_connection(('127.0.0.1',19442),.1): break
         except OSError: time.sleep(.1)
+    else:
+        raise AssertionError('Core did not open its local proxy within five seconds')
     # CONNECT forces an actual HTTP proxy hop; no urllib loopback proxy bypass.
     def via_proxy():
         import http.client

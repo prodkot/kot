@@ -2,7 +2,9 @@
 
 1. Обнови номер в `Core/ClientIdentity.cs`, `Windows/Kot.Windows.csproj`, `Windows/app.manifest`, интерфейсе и `Installer/Kot.nsi`.
 2. Запиши изменения в `Release/NOTES.md` и `CHANGELOG.md`.
-3. Проверь сборку и тесты. Создай тег `vНОМЕР` и отправь его на GitHub.
+3. Запусти `python Tests/repository.py`, проверки из [docs/BUILD.md](../docs/BUILD.md) и CI pull request.
+4. Сначала запусти workflow **Windows release** вручную на ветке PR: он проверит подписанный Setup без публикации. После успешных проверок слей PR.
+5. Создай тег `vНОМЕР` на проверенном коммите `main` и отправь его на GitHub. Не ставь релизный тег на непроверенную ветку.
 
 Workflow соберёт Setup, подпишет вложенный пакет ключом `KOT_RELEASE_SIGNING_KEY` из GitHub Secrets и опубликует один установщик. Текст страницы релиза берётся из `Release/NOTES.md`.
 

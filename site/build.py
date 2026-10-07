@@ -30,19 +30,24 @@ def release_metadata(release):
 def build(destination, release):
     source = Path(__file__).resolve().parent
     destination = Path(destination).resolve()
-    if destination == source or source.is_relative_to(destination):
-        raise ValueError("Use a separate output folder")
+    repository = source.parent
+    # Never overwrite source files, including another subtree of this repository.
+    if repository.is_relative_to(destination) or (destination.is_relative_to(repository)
+            and not destination.is_relative_to(repository / "artifacts")):
+        raise ValueError("Use artifacts/ or an output folder outside the repository")
     destination.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "style.css", "app.js"):
         shutil.copy2(source / name, destination / name)
     shutil.copy2(source.parent / "LICENSE.txt", destination / "LICENSE.txt")
     shutil.copytree(source / "assets", destination / "assets", dirs_exist_ok=True)
+    client = repository / "Windows" / "ui"
+    shutil.copy2(client / "fonts/Manrope.ttf", destination / "assets/Manrope.ttf")
+    shutil.copy2(repository / "licenses/Manrope-OFL.txt", destination / "assets/Manrope-OFL.txt")
     # Reuse the real client UI in an isolated browser demo, with a mock WebView bridge.
     demo = destination / "demo"
     demo.mkdir(exist_ok=True)
-    client = source.parent / "Windows" / "ui"
     markup = (client / "index.html").read_text(encoding="utf-8")
-    font = base64.b64encode((source / "assets/Manrope.ttf").read_bytes()).decode("ascii")
+    font = base64.b64encode((client / "fonts/Manrope.ttf").read_bytes()).decode("ascii")
     markup = markup.replace('url("fonts/Manrope.ttf")', f'url("data:font/ttf;base64,{font}")')
     markup = markup.replace("style-src 'unsafe-inline'", "style-src 'self' 'unsafe-inline'")
     markup = markup.replace("font-src 'self'", "font-src data:")

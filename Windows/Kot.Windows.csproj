@@ -9,7 +9,7 @@
     <AssemblyName>Kot</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>kot.ico</ApplicationIcon>
-    <Version>0.5.6</Version>
+    <Version>0.5.7</Version>
     <Product>kot.</Product>
     <Company>Kot</Company>
     <PublishSingleFile>true</PublishSingleFile>
@@ -21,7 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="../Core/Kot.Core.csproj"/>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31"/>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1"/>
     <Content Include="ui/**" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
     <Content Include="kot.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
   </ItemGroup>

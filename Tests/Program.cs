@@ -21,7 +21,7 @@ foreach (string invalid in new[] { $"vless://{uuid}@example.com:443?type=xhttp",
 var domains = Configuration.Domains("example.com\n.example.org\nexample.com");
 Check(domains.SequenceEqual(new[] { "example.com", "example.org" }), "rules normalization");
 bool badDomain = false; try { Configuration.Domains("https://example.com/path"); } catch(UserError) { badDomain = true; } Check(badDomain, "rules reject URL");
-string fixtureFolder = Directory.Exists("kot-client/Tests") ? "kot-client/Tests/generated" : "Tests/generated";
+string fixtureFolder = "Tests/generated";
 Directory.CreateDirectory(fixtureFolder);
 foreach (var n in new[] { a.Nodes[0], ws, ss, vm, Subscriptions.ParseNode("trojan://password@example.com:443?sni=example.com#TR"), Subscriptions.ParseNode("hysteria2://password@example.com:443?sni=example.com#HY") })
  File.WriteAllText($"{fixtureFolder}/{n.Protocol}-{n.Id[..6]}.json", Configuration.Build(n, 19223, true, domains).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -48,14 +48,14 @@ var device = new SubscriptionDevice(SubscriptionDevice.HashMachineId("ABCDE-TEST
 device.Validate();
 Check(device.Hwid.Length == 64 && device.Hwid == SubscriptionDevice.HashMachineId(" abcde-test-machine ") && device.Hwid != SubscriptionDevice.HashMachineId("other-machine"), "stable app-specific machine ID, normalized and distinct per machine");
 Check(device.Hwid == "225CDDEE6C5E4C6F8DCF838D42070CE4DF86F130091DF0AF435B20CFE29E347D", "branding preserves historical HWID algorithm and salt");
-Check(ClientIdentity.DeviceName == "kot. windows (0.5.6)", "versioned device display name");
+Check(ClientIdentity.DeviceName == "kot. windows (0.5.7)", "versioned device display name");
 int deviceRequests = 0;
 await Subscriptions.Download("https://subscription.example/start", CancellationToken.None, new FakeTransport((request, index) =>
 {
     Check(request.Headers.GetValues("x-hwid").Single() == device.Hwid && request.Headers.GetValues("x-device-os").Single() == "Windows"
-        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == "kot. windows (0.5.6)", "device headers on import and same-origin redirect");
+        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == "kot. windows (0.5.7)", "device headers on import and same-origin redirect");
     var userAgent = request.Headers.UserAgent.ToString();
-    Check(userAgent == "kot. windows (0.5.6) v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
+    Check(userAgent == "kot. windows (0.5.7) v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
     deviceRequests++;
     return index == 0 ? new(System.Net.HttpStatusCode.Found) { Headers = { Location = new Uri("/download", UriKind.Relative) } } : new(System.Net.HttpStatusCode.OK) { Content = new StringContent(vless) };
 }), device);

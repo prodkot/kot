@@ -1,8 +1,12 @@
+param([string]$PublishDirectory)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
+python Tests/repository.py
+if ($LASTEXITCODE -ne 0) { throw 'Repository checks failed.' }
 # A fresh directory prevents old loose DLLs from surviving a new single-file publish.
-$publish = Join-Path $PSScriptRoot ('publish-' + [Guid]::NewGuid().ToString('N'))
-dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableWindowsTargeting=true -o $publish
+$publish = if ($PublishDirectory) { [IO.Path]::GetFullPath($PublishDirectory) } else { Join-Path $PSScriptRoot ('publish-' + [Guid]::NewGuid().ToString('N')) }
+if (Test-Path $publish) { throw 'Publish directory must be new; existing files will not be overwritten.' }
+dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -m:1 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableWindowsTargeting=true -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 $cache = Join-Path $PSScriptRoot '.build-cache'
 New-Item -ItemType Directory -Force $cache | Out-Null

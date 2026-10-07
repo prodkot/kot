@@ -47,8 +47,6 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 
 При распространении сохраняйте лицензии и уведомления. Исходники
 приложенного sing-box доступны по точной ссылке выше и в upstream/.
-Прежние сведения сохранены в docs/history/THIRD-PARTY-before-rewrite.txt
-в репозитории https://github.com/prodkot/kot.
 
 Флаги стран: flag-icons 7.3.2, Panayiotis Lipiridis.
 Источник: https://github.com/lipis/flag-icons/tree/v7.3.2
