@@ -49,3 +49,8 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 приложенного sing-box доступны по точной ссылке выше и в upstream/.
 Прежние сведения сохранены в docs/history/THIRD-PARTY-before-rewrite.txt
 в репозитории https://github.com/prodkot/kot.
+
+Флаги стран: flag-icons 7.3.2, Panayiotis Lipiridis.
+Источник: https://github.com/lipis/flag-icons/tree/v7.3.2
+В программу входят только локальные SVG-флаги 4:3.
+Лицензия MIT: licenses/flag-icons-MIT.txt.

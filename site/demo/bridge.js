@@ -8,10 +8,10 @@
   const timers = new Map();
   let model, tick = 0, subscriptionSequence = 1;
   const samples = () => [
-    { id: 'nl', name: 'Нидерланды', code: 'NL', protocol: 'vless', latency: 42 },
-    { id: 'de', name: 'Германия', code: 'DE', protocol: 'vless', latency: 68 },
-    { id: 'fi', name: 'Финляндия', code: 'FI', protocol: 'trojan', latency: 91 },
-    { id: 'lv', name: 'Латвия', code: 'LV', protocol: 'hysteria2', latency: 56 }
+    { id: 'nl', name: 'Нидерланды', countryCode: 'NL', code: 'VL', protocol: 'vless', latency: 42 },
+    { id: 'de', name: 'Германия', countryCode: 'DE', code: 'VL', protocol: 'vless', latency: 68 },
+    { id: 'fi', name: 'Финляндия', countryCode: 'FI', code: 'TR', protocol: 'trojan', latency: 91 },
+    { id: 'lv', name: 'Латвия', countryCode: 'LV', code: 'HY', protocol: 'hysteria2', latency: 56 }
   ].map(node => ({ ...node, ping: { status: 'ok', ms: node.latency, mode: 'http', successes: 2, attempts: 2 } }));
   function emit(data) { listeners.forEach(listener => listener({ data: structuredClone(data) })); }
   function notify(data) { parent.postMessage({ kind: 'kot-demo', ...data }, '*'); }

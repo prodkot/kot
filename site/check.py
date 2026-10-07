@@ -74,6 +74,8 @@ class SiteTests(unittest.TestCase):
             self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
             self.assertTrue((dest / "demo/demo.css").is_file())
             self.assertTrue((dest / "demo/bridge.js").is_file())
+            self.assertEqual((dest / "demo/flags/de.svg").read_bytes(), (ROOT.parent / "Windows/ui/flags/de.svg").read_bytes())
+            self.assertTrue((dest / "demo/flags/LICENSE.txt").is_file())
             self.assertIn('sandbox="allow-scripts allow-forms"', (dest / "index.html").read_text(encoding="utf-8"))
             self.assertFalse((dest / "Windows").exists())
             self.assertFalse((dest / "demo/backup.json").exists())
