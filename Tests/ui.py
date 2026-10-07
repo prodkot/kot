@@ -37,6 +37,7 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
  }
  snapshot();reply();
 },msg.action==='readHwid'?(window.fixtureDeviceDelay||10):(['refresh','updateSettings'].includes(msg.action)?(window.fixtureMutationDelay||10):10))}};
+window.fixtureNavigate=(page)=>callback({data:{kind:"navigate",page}});
 window.fixtureSnapshot=(patch)=>{Object.assign(model,patch);callback({data:{kind:'snapshot',data:structuredClone(model)}});};
 })();'''
 with sync_playwright() as p:
@@ -88,6 +89,10 @@ with sync_playwright() as p:
     for width,height in [(800,600),(960,640),(1200,800)]:
         page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.4.2');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
         assert page.locator('#advancedButton').bounding_box()['y']<height
+    for target in ["logs", "servers", "settings", "home"]:
+        page.evaluate("fixtureNavigate", target);expect(page.locator("#page-"+target)).to_be_visible()
+    page.evaluate("fixtureNavigate", "untrusted");expect(page.locator("#page-home")).to_be_visible()
+    page.evaluate("fixtureNavigate", "settings")
     page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('.accent-choice:has(input[value=lime])').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
     page.locator('[data-page=servers]').click();page.locator('#subscriptionSelect').select_option('sub2');expect(page.locator('#subscriptionSelect')).to_have_value('sub2')
     page.locator('.favorite-node').first.click();expect(page.locator('.favorite-node').first).to_have_attribute('aria-pressed','true');expect(page.locator('#autoDescription')).to_have_text('Из избранного')
@@ -131,7 +136,7 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':width,'height':height});box=page.locator('#onlineUpdateDialog').bounding_box();assert box['y']>=0 and box['y']+box['height']<=height
     page.locator('#closeOnlineUpdate').click();expect(page.locator('#onlineUpdateDialog')).not_to_be_visible();page.set_viewport_size({'width':960,'height':640})
 
-    # Clean demonstration captures. These are fixture values, never presented as live VPN measurement.
+    # Clean demonstration captures. These are fixture values, never presented as live traffic measurement.
     page.evaluate("fixtureSnapshot({name:'Личная подписка',nodes:[{id:'a',name:'Нидерланды',code:'NL',protocol:'vless'}],selected:'a',state:'connected',automaticNode:'',error:'',telemetry:{available:true,downloadRate:2097152,uploadRate:524288,downloadTotal:52428800,uploadTotal:1048576,count:2,connections:[{id:'demo-one',destination:'cdn.example.org:443',network:'tcp',inbound:'tun/tun-in',process:'browser.exe',chains:['Нидерланды'],rule:'final',download:52428800,upload:65536,start:'2026-10-07T12:00:00Z'},{id:'demo-two',destination:'192.168.1.1:80',network:'tcp',inbound:'tun/tun-in',process:'browser.exe',chains:['Напрямую'],rule:'ip_is_private => direct',download:4096,upload:1024,start:'2026-10-07T12:00:00Z'}]}})")
     page.locator('[data-page=home]').click();page.wait_for_timeout(450);page.evaluate("document.getElementById('toast').hidden=true;document.activeElement.blur()");page.screenshot(path=str(root/'Tests/ui-030-home.png'),animations='disabled')
     page.locator('[data-page=logs]').click();page.locator('[data-log-tab=connections]').click();page.wait_for_timeout(450);page.evaluate("document.activeElement.blur()");page.screenshot(path=str(root/'Tests/ui-030-connections.png'),animations='disabled')

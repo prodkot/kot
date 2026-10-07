@@ -42,7 +42,7 @@ try:
     rejected=False
     try: via_proxy()
     except (OSError, http.client.HTTPException): rejected=True
-    assert rejected, 'Client fell back to direct when the chosen VPN server died'
+    assert rejected, 'Client fell back to direct when the chosen server died'
     print('PASS server failure does not fall back to direct traffic')
 finally:
     for p in processes:

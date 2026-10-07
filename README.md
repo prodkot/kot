@@ -29,6 +29,19 @@
 
 </details>
 
+<details>
+<summary>Меню трея</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/tray-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/tray-light.png">
+  <img src="docs/images/tray-dark.png" alt="Меню kot. в трее: подключение, серверы, логи, настройки и выход" width="278">
+</picture>
+
+Меню снято в Windows во время проверки. Название сервера указано для примера.
+
+</details>
+
 *На скриншотах пример подписки. Серверы, соединения и значения скорости демонстрационные.*
 
 ## Начать пользоваться

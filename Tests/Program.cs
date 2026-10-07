@@ -160,7 +160,7 @@ using (var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Lo
     try { await Latency.Http("http://target.invalid/generate_204", port, 2000, CancellationToken.None); } catch (UserError ex) { redirectRejected = ex.Message == "HTTP 302"; }
     await proxy;
     Check(ms > 0 && requests.Count == 2 && requests.All(r => r.StartsWith("GET http://target.invalid/generate_204 HTTP/")), "HTTP ping uses the explicit proxy, no direct fallback");
-    Check(redirectRejected, "HTTP redirects/captive portal are not successful VPN checks");
+    Check(redirectRejected, "HTTP redirects/captive portal are not successful connection checks");
 }
 
 using (var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0))
