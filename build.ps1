@@ -1,10 +1,8 @@
-param([string]$Repository='')
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 # A fresh directory prevents old loose DLLs from surviving a new single-file publish.
 $publish = Join-Path $PSScriptRoot ('publish-' + [Guid]::NewGuid().ToString('N'))
-if ($Repository -and $Repository -notmatch '^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}/[a-zA-Z0-9_.-]{1,100}$') { throw 'Repository must be owner/repo' }
-dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableWindowsTargeting=true -o $publish "-p:UpdateRepository=$Repository"
+dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableWindowsTargeting=true -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 $cache = Join-Path $PSScriptRoot '.build-cache'
 New-Item -ItemType Directory -Force $cache | Out-Null

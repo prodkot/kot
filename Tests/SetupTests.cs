@@ -32,6 +32,6 @@ public static class SetupTests
             check(rejected,"Setup rejects "+kind+" before any update writes");
         }
         string release=JsonSerializer.Serialize(new{tag_name="v0.5.0",assets=new[]{new{name="Kot-Setup-0.5.0-Windows-x64.exe",browser_download_url="https://example.com/setup.exe",size=1234}}});
-        check(RemoteUpdates.Parse(release,"github",new Version("0.4.2"))?.Url=="https://example.com/setup.exe","updater selects the sole Setup asset without a portable ZIP");
+        check(RemoteUpdates.Parse(release,new Version("0.4.2"))?.Url=="https://example.com/setup.exe","updater selects the sole Setup asset without a portable ZIP");
     }
 }

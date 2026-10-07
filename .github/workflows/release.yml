@@ -55,7 +55,7 @@ jobs:
           $key=Join-Path $env:RUNNER_TEMP 'kot-private.pem'
           try {
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
-            ./Release/release.ps1 -Key $key -Repository $env:GITHUB_REPOSITORY
+            ./Release/release.ps1 -Key $key
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
       - name: Kill switch with the bundled core and a real TUN
         shell: pwsh

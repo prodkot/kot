@@ -28,12 +28,6 @@ public sealed partial class MainWindow : WindowChrome
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
-        try { profile.Updates.Validate(); } catch { profile.Updates = new(); }
-        if (profile.Updates.Address.Length == 0)
-        {
-            string? repository = typeof(MainWindow).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false).Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "KotUpdateRepository")?.Value;
-            if (!string.IsNullOrEmpty(repository)) { var options = new UpdateOptions { Address = repository }; options.Validate(); profile.Updates = options; Store.Save(profile); }
-        }
         InitAutomation(); InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
         Text = "kot."; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
@@ -253,13 +247,7 @@ public sealed partial class MainWindow : WindowChrome
                 profile.Automation = automation; Store.Save(profile); if (autoRestart) { await tunnel.Stop(); ResumeDesired(); } break;
             case "backupExport": await ExportBackup(data.GetProperty("password").GetString() ?? ""); break;
             case "backupImport": await ImportBackup(data.GetProperty("password").GetString() ?? ""); break;
-            case "updateSettings":
-                var updateOptions = JsonSerializer.Deserialize<UpdateOptions>(data.GetRawText(), Json) ?? throw new UserError("Не переданы настройки обновлений.");
-                updateOptions.Address = updateOptions.Address?.Trim() ?? ""; updateOptions.Validate();
-                if (updateBusy) throw new UserError("Дождитесь завершения обновления.");
-                profile.Updates = updateOptions; remoteRelease = null; updateStatus = ""; lastUpdateCheck = DateTimeOffset.MinValue; nextUpdateCheck = DateTimeOffset.UtcNow.AddSeconds(5); Store.Save(profile); break;
             case "downloadUpdate": await DownloadUpdate(); break;
-            case "installUpdate": await InstallUpdate(); break;
             case "remove":
                 await ping.Stop(clear: true); await tunnel.Stop();
                 profile.Subscriptions.RemoveAll(s => s.Id == profile.ActiveSubscription);

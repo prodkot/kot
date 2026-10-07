@@ -5,15 +5,6 @@ using System.Text.Json;
 namespace Kot.Windows;
 public sealed partial class MainWindow
 {
-    async Task InstallUpdate()
-    {
-        if (updateBusy) throw new UserError("Обновление уже выполняется.");
-        using var choose = new OpenFileDialog { Filter = "Установщик kot. (*.exe)|*.exe", Title = "Выберите установщик новой версии kot." };
-        if (choose.ShowDialog(this) != DialogResult.OK) return;
-        updateBusy = true; Snapshot();
-        try { await InstallPackage(choose.FileName, ct: lifetime.Token); }
-        finally { updateBusy = false; if (!exiting) Snapshot(); }
-    }
     async Task InstallPackage(string path, string? advertisedVersion = null, CancellationToken ct = default)
     {
         if (new FileInfo(path).Length > RemoteUpdates.MaximumArchive) throw new UserError("Установщик обновления слишком большой.");
