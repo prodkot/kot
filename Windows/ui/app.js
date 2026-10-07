@@ -7,10 +7,10 @@
   function flagCode(emoji) {
     return [...emoji].map(c=>String.fromCharCode(c.codePointAt(0)-0x1F1E6+97)).join('');
   }
-  function flagImage(code) {
+  function flagImage(code, fallback=()=>document.createTextNode(code.toUpperCase())) {
     const image=document.createElement('img');image.className='country-flag';
     image.src='flags/'+code+'.svg';image.alt=code.toUpperCase();image.draggable=false;
-    image.addEventListener('error',()=>image.replaceWith(document.createTextNode(image.alt)),{once:true});
+    image.addEventListener('error',()=>image.replaceWith(fallback()),{once:true});
     return image;
   }
   function label(el, value) {
@@ -23,12 +23,28 @@
     }
     parts.push(document.createTextNode(text.slice(offset)));el.replaceChildren(...parts);el.dataset.label=text;
   }
-  function countryBadge(el, node, automatic=false) {
+  function serverPresentation(node) {
+    let code='';
+    const name=String(node?.name??'').replace(/([\u{1F1E6}-\u{1F1FF}]{2})\uFE0F?/gu,(_,emoji)=>{
+      const candidate=flagCode(emoji);if(!code&&flagCodes.has(candidate))code=candidate;return '';
+    }).replace(/[ \t]{2,}/g,' ').trim();
     // Native node.code is a protocol (TR, SS, VL), not an ISO country code.
-    const code=String(node?.countryCode||'').toLowerCase();
-    const key=automatic?'auto':flagCodes.has(code)?code:node?.code||'+';
+    const supplied=String(node?.countryCode||'').toLowerCase();
+    return {name:name||'Сервер',code:code||(flagCodes.has(supplied)?supplied:'')};
+  }
+  function countryFallback() {
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.classList.add('country-fallback');icon.setAttribute('viewBox','0 0 20 20');
+    icon.setAttribute('role','img');icon.setAttribute('aria-label','Без флага');
+    const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx','10');circle.setAttribute('cy','10');circle.setAttribute('r','7');
+    circle.setAttribute('fill','#f2f4f1');circle.setAttribute('stroke','#c7cdc8');icon.append(circle);return icon;
+  }
+  function countryBadge(el, node, automatic=false) {
+    const code=serverPresentation(node).code;
+    const key=automatic?'auto':code||'circle';
     if(el.dataset.badge===key)return;
-    el.replaceChildren(!automatic&&flagCodes.has(code)?flagImage(code):document.createTextNode(automatic?'A':node?.code||'+'));
+    el.replaceChildren(automatic?document.createTextNode('A'):code?flagImage(code,countryFallback):countryFallback());
     el.dataset.badge=key;
   }
   const reduce = matchMedia('(prefers-reduced-motion: reduce)'), motions = new Map();
@@ -79,7 +95,7 @@
     label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);
     const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
-    label($('selectedName'),automatic?'Авто':selected?.name||'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?.name||'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
+    label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=data.favorites?.length?'Из избранного':'Быстрый доступный сервер';
     renderSubscriptions();
     $('backgroundError').textContent=data.backgroundError||'';$('backgroundError').hidden=!data.backgroundError;
@@ -99,17 +115,18 @@
     const active=document.activeElement, focusId=active?.closest('[data-node]')?.dataset.node, focusPing=active?.classList.contains('ping-node'), focusFavorite=active?.classList.contains('favorite-node');
     $('serverList').replaceChildren();$('noServers').hidden=!!visible.length;$('noServers').textContent=model.nodes.length?'Ничего не найдено':'Добавьте подписку';$('serverCount').textContent=visible.length;
     const sort=model.ping?.settings?.sort||'none';
-    if(sort==='name')visible.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+    if(sort==='name')visible.sort((a,b)=>serverPresentation(a).name.localeCompare(serverPresentation(b).name,'ru'));
     if(sort==='ping')visible.sort((a,b)=>(a.ping?.ms??Infinity)-(b.ping?.ms??Infinity));
     visible.forEach(item=>{
+      const presentation=serverPresentation(item);
       const row=document.createElement('div');row.className='server-row';row.dataset.node=item.id;
-      const favorite=document.createElement('button');favorite.className='favorite-node';favorite.textContent=model.favorites?.includes(item.id)?'★':'☆';favorite.setAttribute('aria-label','Избранное: '+item.name);favorite.setAttribute('aria-pressed',!!model.favorites?.includes(item.id));favorite.addEventListener('click',()=>request('favorite',{id:item.id}));
-      const button=document.createElement('button');button.className='server-card';button.setAttribute('aria-pressed',item.id===model.selected);button.setAttribute('aria-label','Выбрать '+item.name);
+      const favorite=document.createElement('button');favorite.className='favorite-node';favorite.textContent=model.favorites?.includes(item.id)?'★':'☆';favorite.setAttribute('aria-label','Избранное: '+presentation.name);favorite.setAttribute('aria-pressed',!!model.favorites?.includes(item.id));favorite.addEventListener('click',()=>request('favorite',{id:item.id}));
+      const button=document.createElement('button');button.className='server-card';button.setAttribute('aria-pressed',item.id===model.selected);button.setAttribute('aria-label','Выбрать '+presentation.name);
       const country=document.createElement('span');country.className='country';countryBadge(country,item);
-      const copy=document.createElement('span');copy.className='server-copy';const title=document.createElement('strong');label(title,item.name);const city=document.createElement('small');city.textContent=item.protocol.toUpperCase();copy.append(title,city);button.append(country,copy);
+      const copy=document.createElement('span');copy.className='server-copy';const title=document.createElement('strong');title.textContent=presentation.name;const city=document.createElement('small');city.textContent=item.protocol.toUpperCase();copy.append(title,city);button.append(country,copy);
       if(item.id===model.selected){const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('selected-mark');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#check');icon.append(use);button.append(icon);}
       button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
-      const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+item.name);
+      const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+presentation.name);
       const result=item.ping;ping.dataset.status=result?.status||'idle';
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#pulse');icon.append(use);
       const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'Пинг';
