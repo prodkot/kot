@@ -32,6 +32,8 @@ def check():
                 page.goto(url)
                 frame = page.frame_locator('#client-demo')
                 expect(frame.locator('#selectedName')).to_have_text('Нидерланды')
+                expect(frame.locator('#selectedCountry img')).to_have_attribute('alt', 'NL')
+                assert frame.locator('#selectedCountry img').evaluate('async image => {await image.decode();return image.naturalWidth>0;}')
                 assert page.locator('#client-demo').get_attribute('sandbox') == 'allow-scripts allow-forms'
                 assert frame.locator('body').evaluate("() => {try {return !!parent.document.body;} catch {return false;}}") is False
                 frame.locator('body').evaluate('() => document.fonts.ready')
@@ -48,6 +50,8 @@ def check():
                 expect(frame.locator('#downloadRate')).not_to_have_text('0 Б/с')
 
                 frame.locator('[data-page=servers]').click()
+                expect(frame.locator('#serverList .country img')).to_have_count(4)
+                assert frame.locator('#serverList .country img').evaluate_all('async images => {await Promise.all(images.map(i=>i.decode()));return images.every(i=>i.naturalWidth>0);}')
                 frame.locator('.favorite-node').nth(1).click()
                 expect(frame.locator('.favorite-node').nth(1)).to_have_attribute('aria-pressed', 'true')
                 frame.locator('#serverSearch').fill('Латвия')
