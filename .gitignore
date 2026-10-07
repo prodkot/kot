@@ -4,6 +4,7 @@
 Tests/generated/
 Tests/*.png
 .build-cache/
+.tools/
 publish*/
 artifacts/
 *.pem
