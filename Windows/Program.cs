@@ -47,6 +47,7 @@ static class Program
             string sid = WindowsIdentity.GetCurrent().User!.Value;
             using Mutex mutex = new(true, "Local\\KotVPN-" + sid, out bool first);
             if (!first) { SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
+            if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
             foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
             {

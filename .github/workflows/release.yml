@@ -90,6 +90,22 @@ jobs:
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
+          $legacy=Get-Content Release/legacy-documents.json -Raw | ConvertFrom-Json
+          foreach ($name in $legacy) {
+            if (Test-Path (Join-Path $target $name)) { throw "Unnecessary root document installed: $name" }
+            [IO.File]::WriteAllText((Join-Path $target $name),'old installed document')
+          }
+          [IO.File]::WriteAllText("$target/user-notes.txt",'preserve this user file')
+          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru
+          Wait-Installer $process 'Upgrade over legacy documents'
+          foreach ($name in $legacy) {
+            if (Test-Path (Join-Path $target $name)) { throw "Legacy document survived upgrade: $name" }
+          }
+          if ([IO.File]::ReadAllText("$target/user-notes.txt") -ne 'preserve this user file') { throw 'Upgrade changed unrelated user files.' }
+          foreach ($file in Get-ChildItem "$publish/licenses" -File) {
+            $installed=Join-Path "$target/licenses" $file.Name
+            if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "License notice changed during migration: $installed" }
+          }
           foreach ($command in '--shutdown','--disable-startup','--disable-kill-switch') {
             $process=Start-Process "$target/Kot.exe" -ArgumentList $command -PassThru
             Wait-Installer $process $command

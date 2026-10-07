@@ -13,4 +13,5 @@ artifacts/
 *.bin
 *.log
 Installer/uninstall-files.nsh
+Installer/install-cleanup.nsh
 .local/

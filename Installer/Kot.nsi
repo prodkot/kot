@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.5.4"
+!define VERSION "0.5.5"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
@@ -27,7 +27,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Kot contributors"
 !define MUI_UNICON "${PAYLOAD}/kot.ico"
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "${PAYLOAD}/LICENSE.txt"
+!insertmacro MUI_PAGE_LICENSE "${PAYLOAD}/licenses/kot-LICENSE.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Kot.exe"
@@ -62,6 +62,7 @@ Section "kot." SEC_MAIN
   !else
     File /r "${PAYLOAD}/*"
   !endif
+  !include "install-cleanup.nsh"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\kot."
   CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe"

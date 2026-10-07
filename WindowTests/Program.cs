@@ -61,10 +61,35 @@ internal static class Program
         finally { KillSwitch.Release(); File.Delete(config); }
         Check(Connect(), "direct access is restored after intentional release following a core crash");
     }
+    static void UpdateCleanupChecks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "kot-cleanup-" + Guid.NewGuid().ToString("N"));
+        string work = Path.Combine(root, ".kot-update-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        string old = Path.Combine(root, "README.md"), helper = Path.Combine(work, "Updater.exe");
+        File.WriteAllText(old, "old guide"); File.WriteAllText(helper, "helper");
+        using (var locked = new FileStream(helper, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var cleanup = Task.Run(() => UpdateInstaller.CleanupAfterUpdate(work, root));
+            Thread.Sleep(500);
+            Check(File.Exists(old) && Directory.Exists(work), "new app preserves legacy files and recovery folder before updater commit");
+            File.WriteAllText(Path.Combine(work, "committed"), "ok");
+            Check(SpinWait.SpinUntil(() => !File.Exists(old), 5000), "new app removes old docs after an older updater commits");
+            Check(File.Exists(Path.Combine(work, "committed")) && File.Exists(helper), "locked helper preserves the committed marker for a later cleanup");
+            locked.Dispose();
+            Check(cleanup.Wait(10000) && !Directory.Exists(work), "completed update folder is removed after the helper releases its executable");
+        }
+        Directory.CreateDirectory(work); File.WriteAllText(old, "old guide");
+        File.WriteAllText(Path.Combine(work, "rolled-back"), "ok");
+        UpdateInstaller.CleanupAfterUpdate(work, root);
+        Check(File.ReadAllText(old) == "old guide" && Directory.Exists(work), "rolled-back update does not trigger legacy-file deletion");
+        Directory.Delete(root, true);
+    }
     [STAThread] static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
         if (args.Length == 2 && args[0] == "--tunnel-test") { TunnelChecks(Path.GetFullPath(args[1])); return 0; }
+        UpdateCleanupChecks();
         KillSwitchChecks();
         Startup.Set(false).GetAwaiter().GetResult(); Startup.Set(false).GetAwaiter().GetResult();
         Check(true, "disabling absent startup task twice succeeds without a dialog");
