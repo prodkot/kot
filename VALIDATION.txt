@@ -1,3 +1,38 @@
+kot. 0.4.1 validation, 2026-10-07.
+
+GitHub Windows checks run 37637530636 passed on windows-latest:
+https://github.com/prodkot/kot/actions/runs/37637530636
+180 Core assertions passed. 29 native launcher assertions passed against
+production NativeCore: natural exits including 259 and 0xC0000005, original
+error capture, parallel launches, live-child shutdown observed independently,
+cleanup and missing executable. No VPN/network/administrator required by this
+fixture. A fixture cannot substitute for testing real TUN/WFP cleanup.
+
+The shutdown code now waits on the original CreateProcess handle and reads
+the exit code after native termination. If a normal console interrupt times
+out, the app terminates its own job including descendant core processes.
+
+Chromium UI checks passed on the Linux build host with an emulated bridge:
+8 themes/accents, three window sizes, titlebar version, update settings,
+HWID copy, logs, traffic, server selection/ping and hostile labels as text.
+No JavaScript errors. This is browser/bridge-contract coverage, not a native
+Windows clipboard or WebView2 GUI run.
+
+GitHub release workflow builds the Windows x64 application and NSIS installer,
+signs the archive with the same publisher key as 0.4.0, and validates the final
+ZIP using the application's pinned-key ReleasePackage validator before upload.
+The publisher private key is held in the encrypted Actions secret and is not
+part of the repository or downloadable assets. GitHub repository metadata is
+compiled into the client as prodkot/kot for the official build.
+
+NOT EXECUTED: interactive Windows installer/uninstaller, native clipboard/DPAPI,
+full updater parent/helper/new-app handshake, live provider/TUN and DNS/IPv6
+leak testing. Before calling a public release stable, test a same-key
+0.4.0 -> 0.4.1 upgrade on Windows with VPN active and verify rollback there.
+Rollback handles caught failures, not arbitrary power loss. Beta status retained.
+
+HISTORICAL VALIDATION
+
 kot. 0.4.0 validation, 2026-10-07, Linux build host.
 
 180 Core assertions passed. Signed in-place transaction tests cover failure
