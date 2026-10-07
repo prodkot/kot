@@ -14,6 +14,11 @@ jobs:
           persist-credentials: false
       - name: Website assets and download provenance
         run: python3 site/check.py
+      - name: Interactive demo in Chromium
+        run: |
+          python3 -m pip install playwright==1.63.0
+          python3 -m playwright install --with-deps chromium
+          python3 site/demo_browser_check.py
   tests:
     runs-on: windows-latest
     steps:
