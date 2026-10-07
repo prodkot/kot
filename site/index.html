@@ -21,6 +21,7 @@
   <header class="header wrap">
     <a class="wordmark" href="#" aria-label="kot. На главную">kot<span>.</span></a>
     <nav aria-label="Навигация">
+      <a class="nav-detail" href="#demo">Демо</a>
       <a class="nav-detail" href="#inside">Внутри</a>
       <a class="nav-detail" href="#start">Как начать</a>
       <a href="https://github.com/prodkot/kot">GitHub <span aria-hidden="true">↗</span></a>
@@ -35,14 +36,20 @@
         <div class="hero-description">
           <p>Добавь подписку, выбери сервер<br class="desktop-break"> и подключись. Всё остальное<br class="desktop-break"> уже под рукой.</p>
           <a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a>
+          <a class="try-demo" href="#demo">Сначала попробовать <span aria-hidden="true">↗</span></a>
           <p class="download-meta"><span data-release-version>Последняя версия</span><span aria-hidden="true">·</span> Windows 10 / 11, x64</p>
         </div>
       </div>
-      <div class="hero-screen">
-        <div class="screen-label"><span><span class="status-dot" aria-hidden="true"></span> ПРОСТО ОТКРЫЛ И ПОДКЛЮЧИЛСЯ</span><span class="screen-label-right">01 / ГЛАВНЫЙ ЭКРАН</span></div>
-        <img src="assets/home.png" width="960" height="640" alt="Главный экран kot.: подключение к серверу, скорость скачивания и отправки" fetchpriority="high">
+      <div class="hero-screen" id="demo">
+        <div class="screen-label"><span><span class="status-dot" aria-hidden="true"></span> ЭТО МОЖНО ПОТЫКАТЬ</span><span class="screen-label-right">01 / ИНТЕРАКТИВНОЕ ДЕМО</span></div>
+        <div class="demo-holder"><dialog class="demo-window" id="demo-window" open aria-labelledby="demo-caption">
+          <div class="demo-toolbar"><span id="demo-caption">Попробуй подключиться. Или выбери другой сервер.</span><div><button id="reset-demo" type="button">Сбросить</button><button id="expand-demo" type="button" aria-haspopup="dialog" aria-expanded="false">Развернуть <span aria-hidden="true">↗</span></button><button id="close-demo" type="button" aria-label="Закрыть полноэкранное демо">Закрыть <span aria-hidden="true">×</span></button></div></div>
+          <div id="demo-slot"><iframe id="client-demo" src="demo/index.html" title="Интерактивная демо-версия интерфейса kot." sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" aria-describedby="demo-note"></iframe></div>
+          <noscript><style>#demo-slot,.demo-toolbar{display:none}</style><img src="assets/home.png" width="960" height="640" alt="Главный экран kot."><p class="demo-nojs">Для интерактивной демки нужен JavaScript.</p></noscript>
+        </dialog></div>
+        <div class="demo-bottom"><p id="demo-note">Это демо. Серверы и трафик для примера, настоящего подключения нет.</p><a href="#inside">Что ещё внутри <span aria-hidden="true">↓</span></a></div>
       </div>
-      <p class="screenshot-note">Скриншоты интерфейса. Серверы, соединения и значения показаны для примера.</p>
+      <div class="platform-strip" aria-label="О приложении"><span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4v7H3zM13 3.5 21 2v9h-8zM3 13h7.5v7L3 18.5zM13 13h8v9l-8-1.5z"/></svg> Windows 10 / 11</span><span>x64</span><span>На базе sing-box</span><a href="https://github.com/prodkot/kot">Открытый код <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="inside wrap" id="inside" aria-labelledby="inside-title">
       <div class="section-heading"><p class="eyebrow">ВНУТРИ ПРИЛОЖЕНИЯ</p><h2 id="inside-title">Всё на своих местах.</h2><p>Серверы отдельно. Соединения отдельно.<br>Нужное не приходится искать.</p></div>

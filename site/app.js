@@ -27,6 +27,33 @@
       if (next !== undefined) { event.preventDefault(); selectTab(next, true); }
     });
   });
+  const frame = document.getElementById('client-demo');
+  const demoWindow = document.getElementById('demo-window');
+  const expandButton = document.getElementById('expand-demo');
+  const control = action => frame.contentWindow.postMessage({ kind: 'kot-demo-control', action }, '*');
+  document.getElementById('reset-demo').addEventListener('click', () => control('reset'));
+  // The same dialog stays in place, so its iframe never reloads on expand/close.
+  expandButton.addEventListener('click', () => {
+    demoWindow.close(); demoWindow.showModal();
+    document.body.classList.add('demo-open');
+    expandButton.setAttribute('aria-expanded', 'true');
+    document.getElementById('close-demo').focus();
+  });
+  function closeExpanded() {
+    if (!demoWindow.matches(':modal')) return;
+    demoWindow.close(); demoWindow.show();
+    document.body.classList.remove('demo-open');
+    expandButton.setAttribute('aria-expanded', 'false'); expandButton.focus({ preventScroll: true });
+  }
+  document.getElementById('close-demo').addEventListener('click', closeExpanded);
+  demoWindow.addEventListener('cancel', event => { event.preventDefault(); closeExpanded(); });
+  window.addEventListener('message', event => {
+    if (event.source !== frame.contentWindow || event.data?.kind !== 'kot-demo') return;
+    if (event.data.dialog && !demoWindow.matches(':modal')) {
+      frame.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+    if (event.data.close) closeExpanded();
+  });
   // Same-origin metadata is rebuilt after a release. No tokens or tracking in the browser.
   fetch('release.json', { cache: 'no-cache' }).then(response => {
     if (!response.ok) throw new Error('Release metadata unavailable');

@@ -2,7 +2,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'Windows/ui/**', '.github/workflows/pages.yml']
   workflow_run:
     workflows: ['Windows release']
     types: [completed]

@@ -58,6 +58,26 @@ class SiteTests(unittest.TestCase):
             for fragment in fragments:
                 self.assertIn(fragment, ids)
 
+    def test_demo_reuses_client_with_network_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dest = Path(directory) / "site"
+            build(dest, release_metadata(RELEASE))
+            demo = (dest / "demo/index.html").read_text(encoding="utf-8")
+            self.assertIn("connect-src 'none'", demo)
+            self.assertIn("form-action 'none'", demo)
+            self.assertIn("frame-src 'none'", demo)
+            self.assertIn("font-src data:", demo)
+            self.assertIn('data-demo-version="0.5.1"', demo)
+            self.assertIn("data:font/ttf;base64,", demo)
+            self.assertNotIn('fonts/Manrope.ttf', demo)
+            self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
+            self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
+            self.assertTrue((dest / "demo/demo.css").is_file())
+            self.assertTrue((dest / "demo/bridge.js").is_file())
+            self.assertIn('sandbox="allow-scripts allow-forms"', (dest / "index.html").read_text(encoding="utf-8"))
+            self.assertFalse((dest / "Windows").exists())
+            self.assertFalse((dest / "demo/backup.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
