@@ -1,0 +1,32 @@
+name: Ошибка
+description: Сообщить об ошибке kot.
+title: ""
+body:
+  - type: markdown
+    attributes:
+      value: Не публикуй ссылки подписок, пароли или HWID. Уязвимости сообщай приватно через вкладку Security.
+  - type: input
+    id: version
+    attributes:
+      label: Версия kot. и Windows
+      placeholder: Например, kot. 0.5.7, Windows 11 x64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Шаги воспроизведения
+      description: Что нажимаешь и что происходит?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Скриншот или очищенный лог
+      description: Проверь, что в них нет личных данных.

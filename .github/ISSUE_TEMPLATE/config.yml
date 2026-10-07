@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Сообщить об уязвимости приватно
+    url: https://github.com/prodkot/kot/security/advisories/new
+    about: Для ошибок, затрагивающих безопасность и личные данные.

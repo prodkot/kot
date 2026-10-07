@@ -41,7 +41,7 @@
     const names = ['cdn.example.org:443', 'chat.example.org:443', 'music.example.org:443'];
     model.telemetry.connections = names.map((destination, index) => ({
       id: 'connection-' + index, destination, process: index === 1 ? 'messenger.exe' : 'browser.exe',
-      network: 'tcp', inbound: 'tun/tun-in', chains: [selectedName()], rule: 'final',
+      network: 'tcp', inbound: model.settings.mode === 'tun' ? 'tun/tun-in' : 'mixed/system-in', chains: [selectedName()], rule: 'final',
       download: (index + 1) * 2097152, upload: 65536, start: new Date().toISOString()
     }));
   }
@@ -50,7 +50,7 @@
     model = {
       version, name: 'Личная подписка', hasSubscription: true, nodes: samples(), selected: 'nl', automaticNode: 'nl',
       state: 'idle', error: '', warnings: [], backgroundError: '', favorites: [], updated: null,
-      settings: { theme: 'dark', accent: 'lime', mode: 'all', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
+      settings: { theme: 'dark', accent: 'lime', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
       subscriptions: [{ id: 'sample-1', name: 'Личная подписка', count: 4 }], activeSubscription: 'sample-1',
       automation: { reconnect: true, refreshHours: 6, pingMinutes: 0, autoMinutes: 3, autoToleranceMs: 50 },
       ping: { busy: false, done: 0, total: 0, error: '', settings: { mode: 'http', url: 'https://example.org', timeoutMs: 5000, attempts: 2, parallelism: 3, sort: 'none' } },
@@ -108,8 +108,10 @@
         chooseAuto(); if (model.state === 'connected' && model.selected === 'auto') connections(); break;
       case 'settings':
         if (!Object.hasOwn(model.settings, data.key) || data.key === 'killSwitchActive') throw Error('Неизвестная настройка.');
+        if (data.key === 'mode' && !['tun', 'proxy'].includes(data.value)) throw Error('Неизвестный режим подключения.');
         if (data.key === 'bypass' && /:\/\//.test(data.value)) throw Error('Введи домены без https://');
         model.settings[data.key] = data.value;
+        if (data.key === 'mode' && model.state === 'connected') connections();
         if (data.key === 'killSwitch' && !data.value) { model.settings.killSwitchActive = false; model.error = ''; }
         break;
       case 'pingAll': ping(model.nodes); break;

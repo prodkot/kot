@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = {
-    'version': '0.5.6', 'name': 'Личная подписка', 'hasSubscription': True,
+    'version': '0.5.7', 'name': 'Личная подписка', 'hasSubscription': True,
     'nodes': [
         {'id': 'kr', 'name': '🇰🇷 Wi-Fi локации', 'protocol': 'vless', 'code': 'VL'},
         {'id': 'fi', 'name': '🇫🇮 Финляндия [ ⚡ ]', 'protocol': 'trojan', 'code': 'TR'},

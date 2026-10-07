@@ -47,8 +47,6 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 
 При распространении сохраняйте лицензии и уведомления. Исходники
 приложенного sing-box доступны по точной ссылке выше и в upstream/.
-Прежние сведения сохранены в docs/history/THIRD-PARTY-before-rewrite.txt
-в репозитории https://github.com/prodkot/kot.
 
 Флаги стран: flag-icons 7.3.2, Panayiotis Lipiridis.
 Источник: https://github.com/lipis/flag-icons/tree/v7.3.2
@@ -57,3 +55,8 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 
 Go module dependencies of sing-box 1.14.2:
 - Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt
+
+System.Security.Cryptography.ProtectedData 10.0.12
+Защита профиля и квитанции восстановления прокси через DPAPI Windows.
+Лицензия MIT, тексты и уведомления .NET перечислены выше.
+https://www.nuget.org/packages/System.Security.Cryptography.ProtectedData/10.0.12

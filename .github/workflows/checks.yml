@@ -5,24 +5,50 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   website:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Repository consistency
+        run: python3 Tests/repository.py
       - name: Website assets and download provenance
         run: python3 site/check.py
       - name: Interactive demo in Chromium
         run: |
-          python3 -m pip install playwright==1.63.0
+          python3 -m pip install -r requirements-dev.txt
           python3 -m playwright install --with-deps chromium
           python3 site/demo_browser_check.py
           python3 Tests/ui.py
           python3 Tests/flags_ui.py
           python3 Tests/subscriptions_ui.py
+  integration:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Generate fixtures and check core logic
+        run: dotnet run --project Tests/Kot.Tests.csproj -c Release -- integration
+      - name: Validate configurations and a real local VLESS chain
+        run: |
+          mkdir -p artifacts/core
+          curl --fail --location --retry 3 https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-linux-amd64.tar.gz --output artifacts/core.tar.gz
+          echo 'a684484d7477d1437282ee411f4d131d0340aaad60a7868841ebd5d87dd8a0c6  artifacts/core.tar.gz' | sha256sum --check
+          tar -xzf artifacts/core.tar.gz -C artifacts/core
+          python3 Tests/integration.py --core artifacts/core/sing-box-1.14.2-linux-amd64/sing-box
   tests:
+    timeout-minutes: 10
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -30,7 +56,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       - name: Core tests
         shell: pwsh
         run: |

@@ -16,6 +16,12 @@ RELEASE = {"tag_name": f"v{VERSION}", "draft": False, "prerelease": False,
 
 
 class SiteTests(unittest.TestCase):
+    def test_build_cannot_overwrite_sources(self):
+        for destination in (ROOT, ROOT / "demo", ROOT / "assets", ROOT.parent,
+                            ROOT.parent / "Windows/ui", ROOT.parent / "Tests", ROOT.parent.parent):
+            with self.subTest(destination=destination), self.assertRaises(ValueError):
+                build(destination, release_metadata(RELEASE))
+
     def test_download_provenance(self):
         self.assertEqual(release_metadata(RELEASE)["download"], URL)
         for patch in ({"draft": True}, {"prerelease": True}, {"tag_name": "v1/../../bad"},
@@ -37,6 +43,8 @@ class SiteTests(unittest.TestCase):
             self.assertEqual(json.loads((dest / "release.json").read_text())["download"], URL)
             self.assertFalse((dest / "build.py").exists())
             self.assertTrue((dest / "assets/Manrope-OFL.txt").is_file())
+            self.assertEqual((dest / "assets/Manrope.ttf").read_bytes(),
+                             (ROOT.parent / "Windows/ui/fonts/Manrope.ttf").read_bytes())
             references, ids, fragments = [], set(), []
 
             class References(HTMLParser):
