@@ -2,7 +2,7 @@
 
 Приложение для Windows на базе sing-box. Подписки, серверы и подключение без лишней возни.
 
-**[Скачать](https://github.com/prodkot/kot/releases/latest)** · [Что нового](CHANGELOG.md)
+**[Скачать](https://github.com/prodkot/kot/releases/latest)** · [Сайт](https://prodkot.github.io/kot/) · [Что нового](CHANGELOG.md)
 
 ![Главный экран kot.](docs/images/home-dark.png)
 
