@@ -54,3 +54,6 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 Источник: https://github.com/lipis/flag-icons/tree/v7.3.2
 В программу входят только локальные SVG-флаги 4:3.
 Лицензия MIT: licenses/flag-icons-MIT.txt.
+
+Go module dependencies of sing-box 1.14.2:
+- Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt

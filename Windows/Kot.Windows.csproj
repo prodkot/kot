@@ -9,7 +9,7 @@
     <AssemblyName>Kot</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>kot.ico</ApplicationIcon>
-    <Version>0.5.4</Version>
+    <Version>0.5.5</Version>
     <Product>kot.</Product>
     <Company>Kot</Company>
     <PublishSingleFile>true</PublishSingleFile>

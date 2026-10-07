@@ -37,7 +37,45 @@ internal static class UpdateInstaller
 {
     public static string? Receipt;
     public static string MutexName => "Local\\KotVPN-Update-" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
-    public static void Ready() { if (Receipt != null) File.WriteAllText(Path.Combine(Receipt, "ready"), "ok"); }
+    public static void Ready()
+    {
+        if (Receipt == null) return;
+        string work = Receipt;
+        File.WriteAllText(Path.Combine(work, "ready"), "ok");
+        // Older updaters do not remove obsolete docs. Wait for their commit before
+        // cleaning anything so a failed UI launch can still roll back unchanged.
+        _ = Task.Run(() => CleanupAfterUpdate(work, AppContext.BaseDirectory));
+    }
+    internal static void CleanupAfterUpdate(string work, string root)
+    {
+        try
+        {
+            var deadline = Stopwatch.StartNew();
+            while (!File.Exists(Path.Combine(work, "committed")))
+            {
+                if (File.Exists(Path.Combine(work, "rolled-back")) || deadline.Elapsed.TotalSeconds > 120) return;
+                Thread.Sleep(200);
+            }
+            using var barrier = new Mutex(false, MutexName);
+            bool owned; try { owned = barrier.WaitOne(90000); } catch (AbandonedMutexException) { owned = true; }
+            if (!owned) return;
+            try
+            {
+                InstallationCleanup.RemoveLegacyDocuments(root);
+                // The helper may still hold Updater.exe open just after releasing
+                // the mutex. Retry briefly, leaving recovery folders on failure.
+                for (int attempt = 0; attempt < 20; attempt++)
+                {
+                    UpdateTransaction.SafePath(work);
+                    try { File.Delete(Path.Combine(work, "Updater.exe")); Directory.Delete(work, true); return; }
+                    catch (IOException) { Thread.Sleep(500); }
+                    catch (UnauthorizedAccessException) { Thread.Sleep(500); }
+                }
+            }
+            finally { barrier.ReleaseMutex(); }
+        }
+        catch (Exception ex) { AppLog.Error("update cleanup", ex); }
+    }
     public static void Apply()
     {
         string work = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar), root = Path.GetDirectoryName(work)!;

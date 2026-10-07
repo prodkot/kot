@@ -14,6 +14,6 @@ Copy-Item "$cache/core/sing-box-1.14.2-windows-amd64/sing-box.exe","$cache/core/
 Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$publish/Install-WebView2.exe"
 $signature=Get-AuthenticodeSignature "$publish/Install-WebView2.exe"
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'WebView2 installer signature is not valid Microsoft signature.' }
-Copy-Item README.md,LICENSE.txt,THIRD-PARTY.txt $publish
-Copy-Item licenses "$publish/licenses" -Recurse -Force
+python Release/payload.py $publish
+if ($LASTEXITCODE -ne 0) { throw 'Payload preparation failed.' }
 Write-Host "Build ready: $publish"
