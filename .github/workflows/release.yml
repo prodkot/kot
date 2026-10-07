@@ -23,6 +23,14 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and application version disagree.' }
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+      - name: Native Windows process launcher
+        shell: pwsh
+        run: |
+          $fixture=Join-Path $env:RUNNER_TEMP 'kot-native-tests'
+          dotnet publish NativeTests/Kot.NativeTests.csproj -c Release -r win-x64 --self-contained false -o $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'Native fixture build failed.' }
+          & (Join-Path $fixture 'Kot.NativeTests.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Native launcher tests failed.' }
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress

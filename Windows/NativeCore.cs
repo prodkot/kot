@@ -19,6 +19,16 @@ public sealed class NativeCore : IDisposable
     static readonly SemaphoreSlim consoleGate = new(1);
     Task readOutput = Task.CompletedTask;
     public Process Process { get; }
+    public bool HasExited => WaitForExit(0);
+    bool WaitForExit(uint milliseconds)
+    {
+        uint result = WaitForSingleObject(processHandle, milliseconds);
+        if (result == 0) return true;
+        if (result == 258) return false;
+        if (result == uint.MaxValue) throw new Win32Exception();
+        throw new InvalidOperationException("Unexpected process wait result: " + result);
+    }
+    public Task WaitForExitAsync() => Task.Run(() => WaitForExit(uint.MaxValue));
     public int ExitCode
     {
         get
@@ -26,9 +36,7 @@ public sealed class NativeCore : IDisposable
             // This child was created by CreateProcess, not Process.Start.
             // Process.GetProcessById cannot supply its ExitCode; keep the original
             // native handle, which also remains valid after the process exits.
-            uint wait = WaitForSingleObject(processHandle, 0);
-            if (wait == uint.MaxValue) throw new Win32Exception();
-            if (wait != 0) throw new InvalidOperationException("The core process is still running.");
+            if (!HasExited) throw new InvalidOperationException("The core process is still running.");
             if (!GetExitCodeProcess(processHandle, out uint code)) throw new Win32Exception();
             return unchecked((int)code);
         }
@@ -95,7 +103,7 @@ public sealed class NativeCore : IDisposable
     {
         try
         {
-            if (!Process.HasExited)
+            if (!HasExited)
             {
                 // AttachConsole is process-wide; simultaneous ping workers must serialize it.
                 await consoleGate.WaitAsync();
@@ -109,8 +117,18 @@ public sealed class NativeCore : IDisposable
                     }
                 }
                 finally { consoleGate.Release(); }
-                try { await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(4)); }
-                catch (TimeoutException) { if (!Process.HasExited) Process.Kill(true); await Process.WaitForExitAsync(); }
+                // Wait on the original CreateProcess handle throughout. A separate
+                // Process wrapper can report an exit before this handle is signaled.
+                if (!await Task.Run(() => WaitForExit(4000)))
+                {
+                    report?.Invoke("interrupt timeout; terminate core job");
+                    if (!TerminateJobObject(job, 130))
+                    {
+                        var error = new Win32Exception();
+                        if (!HasExited) throw error;
+                    }
+                    if (!await Task.Run(() => WaitForExit(10000))) throw new TimeoutException("The core job did not stop.");
+                }
             }
             await ReadRecentOutput(true);
             report?.Invoke("core stopped; exit=" + ExitCode);
@@ -126,6 +144,7 @@ public sealed class NativeCore : IDisposable
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimit info, uint size);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateJobObject(IntPtr job, uint code);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool CreateProcess(string application, StringBuilder command, IntPtr processAttributes, IntPtr threadAttributes, bool inherit, uint flags, IntPtr environment, string? directory, ref StartupInfo startup, out ProcessInformation information);
     [DllImport("kernel32.dll", SetLastError = true)] static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr process, uint code);

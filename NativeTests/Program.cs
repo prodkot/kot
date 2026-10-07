@@ -33,7 +33,8 @@ async Task NaturalExit(int code)
     File.WriteAllText(config, code.ToString());
     var journal = new ConcurrentQueue<string>();
     using var core = new NativeCore(fixtureExe, config, journal.Enqueue);
-    await core.Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    await core.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    Check(core.HasExited, "native handle signals natural process termination");
     Check(core.ExitCode == code, "CreateProcess child exit code " + unchecked((uint)code).ToString("X8"));
     Check((await core.ReadRecentOutput(true)).Contains("FATAL fixture-original-error"), "original core error captured before cleanup");
     await core.Stop();
@@ -48,16 +49,19 @@ try
     await Task.WhenAll(Enumerable.Range(0, 3).Select(i => Task.Run(() => NaturalExit(20 + i))));
     string config = Path.Combine(folder, "hold.txt"); File.WriteAllText(config, "hold");
     var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    using (var core = new NativeCore(fixtureExe, config, line => { if (line == "fixture-ready") ready.TrySetResult(); }))
+    var stopping = new ConcurrentQueue<string>();
+    using (var core = new NativeCore(fixtureExe, config, line => { stopping.Enqueue(line); if (line == "fixture-ready") ready.TrySetResult(); }))
     {
         await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
         bool runningRejected = false;
         try { _ = core.ExitCode; } catch (InvalidOperationException ex) { runningRejected = ex.Message.Contains("still running"); }
         Check(runningRejected, "a running process has no termination code");
+        Check(!core.HasExited, "native handle confirms the child remains alive before stopping");
         var exited = core.Process.WaitForExitAsync();
         await core.Stop();
         await exited.WaitAsync(TimeSpan.FromSeconds(5));
         Check(true, "stop waits for a live child and always disposes its handles");
+        Check(stopping.Any(line => line.StartsWith("core stopped; exit=")), "live child cleanup records an exit only after native termination");
     }
     bool missingRejected = false;
     try { using var core = new NativeCore(Path.Combine(folder, "missing.exe"), config); }

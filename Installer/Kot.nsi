@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.4.0"
+!define VERSION "0.4.1"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
@@ -52,7 +52,11 @@ Section "kot." SEC_MAIN
     Abort
   ${EndIf}
   SetOutPath "$INSTDIR"
-  File /r "${PAYLOAD}/*"
+  !ifdef NSIS_WIN32_MAKENSIS
+    File /r "${PAYLOAD}\*"
+  !else
+    File /r "${PAYLOAD}/*"
+  !endif
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\kot."
   CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe"

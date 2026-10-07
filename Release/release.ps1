@@ -11,7 +11,10 @@ $publish=(Get-ChildItem 'publish-*' -Directory | Sort-Object LastWriteTime -Desc
 ./Release/sign.ps1 -Folder $publish -Version $version -Key $Key
 New-Item -ItemType Directory -Force artifacts | Out-Null
 $archive=Join-Path $PWD "artifacts/Kot-Client-$version-beta-Windows-x64.zip"
-Compress-Archive -Path "$publish/*" -DestinationPath $archive -Force
+python Release/archive.py $publish $archive
+if ($LASTEXITCODE -ne 0) { throw 'Update archive creation failed.' }
+dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $archive $version
+if ($LASTEXITCODE -ne 0) { throw 'The client rejected the generated update package.' }
 python Release/installer-files.py $publish Installer/uninstall-files.nsh
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller file list generation failed.' }
 $setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"

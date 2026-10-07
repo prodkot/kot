@@ -1,6 +1,6 @@
 # kot.
 
-Персональный VPN-клиент для Windows x64 на sing-box. Текущая версия: **0.4.0 beta**.
+Персональный VPN-клиент для Windows x64 на sing-box. Текущая версия: **0.4.1 beta**.
 
 - Подписки HTTPS и отдельные профили, постоянный HWID с копированием.
 - VLESS, VMess, Trojan, Shadowsocks, Hysteria2 и поддерживаемые параметры транспорта.
@@ -13,7 +13,7 @@
 
 [Скачать установщик и portable ZIP](https://github.com/prodkot/kot/releases/latest).
 
-Запустите `Kot-Setup-0.4.0-Windows-x64.exe`. Portable-вариант: распакуйте Windows ZIP целиком и запустите `Kot.exe`. WebView2 Runtime требуется; bootstrap Microsoft включён в комплект. Подписки и HWID хранятся отдельно от папки программы. Обновление не сбрасывает их.
+Запустите `Kot-Setup-0.4.1-Windows-x64.exe`. Portable-вариант: распакуйте Windows ZIP целиком и запустите `Kot.exe`. WebView2 Runtime требуется; bootstrap Microsoft включён в комплект. Подписки и HWID хранятся отдельно от папки программы. Обновление не сбрасывает их.
 
 ## Разработка
 

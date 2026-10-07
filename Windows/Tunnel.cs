@@ -133,7 +133,7 @@ public sealed class Tunnel
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if (core.Process.HasExited) throw new UserError(await ExitReason(core));
+                if (core.HasExited) throw new UserError(await ExitReason(core));
                 try
                 {
                     string target = DateTime.UtcNow.Second % 2 == 0 ? "https://www.gstatic.com/generate_204" : "https://www.cloudflare.com/cdn-cgi/trace";
@@ -144,7 +144,7 @@ public sealed class Tunnel
                 catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }
                 await Task.Delay(500, ct);
             }
-            if (core.Process.HasExited) throw new UserError(await ExitReason(core));
+            if (core.HasExited) throw new UserError(await ExitReason(core));
             if (!healthy)
             {
                 CoreDetails = CoreDiagnostics.Tail(Clean(await core.ReadRecentOutput(false)));
@@ -164,7 +164,7 @@ public sealed class Tunnel
     }
     async Task Watch(NativeCore observed)
     {
-        try { await observed.Process.WaitForExitAsync(); } catch { return; }
+        try { await observed.WaitForExitAsync(); } catch { return; }
         await gate.WaitAsync();
         try { if (core == observed) { string reason = await ExitReason(observed); await StopCore(); Set("idle", reason); } }
         finally { gate.Release(); }

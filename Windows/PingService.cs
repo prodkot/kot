@@ -91,7 +91,7 @@ public sealed class PingService
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if (core.Process.HasExited) throw new UserError("Ядро проверки завершилось: " + CoreDiagnostics.Summary(AppLog.Clean(await core.ReadRecentOutput(true))));
+                if (core.HasExited) throw new UserError("Ядро проверки завершилось: " + CoreDiagnostics.Summary(AppLog.Clean(await core.ReadRecentOutput(true))));
                 try { await Latency.Tcp("127.0.0.1", port, 250, ct); ready = true; break; }
                 catch (Exception ex) when (ex is SocketException || ex is OperationCanceledException && !ct.IsCancellationRequested) { }
                 await Task.Delay(100, ct);

@@ -2,7 +2,7 @@
 
 ## 1. Подготовьте репозиторий
 
-Создайте публичный репозиторий, например `USERNAME/kot`. В его корень загрузите **содержимое** папки исходников: Core, Windows, Tests, Installer, Release, .github, build.ps1, README.md и лицензии. Не помещайте их внутрь дополнительной папки Kot-Client-0.4.0. Не загружайте личные подписки, профили или приватный ключ. .gitignore уже подготовлен.
+Создайте публичный репозиторий, например `USERNAME/kot`. В его корень загрузите **содержимое** папки исходников: Core, Windows, Tests, Installer, Release, .github, build.ps1, README.md и лицензии. Не помещайте их внутрь дополнительной папки Kot-Client-0.4.1. Не загружайте личные подписки, профили или приватный ключ. .gitignore уже подготовлен.
 
 Официальный репозиторий: https://github.com/prodkot/kot. Сборка через workflow сама получает адрес из GITHUB_REPOSITORY. В ранее присланной сборке 0.4.0 можно один раз задать `prodkot/kot` в Настройки -> Обновления, источник GitHub. Либо установите сборку из Releases, в которой адрес уже встроен.
 
@@ -29,8 +29,8 @@ pwsh ./Release/release.ps1 -Key "C:\Kot-Keys\release-private.pem" -Repository "U
 
 В artifacts появятся:
 
-- Kot-Setup-0.4.0-Windows-x64.exe: установщик NSIS.
-- Kot-Client-0.4.0-beta-Windows-x64.zip: подписанный пакет для автообновления и portable.
+- Kot-Setup-0.4.1-Windows-x64.exe: установщик NSIS.
+- Kot-Client-0.4.1-beta-Windows-x64.zip: подписанный пакет для автообновления и portable.
 - SHA256SUMS.txt: контрольные суммы.
 
 Закройте старую программу и вручную запустите установщик этой собственной сборки. Номер первой собственной сборки может оставаться 0.4.0. Прежние настройки и HWID сохранятся. Удаление приложения сохраняет профиль в LocalAppData; удаляет только перечисленные файлы программы и отключает её автозапуск.
@@ -43,24 +43,24 @@ Workflow .github/workflows/release.yml запускается при push тег
 
 ```powershell
 git add .
-git commit -m "Prepare kot. 0.4.0"
-git tag v0.4.0
+git commit -m "Prepare kot. 0.4.1"
+git tag v0.4.1
 git push origin main
-git push origin v0.4.0
+git push origin v0.4.1
 ```
 
 В репозитории должна быть включена работа Actions. Настройка permissions.contents: write уже есть. Выпускайте обычный релиз: **не Draft и не Pre-release**, иначе автоматический канал его не выберет. Суффикс beta в имени ZIP сохранён для совместимости и не требует галочки Pre-release.
 
 ## 5. Как выпускается следующая версия
 
-Поменяйте версию одинаково в Core/ClientIdentity.cs, Windows/Kot.Windows.csproj и Windows/app.manifest; обновите README и проверки. HTML содержит запасную версию для просмотра без native bridge; при работе приложение передаёт версию из ClientIdentity. Например, следующая версия 0.4.1:
+Поменяйте версию одинаково в Core/ClientIdentity.cs, Windows/Kot.Windows.csproj и Windows/app.manifest; обновите README и проверки. HTML содержит запасную версию для просмотра без native bridge; при работе приложение передаёт версию из ClientIdentity. Например, следующая версия 0.4.2:
 
 ```powershell
 git add .
-git commit -m "Release 0.4.1"
-git tag v0.4.1
+git commit -m "Release 0.4.2"
+git tag v0.4.2
 git push origin main
-git push origin v0.4.1
+git push origin v0.4.2
 ```
 
 Не удаляйте публичный ключ из Core и не создавайте новый приватный ключ для каждой версии.
