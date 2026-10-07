@@ -73,7 +73,11 @@ jobs:
               throw "$stage did not finish within two minutes."
             }
             Write-Host "$stage exited with $($process.ExitCode)"
-            if ($process.ExitCode -ne 0) { throw "$stage failed." }
+            if ($process.ExitCode -ne 0) {
+              $log=Join-Path $env:LOCALAPPDATA 'KotVPN/maintenance-error.txt'
+              if (Test-Path $log) { Get-Content $log }
+              throw "$stage failed."
+            }
           }
           $setup=Get-ChildItem artifacts/Kot-Setup-*-Windows-x64.exe | Select-Object -First 1
           $target=Join-Path $env:RUNNER_TEMP 'kot-setup-test'
@@ -85,6 +89,10 @@ jobs:
           foreach ($file in Get-ChildItem $publish -File -Recurse) {
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
+          }
+          foreach ($command in '--shutdown','--disable-startup','--disable-kill-switch') {
+            $process=Start-Process "$target/Kot.exe" -ArgumentList $command -PassThru
+            Wait-Installer $process $command
           }
           Write-Host 'Uninstalling verified payload'
           $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru

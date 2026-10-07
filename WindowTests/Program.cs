@@ -66,6 +66,8 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         if (args.Length == 2 && args[0] == "--tunnel-test") { TunnelChecks(Path.GetFullPath(args[1])); return 0; }
         KillSwitchChecks();
+        Startup.Set(false).GetAwaiter().GetResult(); Startup.Set(false).GetAwaiter().GetResult();
+        Check(true, "disabling absent startup task twice succeeds without a dialog");
         using var window = new WindowChrome { FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = true, Size = new Size(600, 400) };
         window.Show(); Application.DoEvents();
         Check((GetWindowLong(window.Handle, -16) & 0xb0000) == 0xb0000, "shell system, minimize and maximize styles are present");

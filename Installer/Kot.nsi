@@ -80,17 +80,23 @@ Section "Uninstall"
   SetShellVarContext all
   ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
   ${If} $0 != 0
+    IfSilent +2
     MessageBox MB_ICONSTOP "Не удалось закрыть kot. Закройте приложение и повторите удаление."
+    SetErrorLevel 1
     Abort
   ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-startup' $0
   ${If} $0 != 0
+    IfSilent +2
     MessageBox MB_ICONSTOP "Не удалось отключить автозапуск kot. Удаление остановлено."
+    SetErrorLevel 1
     Abort
   ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-kill-switch' $0
   ${If} $0 != 0
+    IfSilent +2
     MessageBox MB_ICONSTOP "Не удалось снять блокировку сети. Удаление остановлено."
+    SetErrorLevel 1
     Abort
   ${EndIf}
   !include "uninstall-files.nsh"

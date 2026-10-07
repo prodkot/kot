@@ -17,9 +17,12 @@ public static class Startup
             {
                 service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")!);
                 ((dynamic)service!).Connect(); folder = ((dynamic)service).GetFolder("\\");
-                ((dynamic)folder).DeleteTask(TaskName, 0); return;
+                try { ((dynamic)folder).DeleteTask(TaskName, 0); }
+                // COM interop maps ERROR_FILE_NOT_FOUND to FileNotFoundException,
+                // not necessarily COMException. An absent task is already disabled.
+                catch (Exception ex) when (ex.HResult == unchecked((int)0x80070002)) { }
+                return;
             }
-            catch (COMException ex) when (ex.HResult == unchecked((int)0x80070002)) { return; } // Already absent.
             finally { if (folder != null) Marshal.FinalReleaseComObject(folder); if (service != null) Marshal.FinalReleaseComObject(service); }
         }
         var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "schtasks.exe")) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };

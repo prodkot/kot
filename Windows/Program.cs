@@ -56,6 +56,16 @@ static class Program
             }
             Application.Run(new MainWindow(args.Contains("--startup"), args.Contains("--resume-connection")));
         }
-        catch (Exception ex) { Environment.ExitCode = 1; MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex)
+        {
+            Environment.ExitCode = 1;
+            if (args.Any(a => a is "--shutdown" or "--disable-startup" or "--disable-kill-switch"))
+            {
+                AppLog.Error("maintenance", ex);
+                try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }
+                return;
+            }
+            MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 }
