@@ -247,7 +247,8 @@ public sealed partial class MainWindow : WindowChrome
                 profile.Automation = automation; Store.Save(profile); if (autoRestart) { await tunnel.Stop(); ResumeDesired(); } break;
             case "backupExport": await ExportBackup(data.GetProperty("password").GetString() ?? ""); break;
             case "backupImport": await ImportBackup(data.GetProperty("password").GetString() ?? ""); break;
-            case "downloadUpdate": await DownloadUpdate(); break;
+            case "downloadUpdate": await DownloadUpdate(data.GetProperty("version").GetString() ?? ""); break;
+            case "deferUpdate": DeferUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "remove":
                 await ping.Stop(clear: true); await tunnel.Stop();
                 profile.Subscriptions.RemoveAll(s => s.Id == profile.ActiveSubscription);

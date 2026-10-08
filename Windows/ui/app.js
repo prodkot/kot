@@ -158,7 +158,15 @@
       $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к серверу';
     }
   }
-  function renderUpdate(){const u=model.updates||{},busy=updateCheckBusy||!!u.busy;$('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion||busy;$('downloadUpdate').textContent='Обновить до '+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy;$('updateProgress').hidden=!busy;if(u.bytes&&u.size){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes;}else $('updateProgress').removeAttribute('value');}
+  new ResizeObserver(()=>{
+    $('updateNotice').closest('main').style.setProperty('--update-notice-height',$('updateNotice').getBoundingClientRect().height+'px');
+  }).observe($('updateNotice'));
+  let updateDownloadBusy=false, updateDeferBusy=false;
+  function renderUpdate(){const u=model.updates||{},busy=updateCheckBusy||updateDownloadBusy||!!u.busy;$('updateNotice').hidden=!u.availableVersion||u.availableVersion===u.dismissedVersion||busy||$('onlineUpdateDialog').open;
+    $('updateNoticeTitle').textContent='Доступно обновление '+(u.availableVersion||'');
+    $('acceptUpdate').disabled=busy||updateDeferBusy;$('deferUpdate').disabled=busy||updateDeferBusy;
+    $('downloadUpdate').disabled=busy;
+    $('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion||busy;$('downloadUpdate').textContent='Обновить до '+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy;$('updateProgress').hidden=!busy;if(u.bytes&&u.size){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes;}else $('updateProgress').removeAttribute('value');}
   document.querySelectorAll('[data-log-tab]').forEach(b=>b.addEventListener('click',()=>{logTab=b.dataset.logTab;renderLogs();}));$('logSearch').addEventListener('input',renderLogs);$('logLevel').addEventListener('change',renderLogs);
   $('pauseLogs').addEventListener('click',()=>{logsPaused=!logsPaused;$('pauseLogs').setAttribute('aria-pressed',logsPaused);$('pauseLogs').textContent=logsPaused?'Продолжить':'Пауза';if(!logsPaused)logSnapshot={telemetry:model.telemetry,journal:model.journal,state:model.state};renderLogs();});$('copyViewLog').addEventListener('click',async()=>{if(await request('copyLog'))toast('Полный лог скопирован');});
   $('onlineUpdateButton').addEventListener('click',async()=>{
@@ -169,7 +177,23 @@
     finally{updateCheckBusy=false;renderUpdate();}
   });
   $('closeOnlineUpdate').addEventListener('click',()=>closeDialog($('onlineUpdateDialog')));$('cancelUpdate').addEventListener('click',()=>request('cancelUpdate'));
-  $('downloadUpdate').addEventListener('click',()=>request('downloadUpdate'));
+  $('onlineUpdateDialog').addEventListener('close',renderUpdate);
+  async function acceptUpdate(){
+    const version=model.updates?.availableVersion;
+    if(!version||updateCheckBusy||updateDownloadBusy||model.updates?.busy||updateDeferBusy)return;
+    updateDownloadBusy=true;openDialog($('onlineUpdateDialog'));renderUpdate();
+    try{await rpc('downloadUpdate',{version});}catch(e){toast(e.message);}
+    finally{updateDownloadBusy=false;renderUpdate();}
+  }
+  $('downloadUpdate').addEventListener('click',acceptUpdate);
+  $('acceptUpdate').addEventListener('click',acceptUpdate);
+  $('deferUpdate').addEventListener('click',async()=>{
+    const version=model.updates?.availableVersion;
+    if(!version||updateDeferBusy||updateDownloadBusy||model.updates?.busy)return;
+    updateDeferBusy=true;renderUpdate();
+    try{await rpc('deferUpdate',{version});}catch(e){toast(e.message);}
+    finally{updateDeferBusy=false;renderUpdate();}
+  });
 
   const subscriptionMenu=$('subscriptionMenu'), subscriptionSelect=$('subscriptionSelect');
   let switchingSubscription=false;

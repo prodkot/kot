@@ -15,6 +15,7 @@ public sealed class Profile
     public bool AutoConnect { get; set; }
     public bool Tray { get; set; } = true;
     public bool KillSwitch { get; set; }
+    public string DeferredUpdateVersion { get; set; } = "";
     public bool SendHwid { get; set; } = true;
     public PingOptions Ping { get; set; } = new();
     public DateTimeOffset? Updated { get; set; }
@@ -24,7 +25,7 @@ public sealed class Profile
     public AutomationOptions Automation { get; set; } = new();
     public void Normalize()
     {
-        ConnectionMode ??= "tun";
+        ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
         foreach (var subscription in Subscriptions)

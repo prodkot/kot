@@ -5,7 +5,7 @@ root=Path(__file__).resolve().parents[1]
 errors=[]
 mock=r'''(()=>{
 let callback;
-const model={name:'Подписка',hasSubscription:false,nodes:[],selected:'',state:'idle',error:'',settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},updated:null,warnings:[],ping:{busy:false,done:0,total:0,error:'',settings:{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'}},version:'0.5.7',updates:{busy:false,status:'',error:'',availableVersion:null},favorites:[],subscriptions:[],activeSubscription:'',automation:{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50}};
+const model={name:'Подписка',hasSubscription:false,nodes:[],selected:'',state:'idle',error:'',settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},updated:null,warnings:[],ping:{busy:false,done:0,total:0,error:'',settings:{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'}},version:'0.5.8',updates:{busy:false,status:'',error:'',availableVersion:null},favorites:[],subscriptions:[],activeSubscription:'',automation:{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50}};
 window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg=>setTimeout(()=>{
  const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model)}});
  const reply=(ok=true,error='',data)=>callback({data:{kind:'reply',id:msg.id,ok,error,data}});
@@ -19,9 +19,10 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
   case 'backupExport':window.backupExported=msg.data.password;break;
   case 'backupImport':window.backupImported=msg.data.password;break;
   case 'view':window.activeView=msg.data.page;break;
-  case 'checkUpdates':window.updateCheckCount=(window.updateCheckCount||0)+1;if(window.fixtureUpdateError){reply(false,'Не удалось связаться с GitHub.');return;}model.updates.status='Доступна версия 0.5.7';model.updates.availableVersion='0.5.7';break;
-  case 'downloadUpdate':window.onlineUpdateRequested=true;break;
-  case 'readHwid':if(window.fixtureDeviceError){reply(false,'Не удалось прочитать HWID.');return;}reply(true,'',{hwid:'A'.repeat(64),name:'kot. windows (0.5.7)'});return;
+  case 'checkUpdates':window.updateCheckCount=(window.updateCheckCount||0)+1;if(window.fixtureUpdateError){reply(false,'Не удалось связаться с GitHub.');return;}model.updates.status='Доступна версия 0.5.9';model.updates.availableVersion='0.5.9';break;
+  case 'downloadUpdate':window.onlineUpdateRequested=true;window.updateDownloadCount=(window.updateDownloadCount||0)+1;window.confirmedVersion=msg.data.version;break;
+  case 'deferUpdate':model.updates.dismissedVersion=msg.data.version;window.deferredVersion=msg.data.version;break;
+  case 'readHwid':if(window.fixtureDeviceError){reply(false,'Не удалось прочитать HWID.');return;}reply(true,'',{hwid:'A'.repeat(64),name:'kot. windows (0.5.8)'});return;
   case 'copyHwid':if(window.fixtureClipboardError){reply(false,'Буфер обмена занят.');return;}window.copiedHwid='A'.repeat(64);break;
   case 'copyLog':window.copiedFullLog=true;break;
   case 'pingSettings':model.ping.settings=msg.data;break;
@@ -34,7 +35,7 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
   case 'remove':model.nodes=[];model.hasSubscription=false;model.selected='';model.state='idle';break;
  }
  snapshot();reply();
-},msg.action==='readHwid'?(window.fixtureDeviceDelay||10):(['refresh','checkUpdates'].includes(msg.action)?(window.fixtureMutationDelay||10):10))}};
+},msg.action==='downloadUpdate'?(window.fixtureDownloadDelay||10):(msg.action==='readHwid'?(window.fixtureDeviceDelay||10):(['refresh','checkUpdates'].includes(msg.action)?(window.fixtureMutationDelay||10):10)))}};
 window.fixtureNavigate=(page)=>callback({data:{kind:"navigate",page}});
 window.fixtureSnapshot=(patch)=>{Object.assign(model,patch);callback({data:{kind:'snapshot',data:structuredClone(model)}});};
 })();'''
@@ -80,7 +81,7 @@ with sync_playwright() as p:
     page.evaluate("fixtureSnapshot({settings:{theme:'dark',accent:'lime',startup:true,autoConnect:false,tray:true,sendHwid:false,bypass:'example.com'}})")
     for width,height in [(800,600),(960,640)]:
         page.set_viewport_size({'width':width,'height':height});page.locator('#hwidButton').click()
-        expect(page.locator('#hwidValue')).to_have_value('A'*64);expect(page.locator('#deviceName')).to_have_value('kot. windows (0.5.7)')
+        expect(page.locator('#hwidValue')).to_have_value('A'*64);expect(page.locator('#deviceName')).to_have_value('kot. windows (0.5.8)')
         expect(page.locator('#hwidValue')).to_have_attribute('readonly','');expect(page.locator('#copyHwid')).to_be_enabled()
         box=page.locator('#deviceDialog').bounding_box();assert box['y']>=0 and box['y']+box['height']<=height
         page.locator('#copyHwid').click();expect(page.locator('#toast')).to_have_text('HWID скопирован');assert page.evaluate('window.copiedHwid')=='A'*64
@@ -90,7 +91,7 @@ with sync_playwright() as p:
     page.evaluate('window.fixtureDeviceError=false;window.fixtureClipboardError=true');page.locator('#hwidButton').click();expect(page.locator('#copyHwid')).to_be_enabled();page.locator('#copyHwid').click();expect(page.locator('#hwidError')).to_have_text('Буфер обмена занят.');expect(page.locator('#copyHwid')).to_be_enabled();page.keyboard.press('Escape');expect(page.locator('#deviceDialog')).not_to_be_visible();expect(page.locator('#hwidValue')).to_have_value('')
     page.evaluate('window.fixtureClipboardError=false;window.fixtureDeviceDelay=400');page.locator('#hwidButton').click();page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible();page.wait_for_timeout(450);expect(page.locator('#hwidValue')).to_have_value('');page.evaluate('window.fixtureDeviceDelay=0')
     for width,height in [(800,600),(960,640),(1200,800)]:
-        page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.7');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
+        page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.8');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
         assert page.locator('#advancedButton').bounding_box()['y']<height
     for target in ["logs", "servers", "settings", "home"]:
         page.evaluate("fixtureNavigate", target);expect(page.locator("#page-"+target)).to_be_visible()
@@ -118,7 +119,7 @@ with sync_playwright() as p:
     expect(page.locator('#downloadRate')).to_have_text('2 МБ/с');expect(page.locator('#uploadRate')).to_have_text('512 КБ/с')
     for width,height in [(800,600),(960,640),(1200,800)]:
         page.set_viewport_size({'width':width,'height':height});box=page.locator('#homeServer').bounding_box();assert box['y']+box['height']<=height
-        assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.7');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
+        assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.8');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
     page.set_viewport_size({'width':960,'height':640});page.wait_for_timeout(300);page.screenshot(path=str(root/'Tests/ui-030-home.png'),animations='disabled')
     page.locator('[data-page=logs]').click();expect(page.locator('#connectionList details')).to_have_count(2);assert not page.locator('#connectionList img').count();page.wait_for_timeout(30);assert page.evaluate('window.activeView')=='logs'
     page.locator('#connectionList details').first.locator('summary').click();expect(page.locator('#connectionList details').first).to_have_attribute('open','')
@@ -129,14 +130,43 @@ with sync_playwright() as p:
     page.locator('[data-log-tab=journal]').click();expect(page.locator('#journalText')).to_contain_text('<script>');assert not page.locator('#journalText script').count();page.locator('#logLevel').select_option('error');expect(page.locator('#journalText')).to_contain_text('ERROR');expect(page.locator('#journalText')).not_to_contain_text('ready');page.locator('#logLevel').select_option('all');page.locator('#copyViewLog').click();expect(page.locator('#toast')).to_have_text('Полный лог скопирован')
     page.locator('#logSearch').fill('missing');expect(page.locator('#logEmpty')).to_have_text('Ничего не найдено');page.locator('#logSearch').fill('')
     for width,height in [(800,600),(960,640),(1200,800)]:
-        page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.7');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
+        page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.8');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
     page.set_viewport_size({'width':960,'height':640});page.locator('[data-page=home]').click();page.evaluate('fixtureSnapshot({telemetry:{available:false}})');expect(page.locator('#downloadRate')).to_have_text('Нет данных');page.evaluate('fixtureSnapshot({state:"idle"})');expect(page.locator('#downloadRate')).to_have_text('0 Б/с')
+    # A background offer never sends a download request or interrupts the active tunnel.
+    page.locator('[data-page=home]').click()
+    page.evaluate("fixtureSnapshot({state:'connected',updates:{busy:false,status:'Доступна версия 0.5.9',availableVersion:'0.5.9',dismissedVersion:''}})")
+    expect(page.locator('#updateNotice')).to_be_visible();expect(page.locator('#updateNoticeTitle')).to_have_text('Доступно обновление 0.5.9')
+    expect(page.locator('#onlineUpdateDialog')).not_to_be_visible();expect(page.locator('#connection')).to_have_attribute('data-state','connected')
+    page.wait_for_timeout(100);assert not page.evaluate('window.onlineUpdateRequested||false')
+    for theme in ['dark','light']:
+        page.evaluate("document.body.classList.toggle('theme-light',"+str(theme=='light').lower()+")")
+        for width,height in [(800,600),(960,640),(700,660)]:
+            page.set_viewport_size({'width':width,'height':height})
+            notice=page.locator('#updateNotice').bounding_box();buttons=page.locator('#updateNotice .update-notice-actions').bounding_box()
+            assert 0<=notice['x'] and notice['x']+notice['width']<=width
+            assert notice['y']<=buttons['y'] and buttons['y']+buttons['height']<=notice['y']+notice['height']
+            assert buttons['x']+buttons['width']<=notice['x']+notice['width']
+            assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
+            expect(page.locator('#page-home .segmented')).to_be_in_viewport()
+    page.set_viewport_size({'width':960,'height':640});page.evaluate("document.body.classList.remove('theme-light')")
+    page.screenshot(path=str(root/'Tests/ui-update-consent.png'),animations='disabled')
+    page.locator('#deferUpdate').click();expect(page.locator('#updateNotice')).not_to_be_visible();assert page.evaluate('window.deferredVersion')=='0.5.9'
+    page.evaluate('fixtureSnapshot({})');expect(page.locator('#updateNotice')).not_to_be_visible()
+    page.locator('[data-page=servers]').click();expect(page.locator('#updateNotice')).not_to_be_visible()
+    page.evaluate("fixtureSnapshot({updates:{busy:false,status:'Доступна версия 0.5.10',availableVersion:'0.5.10',dismissedVersion:'0.5.9'}})")
+    expect(page.locator('#updateNotice')).to_be_visible();page.evaluate('window.fixtureDownloadDelay=350')
+    page.locator('#acceptUpdate').click();expect(page.locator('#onlineUpdateDialog')).to_be_visible();expect(page.locator('#updateNotice')).not_to_be_visible()
+    page.locator('#acceptUpdate').evaluate('(e)=>e.click()');page.locator('#downloadUpdate').evaluate('(e)=>e.click()')
+    page.wait_for_timeout(400);assert page.evaluate('window.updateDownloadCount')==1;assert page.evaluate('window.confirmedVersion')=='0.5.10'
+    page.locator('#closeOnlineUpdate').click();page.evaluate('window.fixtureDownloadDelay=0;window.onlineUpdateRequested=false')
+    # An imported persisted deferral still allows explicitly checking and installing in Settings.
+    page.evaluate("fixtureSnapshot({state:'idle',updates:{busy:false,status:'',availableVersion:null,dismissedVersion:'0.5.9'}})")
     page.locator('[data-page=settings]').click();expect(page.locator('#onlineUpdateButton')).to_have_text('Проверить обновления');page.locator('#onlineUpdateButton').click()
-    expect(page.locator('#onlineUpdateDialog')).to_be_visible();expect(page.locator('#downloadUpdate')).to_have_text('Обновить до 0.5.7');assert page.locator('#updateSource,#updateAddress,#autoUpdate,#updateSourceForm,#updateButton').count()==0
+    expect(page.locator('#onlineUpdateDialog')).to_be_visible();expect(page.locator('#downloadUpdate')).to_have_text('Обновить до 0.5.9');assert page.locator('#updateSource,#updateAddress,#autoUpdate,#updateSourceForm,#updateButton').count()==0
     assert page.evaluate('window.updateCheckCount')==1;page.locator('#downloadUpdate').click();page.wait_for_timeout(30);assert page.evaluate('window.onlineUpdateRequested');page.locator('#closeOnlineUpdate').click()
     page.evaluate('window.fixtureMutationDelay=350');page.locator('#onlineUpdateButton').click();page.evaluate('fixtureSnapshot({})');expect(page.locator('#onlineUpdateButton')).to_be_disabled();expect(page.locator('#downloadUpdate')).not_to_be_visible();expect(page.locator('#updateProgress')).to_be_visible();page.wait_for_timeout(400);expect(page.locator('#onlineUpdateButton')).to_be_enabled();assert page.evaluate('window.updateCheckCount')==2;page.locator('#closeOnlineUpdate').click()
     page.evaluate('window.fixtureMutationDelay=0;window.fixtureUpdateError=true');page.locator('#onlineUpdateButton').click();expect(page.locator('#updateError')).to_have_text('Не удалось связаться с GitHub.');expect(page.locator('#downloadUpdate')).not_to_be_visible();expect(page.locator('#onlineUpdateButton')).to_be_enabled();page.locator('#closeOnlineUpdate').click()
-    page.evaluate('window.fixtureUpdateError=false');page.locator('#onlineUpdateButton').click();expect(page.locator('#downloadUpdate')).to_have_text('Обновить до 0.5.7');expect(page.locator('#updateError')).to_be_empty()
+    page.evaluate('window.fixtureUpdateError=false');page.locator('#onlineUpdateButton').click();expect(page.locator('#downloadUpdate')).to_have_text('Обновить до 0.5.9');expect(page.locator('#updateError')).to_be_empty()
 
     for width,height in [(800,600),(960,640)]:
         page.set_viewport_size({'width':width,'height':height});box=page.locator('#onlineUpdateDialog').bounding_box();assert box['y']>=0 and box['y']+box['height']<=height
