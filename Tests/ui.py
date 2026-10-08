@@ -147,6 +147,7 @@ with sync_playwright() as p:
             assert notice['y']<=buttons['y'] and buttons['y']+buttons['height']<=notice['y']+notice['height']
             assert buttons['x']+buttons['width']<=notice['x']+notice['width']
             assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
+            expect(page.locator('#page-home .segmented')).to_be_in_viewport()
     page.set_viewport_size({'width':960,'height':640});page.evaluate("document.body.classList.remove('theme-light')")
     page.screenshot(path=str(root/'Tests/ui-update-consent.png'),animations='disabled')
     page.locator('#deferUpdate').click();expect(page.locator('#updateNotice')).not_to_be_visible();assert page.evaluate('window.deferredVersion')=='0.5.9'

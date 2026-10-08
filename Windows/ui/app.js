@@ -158,6 +158,9 @@
       $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к серверу';
     }
   }
+  new ResizeObserver(()=>{
+    $('updateNotice').closest('main').style.setProperty('--update-notice-height',$('updateNotice').getBoundingClientRect().height+'px');
+  }).observe($('updateNotice'));
   let updateDownloadBusy=false, updateDeferBusy=false;
   function renderUpdate(){const u=model.updates||{},busy=updateCheckBusy||updateDownloadBusy||!!u.busy;$('updateNotice').hidden=!u.availableVersion||u.availableVersion===u.dismissedVersion||busy||$('onlineUpdateDialog').open;
     $('updateNoticeTitle').textContent='Доступно обновление '+(u.availableVersion||'');
