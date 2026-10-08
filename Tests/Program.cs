@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
+await Kot.Windows.MainWindow.CheckConsent(Check);
 var a = Subscriptions.Parse(vless + "\r\n" + vless + "\nvless://broken@example.com:443\n");
 Check(a.Nodes.Count == 1 && a.Warnings.Count == 1 && a.Nodes[0].Name == "Мой сервер", "unicode, CRLF, deduplication, bad-node report");
 Check(a.Nodes[0].Outbound["tls"]?["reality"]?["short_id"]?.ToString() == "0123456789abcdef", "Reality fields");
@@ -48,14 +49,14 @@ var device = new SubscriptionDevice(SubscriptionDevice.HashMachineId("ABCDE-TEST
 device.Validate();
 Check(device.Hwid.Length == 64 && device.Hwid == SubscriptionDevice.HashMachineId(" abcde-test-machine ") && device.Hwid != SubscriptionDevice.HashMachineId("other-machine"), "stable app-specific machine ID, normalized and distinct per machine");
 Check(device.Hwid == "225CDDEE6C5E4C6F8DCF838D42070CE4DF86F130091DF0AF435B20CFE29E347D", "branding preserves historical HWID algorithm and salt");
-Check(ClientIdentity.DeviceName == "kot. windows (0.5.7)", "versioned device display name");
+Check(ClientIdentity.DeviceName == "kot. windows (0.5.8)", "versioned device display name");
 int deviceRequests = 0;
 await Subscriptions.Download("https://subscription.example/start", CancellationToken.None, new FakeTransport((request, index) =>
 {
     Check(request.Headers.GetValues("x-hwid").Single() == device.Hwid && request.Headers.GetValues("x-device-os").Single() == "Windows"
-        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == "kot. windows (0.5.7)", "device headers on import and same-origin redirect");
+        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == "kot. windows (0.5.8)", "device headers on import and same-origin redirect");
     var userAgent = request.Headers.UserAgent.ToString();
-    Check(userAgent == "kot. windows (0.5.7) v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
+    Check(userAgent == "kot. windows (0.5.8) v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
     deviceRequests++;
     return index == 0 ? new(System.Net.HttpStatusCode.Found) { Headers = { Location = new Uri("/download", UriKind.Relative) } } : new(System.Net.HttpStatusCode.OK) { Content = new StringContent(vless) };
 }), device);
@@ -225,10 +226,13 @@ oldProfile.Favorites.Add(a.Nodes[0].Id); oldProfile.Selected = "auto"; oldProfil
 var secondSubscription = new SavedSubscription { Name = "Second", Address = "https://other.example/sub", Nodes = [ws], Selected = ws.Id }; oldProfile.Subscriptions.Add(secondSubscription);
 oldProfile.Activate(secondSubscription.Id); Check(oldProfile.Name == "Second" && oldProfile.Nodes.Single().Id == ws.Id && oldProfile.Favorites.Count == 0, "switch provider loads isolated nodes and preferences");
 oldProfile.Activate(firstSubscription); Check(oldProfile.Selected == "auto" && oldProfile.Favorites.SequenceEqual(new[] { a.Nodes[0].Id }), "switch provider restores Auto and favorites");
+oldProfile.DeferredUpdateVersion = "0.5.9";
 var encrypted = Backup.Export(oldProfile, "correct-password");
 Check(!Encoding.UTF8.GetString(encrypted).Contains(uuid) && !Encoding.UTF8.GetString(encrypted).Contains("subscription.example"), "backup contains no plaintext credentials");
 var restoredProfile = Backup.Import(encrypted, "correct-password");
 Check(restoredProfile.Subscriptions.Count == 2 && restoredProfile.Selected == "auto" && restoredProfile.Theme == "light" && restoredProfile.Accent == "purple", "encrypted backup restores all providers and preferences");
+Check(restoredProfile.DeferredUpdateVersion == "0.5.9", "declined update survives encrypted profile persistence");
+Check(JsonSerializer.Deserialize<Profile>("{}")!.DeferredUpdateVersion == "", "legacy profiles default to no declined update");
 bool badPassword = false; try { Backup.Import(encrypted, "wrong-password"); } catch(UserError) { badPassword = true; } Check(badPassword, "backup rejects wrong password");
 var damaged = encrypted.ToArray(); damaged[^1] ^= 1; bool damagedBackup = false; try { Backup.Import(damaged, "correct-password"); } catch(UserError) { damagedBackup = true; } Check(damagedBackup, "backup authentication rejects modified data");
 bool tinyPassword = false; try { Backup.Export(oldProfile, "tiny"); } catch(UserError) { tinyPassword = true; } Check(tinyPassword, "backup requires minimum password");

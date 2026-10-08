@@ -10,12 +10,12 @@ public sealed partial class MainWindow
     bool updateBusy;
     long updateBytes;
     string updateStatus = "", updateError = "";
-    object UpdateModel() => new { busy = updateBusy, bytes = updateBytes, status = updateStatus, error = updateError, availableVersion = remoteRelease?.Version, size = remoteRelease?.Size ?? 0, checkedAt = lastUpdateCheck == DateTimeOffset.MinValue ? null : lastUpdateCheck.ToLocalTime().ToString("dd.MM HH:mm") };
+    object UpdateModel() => new { busy = updateBusy, bytes = updateBytes, status = updateStatus, error = updateError, availableVersion = remoteRelease?.Version, dismissedVersion = profile.DeferredUpdateVersion, size = remoteRelease?.Size ?? 0, checkedAt = lastUpdateCheck == DateTimeOffset.MinValue ? null : lastUpdateCheck.ToLocalTime().ToString("dd.MM HH:mm") };
     void ScheduleUpdateCheck()
     {
-        if (!updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates(automatic: true);
+        if (!updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates();
     }
-    async Task CheckUpdates(bool automatic = false)
+    async Task CheckUpdates()
     {
         if (updateBusy) throw new UserError("Проверка или загрузка обновления уже идёт.");
         remoteRelease = null; updateBusy = true; updateStatus = "Проверка обновлений"; updateError = ""; updateBytes = 0; lastUpdateCheck = DateTimeOffset.UtcNow; nextUpdateCheck = lastUpdateCheck.AddHours(24); Snapshot();
@@ -29,12 +29,17 @@ public sealed partial class MainWindow
         catch (OperationCanceledException) { if (!attempt.IsCancellationRequested) nextUpdateCheck = DateTimeOffset.UtcNow.AddMinutes(15); updateStatus = "Проверка отменена или превышено время ожидания"; }
         catch (Exception ex) { nextUpdateCheck = DateTimeOffset.UtcNow.AddMinutes(15); AppLog.Error("update check", ex); updateError = Store.Friendly(ex); updateStatus = "Не удалось проверить обновления"; remoteRelease = null; }
         finally { if (updateAttempt == attempt) updateAttempt = null; updateBusy = false; if (!exiting) Snapshot(); }
-        if (automatic && remoteRelease != null && !exiting) await DownloadUpdate();
     }
-    async Task DownloadUpdate()
+    void DeferUpdate(string version)
+    {
+        if (updateBusy || remoteRelease?.Version != version) throw new UserError("Предложение обновления изменилось. Проверьте обновления ещё раз.");
+        profile.DeferredUpdateVersion = version; Store.Save(profile);
+    }
+    async Task DownloadUpdate(string version)
     {
         var release = remoteRelease ?? throw new UserError("Сначала проверьте обновления.");
         if (updateBusy) throw new UserError("Обновление уже загружается.");
+        if (release.Version != version) throw new UserError("Предложение обновления изменилось. Подтвердите новую версию.");
         string temporary = Path.Combine(Store.Folder, "update-" + Guid.NewGuid().ToString("N") + ".exe");
         updateBusy = true; updateBytes = 0; updateError = ""; updateStatus = "Загрузка " + release.Version; Snapshot();
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); updateAttempt = attempt;
