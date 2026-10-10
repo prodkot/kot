@@ -55,3 +55,8 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 
 Go module dependencies of sing-box 1.14.2:
 - Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt
+
+Звук мяу: Maullido de gata hembra, George Miquilena (2012).
+Источник: https://commons.wikimedia.org/wiki/File:Maullido_de_gata_hembra.ogg
+Лицензия CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+Оригинальная запись без изменений: ui/sounds/meow.ogg.

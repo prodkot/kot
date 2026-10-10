@@ -93,9 +93,8 @@ internal static class Program
         if (args.Length == 3 && args[0] == "--proxy-owner") { SystemProxy.Enable(int.Parse(args[1])); File.WriteAllText(args[2], "ready"); Thread.Sleep(60000); return 0; }
         ProxyFixture.Run(Check);
         UpdateCleanupChecks();
+        StartupFixture.Run(Check);
         KillSwitchChecks();
-        Startup.Set(false).GetAwaiter().GetResult(); Startup.Set(false).GetAwaiter().GetResult();
-        Check(true, "disabling absent startup task twice succeeds without a dialog");
         using var window = new WindowChrome { FormBorderStyle = FormBorderStyle.None, ShowInTaskbar = true, Size = new Size(600, 400) };
         window.Show(); Application.DoEvents();
         Check((GetWindowLong(window.Handle, -16) & 0xb0000) == 0xb0000, "shell system, minimize and maximize styles are present");
