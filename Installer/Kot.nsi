@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.5.8"
+!define VERSION "0.5.9"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
