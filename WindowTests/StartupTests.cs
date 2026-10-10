@@ -5,6 +5,15 @@ using System.Xml.Linq;
 
 internal static class StartupFixture
 {
+    static string? ResolveSid(string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return null;
+        try { return new SecurityIdentifier(userId).Value; }
+        catch (ArgumentException) { }
+        try { return ((SecurityIdentifier)new NTAccount(userId).Translate(typeof(SecurityIdentifier))).Value; }
+        catch (Exception ex) when (ex is IdentityNotMappedException or ArgumentException) { return null; }
+    }
+
     public static void Run(Action<bool, string> check)
     {
         using var identity = WindowsIdentity.GetCurrent();
@@ -16,6 +25,13 @@ internal static class StartupFixture
         Task Set(bool enabled, string path) => Startup.Set(enabled, name, sid, path, directory);
         try
         {
+            check(ResolveSid(sid) == sid && ResolveSid(identity.Name) == sid,
+                "startup identity comparison accepts SID and account-name forms of the same user");
+            check(ResolveSid(null) is null && ResolveSid(" ") is null && ResolveSid("S-not-a-valid-SID") is null
+                && ResolveSid("Kot-missing-" + Guid.NewGuid().ToString("N")) is null,
+                "missing, malformed and unknown startup users are rejected");
+            check(ResolveSid("S-1-1-0") == "S-1-1-0" && ResolveSid("S-1-1-0") != sid,
+                "startup identity comparison does not substitute the current user for another SID");
             check(!Startup.IsEnabled(name).GetAwaiter().GetResult(), "absent startup task is reported as disabled");
             Set(false, executable).GetAwaiter().GetResult(); Set(false, executable).GetAwaiter().GetResult();
             check(!Startup.IsEnabled(name).GetAwaiter().GetResult(), "disabling an absent startup task is idempotent");
@@ -30,8 +46,13 @@ internal static class StartupFixture
             var trigger = root.Element(ns + "Triggers")!.Element(ns + "LogonTrigger")!;
             var principal = root.Element(ns + "Principals")!.Element(ns + "Principal")!;
             var action = root.Element(ns + "Actions")!.Element(ns + "Exec")!;
-            check((string?)trigger.Element(ns + "UserId") == sid && (string?)principal.Element(ns + "UserId") == sid,
-                "startup trigger and principal belong to the current user");
+            // Task Scheduler can serialize UserId as DOMAIN\\name instead of the supplied SID.
+            // Compare the resolved identities, while still rejecting a missing or different user.
+            string? triggerUser = (string?)trigger.Element(ns + "UserId"), principalUser = (string?)principal.Element(ns + "UserId");
+            check(ResolveSid(triggerUser) == sid,
+                $"startup trigger belongs to the current user (expected SID: {sid}, UserId: {triggerUser ?? "<missing>"})");
+            check(ResolveSid(principalUser) == sid,
+                $"startup principal belongs to the current user (expected SID: {sid}, UserId: {principalUser ?? "<missing>"})");
             check((string?)principal.Element(ns + "LogonType") == "InteractiveToken" && (string?)principal.Element(ns + "RunLevel") == "HighestAvailable",
                 "startup uses the interactive desktop with administrator privileges and no saved password");
             check((string?)action.Element(ns + "Command") == executable && (string?)action.Element(ns + "WorkingDirectory") == directory
