@@ -83,6 +83,12 @@ public sealed partial class MainWindow : WindowChrome
     {
         try
         {
+            try
+            {
+                bool enabled = await Startup.IsEnabled();
+                if (profile.Startup != enabled) { profile.Startup = enabled; Store.Save(profile); }
+            }
+            catch (Exception ex) { AppLog.Error("startup state", ex); }
             CoreWebView2Environment env;
             try { env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Store.Folder, "WebView")); }
             catch (WebView2RuntimeNotFoundException)
@@ -219,7 +225,7 @@ public sealed partial class MainWindow : WindowChrome
                     case "accent": string accent = value.GetString()!; if (accent is not ("lime" or "gray" or "green" or "purple")) throw new UserError("Неизвестный акцент."); profile.Accent = accent; break;
                     case "mode": string mode = value.GetString()!; if (mode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим."); restart = mode != profile.ConnectionMode; if (restart) await tunnel.Stop(); profile.ConnectionMode = mode; break;
                     case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass) || profile.Mode != "smart"; if (restart) await tunnel.Stop(); profile.Bypass = domains; profile.Mode = "smart"; break;
-                    case "startup": bool enabled = value.GetBoolean(); if (enabled != profile.Startup) await Startup.Set(enabled); profile.Startup = enabled; break;
+                    case "startup": bool enabled = value.GetBoolean(); await Startup.Set(enabled); profile.Startup = enabled; break;
                     case "autoConnect": profile.AutoConnect = value.GetBoolean(); break;
                     case "tray": profile.Tray = value.GetBoolean(); break;
                     case "killSwitch":

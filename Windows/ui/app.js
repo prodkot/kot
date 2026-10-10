@@ -65,6 +65,13 @@
     });
   }
   function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;animate($('toast'),[{opacity:0,transform:'translate(-50%,7px)'},{opacity:1,transform:'translate(-50%,0)'}]);toastTimer=setTimeout(()=>{$('toast').hidden=true;},4000);}
+  let brandClicks=0, meow;
+  $('brandButton').addEventListener('click',()=>{
+    if(++brandClicks!==443)return;
+    brandClicks=0;
+    meow??=new Audio('sounds/meow.ogg');meow.volume=.7;meow.currentTime=0;
+    meow.play().catch(()=>toast('Не удалось воспроизвести мяу.'));
+  });
   async function request(action,data={}) {try{await rpc(action,data);return true;}catch(e){toast(e.message);return false;}}
   function moveNav(){const active=document.querySelector('[data-page][aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
   function page(name){

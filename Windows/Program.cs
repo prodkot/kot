@@ -48,7 +48,7 @@ static class Program
             }
             string sid = WindowsIdentity.GetCurrent().User!.Value;
             using Mutex mutex = new(true, "Local\\KotVPN-" + sid, out bool first);
-            if (!first) { SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
+            if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
             SystemProxy.Restore();
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();

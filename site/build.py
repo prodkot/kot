@@ -56,6 +56,7 @@ def build(destination, release):
     markup = markup.replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n<script src="client.js"></script>')
     (demo / "index.html").write_text(markup, encoding="utf-8")
     shutil.copy2(client / "app.js", demo / "client.js")
+    shutil.copytree(client / "sounds", demo / "sounds", dirs_exist_ok=True)
     shutil.copytree(client / "flags", demo / "flags", dirs_exist_ok=True)
     shutil.copy2(source.parent / "licenses/flag-icons-MIT.txt", demo / "flags/LICENSE.txt")
     for name in ("bridge.js", "demo.css"):

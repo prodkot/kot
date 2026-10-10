@@ -5,6 +5,8 @@ root=Path(__file__).resolve().parents[1]
 errors=[]
 mock=r'''(()=>{
 let callback;
+window.fixtureMeows=0;
+HTMLMediaElement.prototype.play=function(){window.fixtureMeows++;window.fixtureMeowSource=this.src;return Promise.resolve();};
 const model={name:'Подписка',hasSubscription:false,nodes:[],selected:'',state:'idle',error:'',settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},updated:null,warnings:[],ping:{busy:false,done:0,total:0,error:'',settings:{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'}},version:'0.5.8',updates:{busy:false,status:'',error:'',availableVersion:null},favorites:[],subscriptions:[],activeSubscription:'',automation:{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50}};
 window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg=>setTimeout(()=>{
  const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model)}});
@@ -45,6 +47,15 @@ with sync_playwright() as p:
     page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto((root/'Windows/ui/index.html').as_uri());expect(page.locator('#powerButton')).to_be_disabled()
     expect(page.locator('#selectedName')).to_have_text('Добавить подписку')
+    # Only the large wordmark counts; sound occurs exactly at each 443rd activation.
+    page.locator('.title-brand .wordmark').evaluate('(e)=>{for(let i=0;i<443;i++)e.click();}')
+    page.locator('#brandButton').evaluate('(e)=>{for(let i=0;i<442;i++)e.click();}')
+    assert page.evaluate('window.fixtureMeows')==0
+    page.locator('#brandButton').click();assert page.evaluate('window.fixtureMeows')==1
+    assert page.evaluate('window.fixtureMeowSource').endswith('/sounds/meow.ogg')
+    page.locator('#brandButton').press('Enter');assert page.evaluate('window.fixtureMeows')==1
+    page.locator('#brandButton').evaluate('(e)=>{for(let i=0;i<442;i++)e.click();}')
+    assert page.evaluate('window.fixtureMeows')==2
     page.locator('#homeServer').click();page.locator('#profileLink').fill('http://example.com/sub');page.locator('#addForm [type=submit]').click();expect(page.locator('#addError')).to_have_text('Нужна HTTPS-ссылка на подписку.')
     page.locator('#profileName').fill('<b>Личная</b>');page.locator('#profileLink').fill('https://example.invalid/test');page.locator('#addForm [type=submit]').click();expect(page.locator('#addDialog')).not_to_be_visible()
     expect(page.locator('#profileLink')).to_have_value('');expect(page.locator('#serverList .server-card')).to_have_count(2);assert not page.locator('#serverList img').count();assert not page.locator('#subscriptionName b').count()
@@ -73,8 +84,10 @@ with sync_playwright() as p:
         page.locator(f'[data-theme={theme}]').click()
         for accent in ('gray','lime','green','purple'):
             page.locator(f'.accent-choice:has(input[value={accent}])').click();expect(page.locator('body')).to_have_attribute('data-accent',accent)
-            square=page.locator('.brand .brand-dot').evaluate('(e)=>({w:e.offsetWidth,h:e.offsetHeight,r:getComputedStyle(e).borderRadius,c:getComputedStyle(e).backgroundColor})')
-            assert square['w']==square['h']==7 and square['r']=='0px',square
+            expect(page.locator('#brandButton span')).to_have_text('.')
+            color=page.locator('body').evaluate('(e)=>getComputedStyle(e).getPropertyValue("--accent").trim()')
+            rgb=', '.join(str(int(color[i:i+2],16)) for i in (1,3,5))
+            expect(page.locator('#brandButton span')).to_have_css('color',f'rgb({rgb})')
     page.locator('[data-setting=startup]').click();expect(page.locator('[data-setting=startup]')).to_have_attribute('aria-checked','true')
     page.locator('#advancedButton').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','false');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('#bypassDomains').fill('https://example.com');page.locator('#saveRules').click();expect(page.locator('#advancedError')).to_have_text('Введите домены без https://');page.locator('#bypassDomains').fill('example.com');page.locator('#saveRules').click();expect(page.locator('#advancedDialog')).not_to_be_visible()
     # Only explicit HWID read exposes the ID; display/copy works with sending disabled.
