@@ -47,6 +47,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Window fixture build failed.' }
           ./artifacts/window-tests/Kot.WindowTests.exe artifacts/window-ui
           if ($LASTEXITCODE -ne 0) { throw 'Window and tray checks failed.' }
+      - name: Official zapret and Telegram managed services
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          ./artifacts/window-tests/Kot.WindowTests.exe --services-test
+          if ($LASTEXITCODE -ne 0) { throw 'Managed service lifecycle or package checks failed.' }
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress

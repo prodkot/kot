@@ -290,6 +290,7 @@ using (var rsa = System.Security.Cryptography.RSA.Create(2048))
         Check(invalidRelease, "update rejects " + kind);
     }
 }
+await Kot.Tests.ServicesTests.Run(Check, fixtureFolder);
 await Kot.Tests.BodyTests.Run(Check);
 Kot.Tests.SetupTests.Run(Check);
 Kot.Tests.InstallationTests.Run(Check, fixtureFolder);

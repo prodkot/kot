@@ -1,6 +1,25 @@
 using Kot.Windows;
 using System.Collections.Concurrent;
 
+if (args.Length > 1 && args[0] == "--service-args")
+{
+    File.WriteAllText(args[1], System.Text.Json.JsonSerializer.Serialize(args.Skip(2))); return 42;
+}
+if (args.Length > 1 && args[0] == "--service-hold")
+{
+    File.WriteAllText(args[1], Environment.ProcessId.ToString()); await Task.Delay(30000); return 0;
+}
+if (args.Length > 1 && args[0] == "--service-parent")
+{
+    var info = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+    info.ArgumentList.Add("--service-hold"); info.ArgumentList.Add(args[1]);
+    using var child = System.Diagnostics.Process.Start(info); await Task.Delay(30000); return 0;
+}
+if (args.Length > 0 && args[0] == "--service-flood")
+{
+    Console.Write(new string('x', 5 * 1024 * 1024)); return 0;
+}
+
 // Windows-only integration checks of the real launcher, using this executable
 // as a fixture child. No provider, tunnel driver, network or administrator is needed.
 if (args.Length == 3 && args[0] == "run" && args[1] == "-c")
@@ -66,6 +85,29 @@ try
         await exited.WaitAsync(TimeSpan.FromSeconds(5));
         Check(true, "stop waits for a live child and always disposes its handles");
         Check(stopping.Any(line => line.StartsWith("core stopped; exit=")), "live child cleanup records an exit only after native termination");
+    }
+    string argumentFile = Path.Combine(folder, "argument capture.json");
+    string[] expectedArguments = ["space value", "literal\"quote", "trailing path\\", "тест Unicode", ""];
+    using (var service = new NativeCore(fixtureExe, new[] { "--service-args", argumentFile }.Concat(expectedArguments), folder, "kot. fixture service"))
+    {
+        await service.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Check(service.ExitCode == 42 && System.Text.Json.JsonSerializer.Deserialize<string[]>(File.ReadAllText(argumentFile))!.SequenceEqual(expectedArguments), "managed service launcher preserves the complete Windows argument vector");
+    }
+    string descendantFile = Path.Combine(folder, "descendant.txt");
+    using (var parent = new NativeCore(fixtureExe, ["--service-parent", descendantFile], folder, "kot. fixture service"))
+    {
+        for (int i = 0; i < 100 && !File.Exists(descendantFile); i++) await Task.Delay(50);
+        using var descendant = System.Diagnostics.Process.GetProcessById(int.Parse(File.ReadAllText(descendantFile)));
+        Check(Kot.WindowTests.ProcessParent.Id(parent.Process.Handle) == Environment.ProcessId && Kot.WindowTests.ProcessParent.Id(descendant.Handle) == parent.Process.Id, "managed workers and their children remain in the kot process tree");
+        var ended = descendant.WaitForExitAsync(); parent.Dispose(); await ended.WaitAsync(TimeSpan.FromSeconds(10));
+        Check(true, "closing the service job kills its descendant even after an abrupt host cleanup");
+    }
+    int longest = 0;
+    using (var flood = new NativeCore(fixtureExe, ["--service-flood"], folder, "kot. fixture flood", line => { longest = Math.Max(longest, line.Length); }))
+    {
+        await flood.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
+        string tail = await flood.ReadRecentOutput(true);
+        Check(longest <= 1500 && tail.Length < 65536, "a five-megabyte unterminated service log remains bounded in memory");
     }
     bool missingRejected = false;
     try { using var core = new NativeCore(Path.Combine(folder, "missing.exe"), config); }

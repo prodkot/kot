@@ -71,7 +71,7 @@ public static class ProductTests
         {
             string legacy = JsonSerializer.Serialize(new { Name = "Моя подписка", KillSwitch = true, Updates = new { Source = source, Address = "https://old.example/feed", Automatic = false } });
             var loaded = JsonSerializer.Deserialize<Profile>(legacy)!; loaded.Normalize(); loaded.Validate();
-            check(loaded.Name == "Моя подписка" && loaded.KillSwitch && !JsonSerializer.Serialize(loaded).Contains("Updates"), "old update preferences are discarded while the profile is preserved");
+            check(loaded.Name == "Моя подписка" && loaded.KillSwitch && !JsonSerializer.SerializeToElement(loaded).TryGetProperty("Updates", out _), "old update preferences are discarded while the profile is preserved");
         }
         var journal = new SessionLog(1000); journal.Write("test",new string('a',900)); journal.Write("test","last-entry"); check(journal.Tail(80).Contains("last-entry") && journal.Tail(80).Length < 180,"log view bounded tail preserves newest entries");
     }

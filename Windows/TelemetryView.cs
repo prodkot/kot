@@ -73,7 +73,7 @@ public sealed partial class MainWindow
                 {
                     if (tunnel.State == "connected") usage.Observe(tunnel.Session, Tunnel.MonotonicMilliseconds, DateTimeOffset.UtcNow);
                     if (tunnel.State == "connected") { speedHistory.Enqueue(new(DateTimeOffset.UtcNow, traffic.DownloadRate, traffic.UploadRate)); while (speedHistory.Count > 90) speedHistory.Dequeue(); }
-                    SaveStatistics(); Snapshot(); ScheduleUpdateCheck();
+                    SaveStatistics(); await services.Tick(); Snapshot(); ScheduleUpdateCheck();
                 }
             }
         };

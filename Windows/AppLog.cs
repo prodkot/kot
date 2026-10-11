@@ -10,6 +10,8 @@ public static class AppLog
     {
         lock (sync)
         {
+            secrets.Add(profile.Services.Telegram.Secret);
+            secrets.Add("dd" + profile.Services.Telegram.Secret);
             foreach (var node in profile.Subscriptions.SelectMany(s => s.Nodes).Concat(profile.Nodes))
                 if (!nodes.Any(old => old.Id == node.Id && System.Text.Json.Nodes.JsonNode.DeepEquals(old.Outbound, node.Outbound))) nodes.Add(node);
             foreach (var s in profile.Subscriptions) if (s.Address.Length > 0) secrets.Add(s.Address);

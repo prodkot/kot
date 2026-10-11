@@ -34,6 +34,7 @@ public sealed partial class MainWindow
     async Task ToggleConnection()
     {
         if (exiting) return;
+        if (services.Testing) { connectionNotice = "Завершите подбор zapret перед подключением VPN."; Snapshot(); return; }
         connectionNotice = "";
         if (reconnect.Desired || tunnel.State != "idle")
         {
@@ -47,7 +48,7 @@ public sealed partial class MainWindow
     }
     async void StartConnection()
     {
-        if (connecting || exiting || !reconnect.Desired || profile.Nodes.Count == 0) return;
+        if (connecting || exiting || services.Testing || !reconnect.Desired || profile.Nodes.Count == 0) return;
         connecting = true;
         try
         {
@@ -161,7 +162,7 @@ public sealed partial class MainWindow
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (new FileInfo(dialog.FileName).Length > 20 * 1024 * 1024 + 52) throw new UserError("Резервная копия слишком большая.");
         byte[] data = await File.ReadAllBytesAsync(dialog.FileName); var restored = await Task.Run(() => Backup.Import(data, password));
-        AppLog.Register(restored); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
+        AppLog.Register(restored); await services.StopAll(); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
         if (restored.Startup != profile.Startup) await Startup.Set(restored.Startup);
         // Keep a recoverable encrypted copy before replacing a working profile.
         string old = Path.Combine(Store.Folder, "profile.bin"); if (File.Exists(old)) File.Copy(old, Path.Combine(Store.Folder, "profile-before-restore.bin"), true);

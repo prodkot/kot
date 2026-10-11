@@ -29,7 +29,9 @@ public sealed partial class MainWindow : WindowChrome
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
-        InitAutomation(); InitTelemetry();
+        InitAutomation();
+        services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token);
+        InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
         Text = "kot."; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
@@ -71,7 +73,7 @@ public sealed partial class MainWindow : WindowChrome
     void Restore() => RestoreWindow();
     void OpenTrayPage(string page)
     {
-        if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) return;
+        if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) return;
         Restore();
         if (bridgeReady) Send(new { kind = "navigate", page }); else pendingTrayPage = page;
     }
@@ -126,7 +128,7 @@ public sealed partial class MainWindow : WindowChrome
         name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
         nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, ping = ping.Get(n.Id), code = n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
-        telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
+        services = services.Model(visiblePage == "services"), telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
         routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
@@ -150,7 +152,7 @@ public sealed partial class MainWindow : WindowChrome
             {
                 bool first = !bridgeReady; bridgeReady = true; Snapshot(); Send(new { kind = "reply", id, ok = true });
                 if (pendingTrayPage is { } page) { Send(new { kind = "navigate", page }); pendingTrayPage = null; }
-                if (first) UpdateInstaller.Ready();
+                if (first) { UpdateInstaller.Ready(); _ = services.AutoStart(); }
                 if (first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
                 return;
             }
@@ -166,7 +168,10 @@ public sealed partial class MainWindow : WindowChrome
                 case "close": Close(); break;
                 case "toggle": _ = ToggleConnection(); break;
                 case "view":
-                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                case "serviceAction": case "serviceCancel": case "serviceSettings": case "serviceUpdateSettings": case "serviceRotateSecret":
+                case "serviceSource": case "serviceCopyLink": case "serviceOpenTelegram": case "serviceCopyResults": case "serviceExportResults": case "serviceClearLog": case "serviceSelectTest":
+                    await ServiceMessage(action, data); break;
                 case "runDiagnostics": StartTools("diagnostics", data); break;
                 case "testQuality": StartTools("quality", data); break;
                 case "cancelTools": toolsAttempt?.Cancel(); break;
@@ -306,7 +311,11 @@ public sealed partial class MainWindow : WindowChrome
     {
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
-        try { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
+        try
+        {
+            try { await services.StopAll(exit: true); }
+            finally { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
+        }
         finally { allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();

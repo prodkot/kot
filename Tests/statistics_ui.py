@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = r'''(() => {
 let listener;
-const model={version:'0.5.9',name:'Личная подписка',hasSubscription:true,
+const model={version:'0.6.2',name:'Личная подписка',hasSubscription:true,
  nodes:[{id:'nl',name:'Нидерланды',countryCode:'NL',protocol:'vless',code:'VL'}],selected:'nl',state:'connected',error:'',warnings:[],favorites:[],
  settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:false,killSwitch:false,bypass:''},
  subscriptions:[{id:'s',name:'Личная подписка',count:1}],activeSubscription:'s',
@@ -46,7 +46,8 @@ with sync_playwright() as p:
         expect(page.locator('#connectionTime')).not_to_be_visible()
         assert page.locator('#page-home #statistics, #page-home #connectionTime').count() == 0
         assert page.locator('#page-home .power-zone').bounding_box()['width'] == 208
-        page.locator('[data-page=statistics]').click()
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('#statisticsButton').click()
         page.clock.run_for(20)
         page.evaluate('fixtureStatistics()')
         expect(page.locator('#page-statistics')).to_be_visible()
@@ -141,7 +142,8 @@ with sync_playwright() as p:
             for selector in ['#powerButton','#homeServer','#page-home .mode']:
                 box=page.locator(selector).bounding_box()
                 assert box['y']>=38 and box['y']+box['height']<=height,(width,height,selector,box)
-        page.locator('[data-page=statistics]').click()
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('#statisticsButton').click()
         page.clock.run_for(20)
         page.evaluate('fixtureStatistics({statistics:null})')
         expect(page.locator('#connectionTime')).not_to_be_visible()

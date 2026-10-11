@@ -41,7 +41,8 @@ public sealed class NativeCore : IDisposable
             return unchecked((int)code);
         }
     }
-    public NativeCore(string exe, string config, Action<string>? report = null)
+    public NativeCore(string exe, string config, Action<string>? report = null) : this(exe, ["run", "-c", config], Path.GetDirectoryName(exe)!, "kot. VPN core", report) { }
+    public NativeCore(string exe, IEnumerable<string> arguments, string workingDirectory, string title, Action<string>? report = null)
     {
         this.report = report;
         // Keep temporary inheritable client pipe handles out of other concurrent core launches.
@@ -59,14 +60,14 @@ public sealed class NativeCore : IDisposable
                 using var input = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
                 var si = new StartupInfo
                 {
-                    cb = Marshal.SizeOf<StartupInfo>(), dwFlags = 0x101, wShowWindow = 0, lpTitle = "kot. VPN core",
+                    cb = Marshal.SizeOf<StartupInfo>(), dwFlags = 0x101, wShowWindow = 0, lpTitle = title,
                     hStdInput = input.ClientSafePipeHandle.DangerousGetHandle(),
                     hStdOutput = output.ClientSafePipeHandle.DangerousGetHandle(),
                     hStdError = output.ClientSafePipeHandle.DangerousGetHandle()
                 };
                 // Paths are quoted and contain no user-supplied command text.
                 report?.Invoke("CreateProcess suspended");
-                if (!CreateProcess(exe, new StringBuilder('"' + exe + "\" run -c \"" + config + '"'), IntPtr.Zero, IntPtr.Zero, true, 0x10 | 0x4, IntPtr.Zero, Path.GetDirectoryName(exe), ref si, out var pi)) throw new Win32Exception();
+                if (!CreateProcess(exe, new StringBuilder(WindowsArguments.Command(exe, arguments)), IntPtr.Zero, IntPtr.Zero, true, 0x10 | 0x4, IntPtr.Zero, workingDirectory, ref si, out var pi)) throw new Win32Exception();
                 processHandle = new SafeProcessHandle(pi.hProcess, ownsHandle: true);
                 try
                 {
@@ -88,8 +89,17 @@ public sealed class NativeCore : IDisposable
         try
         {
             using var reader = new StreamReader(output, Encoding.UTF8, false, 4096, leaveOpen: true);
-            string? line;
-            while ((line = await reader.ReadLineAsync()) != null) { log.Append((line + "\n").AsSpan()); report?.Invoke(line); }
+            char[] buffer = new char[2048]; var line = new StringBuilder(); int count;
+            while ((count = await reader.ReadAsync(buffer)) > 0)
+            {
+                log.Append(buffer.AsSpan(0, count));
+                foreach (char c in buffer.AsSpan(0, count))
+                {
+                    if (c == '\n' || line.Length == 1500) { report?.Invoke(line.ToString().TrimEnd('\r')); line.Clear(); }
+                    if (c != '\n') line.Append(c);
+                }
+            }
+            if (line.Length > 0) report?.Invoke(line.ToString());
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException) { report?.Invoke("output pipe closed: " + ex.GetType().Name); }
         catch (Exception ex) { report?.Invoke("output capture exception: " + ex); }

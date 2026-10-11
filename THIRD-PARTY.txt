@@ -75,3 +75,15 @@ ZXing.Net; исходная библиотека ZXing: ZXing authors.
 Лицензия Apache-2.0: licenses/ZXing-Net-Apache-2.0.txt.
 Пакет: https://www.nuget.org/packages/ZXing.Net/0.16.11
 Исходники: https://github.com/micjahn/ZXing.Net
+
+Дополнительно устанавливаемые сервисы (не включены в Setup)
+
+zapret-discord-youtube: Flowseal и участники проекта.
+Официальные Windows-пакеты: https://github.com/Flowseal/zapret-discord-youtube
+В пакете остаются исходные уведомления и лицензии winws, WinDivert и компонентов.
+kot запускает winws с параметрами выбранной стратегии без исполнения BAT.
+
+tg-ws-proxy: Copyright (c) 2026 Flowseal, MIT License.
+Официальные Windows-пакеты: https://github.com/Flowseal/tg-ws-proxy
+Полный текст MIT встроен в Core/TelegramProxyLicense.txt и сохраняется как
+LICENSE.txt рядом с каждой управляемой копией TgWsProxy_windows.exe.

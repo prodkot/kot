@@ -28,13 +28,14 @@ public sealed class Profile
     public string ActiveSubscription { get; set; } = "";
     public List<string> Favorites { get; set; } = [];
     public AutomationOptions Automation { get; set; } = new();
+    public ServiceOptions Services { get; set; } = new();
     public void Normalize()
     {
         ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
         RoutingProfiles ??= []; ActiveRoutingProfile ??= "";
-        GeoIp ??= new(); GeoIp.Validate();
+        GeoIp ??= new(); GeoIp.Validate(); Services ??= new(); Services.Validate();
         if (RoutingProfiles.Count > 20 || RoutingProfiles.Any(p => p == null) || RoutingProfiles.Select(p => p.Id).Distinct().Count() != RoutingProfiles.Count || ActiveRoutingProfile.Length > 0 && RoutingProfiles.All(p => p.Id != ActiveRoutingProfile))
             throw new UserError("Некорректный список профилей маршрутизации. Максимум 20 профилей.");
         foreach (var routing in RoutingProfiles) routing.Validate();
