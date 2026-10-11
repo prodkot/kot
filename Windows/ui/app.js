@@ -79,7 +79,7 @@
     closeSubscriptions();
     document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='page-'+name);
     document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===name)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
-    document.querySelector('.main').scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers(); if(name==='statistics')renderStatistics();
+    document.querySelector('.main').scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers(); if(name==='statistics')renderStatistics();clientTools.render();
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
@@ -106,7 +106,7 @@
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=data.favorites?.length?'Из избранного':'Быстрый доступный сервер';
     renderSubscriptions();renderRouting();
     $('backgroundError').textContent=data.backgroundError||'';$('backgroundError').hidden=!data.backgroundError;
-    $('refreshButton').disabled=refreshBusy||!data.hasSubscription;$('removeSubscription').hidden=!data.hasSubscription;
+    $('refreshButton').disabled=refreshBusy||!data.hasSubscription||!!data.localSubscription;$('removeSubscription').hidden=!data.hasSubscription;
     if(!$('advancedDialog').open)$('bypassDomains').value=data.settings.bypass||'';
     $('skippedDetails').hidden=!data.warnings?.length;$('skippedNodes').replaceChildren(...(data.warnings||[]).slice(0,50).map(w=>{const p=document.createElement('p');p.textContent=w;return p;}));
     $('titleVersion').textContent=data.version||'';$('version').textContent='kot. '+data.version+' · sing-box 1.14.2'+(data.updated?' · '+data.updated:'');
@@ -114,7 +114,7 @@
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;
     $('pingError').hidden=!ping.error;$('pingError').textContent=ping.error||'';
-    renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
+    clientTools.render();renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
     setState(data.state,old);const renderKey=JSON.stringify([data.nodes,data.selected,data.favorites,data.ping?.settings?.sort,data.ping?.busy]);if(renderKey!==renderedServers){renderedServers=renderKey;renderServers();}
   }
   function renderServers(){
@@ -139,6 +139,7 @@
       const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'Пинг';
       ping.title=result?.status==='ok'?result.mode.toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.append(icon,value);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
+      const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.textContent='QR';qr.setAttribute('aria-label','QR '+presentation.name);qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
       if(focusId===item.id)(focusPing?ping:focusFavorite?favorite:button).focus({preventScroll:true});
     });
   }
@@ -172,6 +173,7 @@
     $('statisticsSummary').textContent='Всего: '+total+' · Сеансов: '+(Number.isFinite(t?.sessions)?new Intl.NumberFormat('ru-RU').format(t.sessions):'Нет данных')+(statisticsPeriod==='session'&&!running&&s?.started?' · Последний сеанс':'');
     $('statistics').title=s?.firstRecorded?'Учёт с '+new Date(s.firstRecorded).toLocaleString('ru-RU'):'';
     $('statisticsError').textContent=s?.error||s?.warning||'';$('statisticsError').hidden=!$('statisticsError').textContent;
+    clientTools.renderStatistics(statisticsPeriod);
     document.querySelectorAll('[data-statistics-period]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.statisticsPeriod===statisticsPeriod));
   }
   const statisticsButtons=[...document.querySelectorAll('[data-statistics-period]')];
@@ -326,13 +328,15 @@
   document.querySelectorAll('[data-open-add]').forEach(el=>el.addEventListener('click',openAdd));$('cancelAdd').addEventListener('click',()=>closeDialog($('addDialog')));$('addDialog').addEventListener('close',clearLink);
   $('addForm').addEventListener('submit',async event=>{
     event.preventDefault();if($('addDialog').dataset.closing)return;
-    const url=$('profileLink').value.trim();try{if(new URL(url).protocol!=='https:')throw 0;}catch{$('addError').textContent='Нужна HTTPS-ссылка на подписку.';return;}
+    const url=$('profileLink').value.trim();if(!url){$('addError').textContent='Вставьте ссылку или выберите файл / картинку QR.';return;}
+    if(/^http:\/\//i.test(url)){$('addError').textContent='Нужна HTTPS-ссылка на подписку.';return;}
+    const remote=/^https:\/\//i.test(url);
     const submit=$('addForm').querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;importBusy=true;submit.textContent='Загрузка';$('addError').textContent='';
-    try{await rpc('import',{url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(model.warnings?.length?'Серверы добавлены. Пропущено: '+model.warnings.length:'Серверы добавлены');}
+    try{await rpc(remote?'import':'importText',remote?{url,name:$('profileName').value.trim()}:{text:url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(model.warnings?.length?'Серверы добавлены. Пропущено: '+model.warnings.length:'Серверы добавлены');}
     catch(e){$('addError').textContent=e.message;}
     finally{submit.disabled=false;importBusy=false;submit.textContent='Добавить';}
   });
-  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{await rpc('refresh');toast(model.warnings?.length?'Обновлено. Пропущено: '+model.warnings.length:'Подписка обновлена');}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription;}});
+  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{await rpc('refresh');toast(model.warnings?.length?'Обновлено. Пропущено: '+model.warnings.length:'Подписка обновлена');}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
   let deviceAttempt=0;
   function clearHwid(){deviceAttempt++;$('hwidValue').value='';$('deviceName').value='';$('copyHwid').disabled=true;}
   $('hwidButton').addEventListener('click',async()=>{
@@ -502,6 +506,7 @@
   document.querySelectorAll('[data-window]').forEach(b=>b.addEventListener('click',()=>request(b.dataset.window)));
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
+  const clientTools=window.KotClientTools({getModel:()=>model,getPage:()=>current,getPeriod:()=>statisticsPeriod,rpc,toast,openDialog,closeDialog,page});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','statistics','logs','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
+  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','statistics','diagnostics','logs','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
 })();

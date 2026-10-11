@@ -3,6 +3,8 @@ public sealed class Profile
 {
     public string Name { get; set; } = "Подписка";
     public string Address { get; set; } = "";
+    public bool Local { get; set; }
+    public SubscriptionUsage? SubscriptionUsage { get; set; }
     public List<Node> Nodes { get; set; } = [];
     public string Selected { get; set; } = "";
     public string Theme { get; set; } = "dark";
@@ -57,16 +59,16 @@ public sealed class Profile
     }
     public void CaptureActive()
     {
-        if (Address.Length == 0) return;
+        if (Address.Length == 0 && !Local) return;
         if (ActiveSubscription.Length == 0) ActiveSubscription = Guid.NewGuid().ToString("N");
         var saved = Subscriptions.FirstOrDefault(s => s.Id == ActiveSubscription);
         if (saved == null) { saved = new() { Id = ActiveSubscription }; Subscriptions.Add(saved); }
-        saved.Name = Name; saved.Address = Address; saved.Nodes = Nodes.ToList(); saved.Selected = Selected; saved.Updated = Updated; saved.Favorites = Favorites.ToList();
+        saved.Name = Name; saved.Address = Address; saved.Local = Local; saved.Usage = SubscriptionUsage; saved.Nodes = Nodes.ToList(); saved.Selected = Selected; saved.Updated = Updated; saved.Favorites = Favorites.ToList();
     }
     public void Activate(string id)
     {
         var saved = Subscriptions.FirstOrDefault(s => s.Id == id) ?? throw new UserError("Подписка уже удалена.");
-        ActiveSubscription = id; Name = saved.Name; Address = saved.Address; Nodes = saved.Nodes.ToList(); Selected = saved.Selected; Updated = saved.Updated; Favorites = saved.Favorites.ToList();
+        ActiveSubscription = id; Name = saved.Name; Address = saved.Address; Local = saved.Local; SubscriptionUsage = saved.Usage; Nodes = saved.Nodes.ToList(); Selected = saved.Selected; Updated = saved.Updated; Favorites = saved.Favorites.ToList();
         if (Selected != "auto" && Nodes.All(n => n.Id != Selected)) Selected = Nodes.FirstOrDefault()?.Id ?? "";
         Favorites = Favorites.Where(id => Nodes.Any(n => n.Id == id)).Distinct().ToList();
     }
@@ -78,7 +80,8 @@ public sealed class Profile
         if (Subscriptions.Select(s => s.Id).Distinct().Count() != Subscriptions.Count) throw new UserError("Повторяющиеся ID подписок.");
         foreach (var s in Subscriptions)
         {
-            if (!Uri.TryCreate(s.Address, UriKind.Absolute, out var url) || url.Scheme != "https" || url.UserInfo.Length > 0 || s.Name.Length > 60 || s.Nodes.Count > 2000 || string.IsNullOrEmpty(s.Id))
+            bool addressValid = s.Local ? s.Address.Length == 0 : Uri.TryCreate(s.Address, UriKind.Absolute, out var url) && url.Scheme == "https" && url.UserInfo.Length == 0;
+            if (!addressValid || s.Usage != null && !s.Usage.Valid() || s.Name.Length > 60 || s.Nodes.Count > 2000 || string.IsNullOrEmpty(s.Id))
                 throw new UserError("Некорректная резервная копия подписок.");
             foreach (var node in s.Nodes)
             {
@@ -102,6 +105,9 @@ public sealed class SavedSubscription
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "Подписка";
     public string Address { get; set; } = "";
+    public bool Local { get; set; }
+    public SubscriptionUsage? Usage { get; set; }
+    public string ExpiryNotice { get; set; } = "";
     public List<Node> Nodes { get; set; } = [];
     public string Selected { get; set; } = "";
     public List<string> Favorites { get; set; } = [];

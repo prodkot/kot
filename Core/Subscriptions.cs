@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 
 namespace Kot.Core;
 public sealed record Node(string Id, string Name, string Protocol, JsonObject Outbound);
-public sealed record SubscriptionResult(List<Node> Nodes, List<string> Warnings);
+public sealed record SubscriptionResult(List<Node> Nodes, List<string> Warnings, SubscriptionUsage? Usage = null);
 public sealed class UserError(string message) : Exception(message);
 
 public static class Subscriptions
@@ -22,8 +22,10 @@ public static class Subscriptions
     {
         if (Encoding.UTF8.GetByteCount(text) > MaxBytes) throw new UserError("Подписка слишком большая.");
         text = text.Trim().TrimStart('\uFEFF');
+        if (ClashImport.LooksLikeYaml(text)) return ClashImport.Parse(text);
         if (!text.Contains("://"))
             try { text = Decode64(text).Trim().TrimStart('\uFEFF'); } catch { throw new UserError("Не удалось прочитать подписку. Нужен список ссылок на серверы, обычный или Base64."); }
+        if (ClashImport.LooksLikeYaml(text)) return ClashImport.Parse(text);
         if (text.StartsWith('<') || text.StartsWith('{') || text.StartsWith("proxies:") || text.StartsWith("proxy-providers:"))
             throw new UserError("Сервер вернул HTML, YAML или JSON. Эта версия читает подписки со ссылками на серверы, в том числе Base64.");
         List<Node> nodes = []; List<string> warnings = []; HashSet<string> ids = [];
@@ -217,7 +219,9 @@ public static class Subscriptions
             if (response.Content.Headers.ContentLength > MaxBytes) throw new UserError("Подписка слишком большая.");
             await using var stream = await response.Content.ReadAsStreamAsync(ct); using MemoryStream buffer = new(); byte[] block = new byte[8192];
             while (true) { int count = await stream.ReadAsync(block, ct); if (count == 0) break; if (buffer.Length + count > MaxBytes) throw new UserError("Подписка слишком большая."); buffer.Write(block, 0, count); }
-            return Parse(new UTF8Encoding(false, true).GetString(buffer.ToArray()));
+            var parsed = Parse(new UTF8Encoding(false, true).GetString(buffer.ToArray()));
+            var usage = response.Headers.TryGetValues("Subscription-Userinfo", out var values) ? SubscriptionUsage.Parse(string.Join(';', values), DateTimeOffset.UtcNow) : null;
+            return parsed with { Usage = usage };
         }
         throw new UserError("Слишком много перенаправлений подписки.");
     }

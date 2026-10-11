@@ -37,7 +37,7 @@ def check():
             "Release notes differ from the current changelog entry")
     sdk = json.loads(read("global.json"))["sdk"]["version"]
     require(bool(re.fullmatch(r"10\.\d+\.\d+", sdk)), "Pin a stable .NET 10 SDK")
-    for package in project.findall("ItemGroup/PackageReference"):
+    for package in project.findall("ItemGroup/PackageReference") + ET.fromstring(read("Core/Kot.Core.csproj")).findall("ItemGroup/PackageReference"):
         require(bool(re.fullmatch(r"\d+(?:\.\d+){2,3}", package.get("Version", ""))),
                 f"Pin a stable package version: {package.get('Include')}")
         require(f"{package.get('Include')} {package.get('Version')}" in read("THIRD-PARTY.txt"),
@@ -75,6 +75,7 @@ def check():
 
     for name in ("LICENSE.txt", "THIRD-PARTY.txt", "SECURITY.md", "licenses/GPL-3.0.txt",
                  "licenses/Manrope-OFL.txt", "licenses/flag-icons-MIT.txt", "licenses/sing-box-Go-NOTICES.txt",
+                 "licenses/YamlDotNet-MIT.txt", "licenses/ZXing-Net-Apache-2.0.txt",
                  "upstream/sing-box-1.14.2-source.tar.gz"):
         require((ROOT / name).is_file(), f"Required notice or corresponding source missing: {name}")
     require(not (ROOT / "site/assets/Manrope.ttf").exists(), "Site must use the canonical client font")
