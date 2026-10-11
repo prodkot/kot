@@ -8,7 +8,7 @@
   .titlebar{grid-area:title}.main{grid-area:main;padding:18px 16px}.sidebar{grid-area:nav;padding:6px 8px;border-right:0;border-top:1px solid var(--line)}
   .sidebar .brand,.sidebar .subscription{display:none}.nav{flex-direction:row;gap:4px;height:100%}.nav-indicator{display:none}
   .nav-button{flex:1;min-width:0;flex-direction:column;justify-content:center;gap:5px;padding:7px 2px;font-size:9px;border-radius:7px}
-  .nav-button span{display:block}.nav-button[aria-current=page]{background:var(--raised)}.nav-button svg{width:19px;height:19px}
+  .nav-button span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nav-button[aria-current=page]{background:var(--raised)}.nav-button svg{width:19px;height:19px}
   .home-toolbar{min-height:40px}.icon-button{width:40px;height:40px}.page-header{margin-bottom:20px;gap:10px}.page-header h1{font-size:22px}.server-actions{gap:6px}
   .connection{min-height:255px;padding:12px 0 22px}.power-zone{width:184px;height:184px;margin-top:18px}.power{width:138px;height:138px}
   .home-controls{margin-bottom:4px}.traffic{gap:20px!important}.traffic-item strong{font-size:16px!important}

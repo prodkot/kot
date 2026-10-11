@@ -54,7 +54,19 @@ internal static class Program
             }
             Check(luid != 0 && !core.HasExited, "bundled sing-box creates the real Windows TUN interface");
             KillSwitch.ArmForTests(Environment.ProcessPath!, exe, luid);
-            Check(Connect(), "protected fixture connects through the real TUN and sing-box");
+            // The adapter exists before Windows has finished installing its routes.
+            // Keep the guard armed, and only try the protected connection on the TUN route.
+            timer.Restart(); bool routed = false, connected = false;
+            while (timer.Elapsed.TotalSeconds < 15 && !core.HasExited)
+            {
+                if (GetBestInterface(0x01010101, out var index) == 0 && ConvertInterfaceIndexToLuid(index, out var route) == 0 && route == luid)
+                {
+                    routed = true; if (Connect()) { connected = true; break; }
+                }
+                Thread.Sleep(200);
+            }
+            Check(routed, "Windows installs the outgoing route through the real TUN");
+            Check(connected, "protected fixture connects through the real TUN and sing-box");
             core.Process.Kill(); core.WaitForExitAsync().Wait(TimeSpan.FromSeconds(10));
             Check(KillSwitch.Detect() && !Connect(), "abrupt sing-box termination leaves direct TCP blocked");
         }

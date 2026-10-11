@@ -111,6 +111,22 @@ def check():
                 frame.locator('#closeOnlineUpdate').click()
                 expect(frame.locator('#onlineUpdateDialog')).not_to_be_visible()
 
+                # Native networking, files and QR stay unavailable in the isolated demo.
+                frame.locator('[data-page=diagnostics]').click()
+                expect(frame.locator('#page-diagnostics')).to_be_visible()
+                frame.locator('#runDiagnostics').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('[data-page=servers]').click()
+                frame.locator('#qualityButton').click()
+                expect(frame.locator('#qualityDialog')).to_be_visible()
+                frame.locator('#testQuality').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('#closeQuality').click()
+                frame.locator('.qr-node').first.click()
+                expect(frame.locator('#shareQrError')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('#closeShareQr').click()
+                frame.locator('[data-page=settings]').click()
+
                 # Routing profiles stay in memory; importing a URL never contacts it.
                 frame.locator('#routingButton').click()
                 frame.locator('#routingNew').click()
@@ -179,7 +195,7 @@ def check():
                 for width in [320, 375, 390, 600, 700, 1000, 1440]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth === innerWidth'), width
-                    for section in ['servers', 'statistics', 'logs', 'settings', 'home']:
+                    for section in ['servers', 'statistics', 'diagnostics', 'logs', 'settings', 'home']:
                         frame.locator('[data-page=' + section + ']').click()
                         expect(frame.locator('#page-' + section)).to_be_visible()
                         assert frame.locator('body').evaluate('() => document.documentElement.scrollWidth === innerWidth'), (width, section)

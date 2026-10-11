@@ -3,7 +3,7 @@
   // Browser-only stand-in for WebView. All state stays in this frame's memory.
   // No subscriptions, hardware IDs, system settings or network connections are read.
   const version = document.body.dataset.demoVersion;
-  const pages = ['home', 'servers', 'statistics', 'logs', 'settings'];
+  const pages = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'settings'];
   const listeners = new Set();
   const timers = new Map();
   let model, tick = 0, subscriptionSequence = 1, routingSequence = 0;
@@ -229,7 +229,6 @@
   document.querySelector('#onlineUpdateDialog > .dialog-note:last-child').textContent = 'На сайте ничего не скачивается и не устанавливается. Эта проверка показывает только интерфейс.';
   document.getElementById('addTitle').textContent = 'Добавить пример';
   document.querySelector('label[for=profileLink]').textContent = 'Пример ссылки';
-  document.getElementById('profileLink').type = 'text';
   document.getElementById('profileLink').placeholder = 'Настоящая ссылка не нужна';
   document.getElementById('replaceNote').textContent = 'Добавится пример подписки с четырьмя серверами. Ссылки в демо не загружаются.';
   // The client clears the form on open; prefill after it has opened.
