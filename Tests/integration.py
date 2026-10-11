@@ -5,7 +5,9 @@ parser.add_argument('--core', required=True, type=pathlib.Path, help='Path to th
 args = parser.parse_args()
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 core=args.core.resolve()
-generated=ROOT/'Tests/generated'
+# Only this directory contains sing-box configurations. Other generated JSON
+# includes history and update metadata, which the core must never interpret.
+generated=ROOT/'Tests/generated/configurations'
 if not core.is_file():
     parser.error('sing-box executable not found')
 if not all((generated/name).is_file() for name in ('fixture-client.json','fixture-server.json')):

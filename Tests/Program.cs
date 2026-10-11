@@ -27,14 +27,15 @@ var domains = Configuration.Domains("example.com\n.example.org\nexample.com");
 Check(domains.SequenceEqual(new[] { "example.com", "example.org" }), "rules normalization");
 bool badDomain = false; try { Configuration.Domains("https://example.com/path"); } catch(UserError) { badDomain = true; } Check(badDomain, "rules reject URL");
 string fixtureFolder = "Tests/generated";
-Directory.CreateDirectory(fixtureFolder);
+string configurationFolder = Path.Combine(fixtureFolder, "configurations");
+Directory.CreateDirectory(configurationFolder);
 foreach (var n in new[] { a.Nodes[0], ws, ss, vm, Subscriptions.ParseNode("trojan://password@example.com:443?sni=example.com#TR"), Subscriptions.ParseNode("hysteria2://password@example.com:443?sni=example.com#HY") })
- File.WriteAllText($"{fixtureFolder}/{n.Protocol}-{n.Id[..6]}.json", Configuration.Build(n, 19223, true, domains).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+ File.WriteAllText($"{configurationFolder}/{n.Protocol}-{n.Id[..6]}.json", Configuration.Build(n, 19223, true, domains).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 if (args.Length > 0 && args[0] == "integration")
 {
  var fixture = Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:19441?security=none#Fixture");
- File.WriteAllText(Path.Combine(fixtureFolder, "fixture-client.json"), Configuration.Build(fixture, 19442, false, [], tun: false).ToJsonString());
- File.WriteAllText(Path.Combine(fixtureFolder, "fixture-server.json"), new JsonObject { ["inbounds"] = new JsonArray(new JsonObject { ["type"] = "vless", ["listen"] = "127.0.0.1", ["listen_port"] = 19441, ["users"] = new JsonArray(new JsonObject { ["uuid"] = uuid }) }), ["outbounds"] = new JsonArray(new JsonObject { ["type"] = "direct" }) }.ToJsonString());
+ File.WriteAllText(Path.Combine(configurationFolder, "fixture-client.json"), Configuration.Build(fixture, 19442, false, [], tun: false).ToJsonString());
+ File.WriteAllText(Path.Combine(configurationFolder, "fixture-server.json"), new JsonObject { ["inbounds"] = new JsonArray(new JsonObject { ["type"] = "vless", ["listen"] = "127.0.0.1", ["listen_port"] = 19441, ["users"] = new JsonArray(new JsonObject { ["uuid"] = uuid }) }), ["outbounds"] = new JsonArray(new JsonObject { ["type"] = "direct" }) }.ToJsonString());
 }
 
 var redirect = new FakeTransport((request, index) => index == 0 ? new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Found) { Headers = { Location = new Uri("/download", UriKind.Relative) } } : new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(vless) });
@@ -53,14 +54,15 @@ var device = new SubscriptionDevice(SubscriptionDevice.HashMachineId("ABCDE-TEST
 device.Validate();
 Check(device.Hwid.Length == 64 && device.Hwid == SubscriptionDevice.HashMachineId(" abcde-test-machine ") && device.Hwid != SubscriptionDevice.HashMachineId("other-machine"), "stable app-specific machine ID, normalized and distinct per machine");
 Check(device.Hwid == "225CDDEE6C5E4C6F8DCF838D42070CE4DF86F130091DF0AF435B20CFE29E347D", "branding preserves historical HWID algorithm and salt");
-Check(ClientIdentity.DeviceName == "kot. windows (0.5.9)", "versioned device display name");
+string expectedDeviceName = $"kot. windows ({ClientIdentity.Version})";
+Check(ClientIdentity.DeviceName == expectedDeviceName, "versioned device display name");
 int deviceRequests = 0;
 await Subscriptions.Download("https://subscription.example/start", CancellationToken.None, new FakeTransport((request, index) =>
 {
     Check(request.Headers.GetValues("x-hwid").Single() == device.Hwid && request.Headers.GetValues("x-device-os").Single() == "Windows"
-        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == "kot. windows (0.5.9)", "device headers on import and same-origin redirect");
+        && request.Headers.GetValues("x-ver-os").Single() == device.OsVersion && request.Headers.GetValues("x-device-model").Single() == expectedDeviceName, "device headers on import and same-origin redirect");
     var userAgent = request.Headers.UserAgent.ToString();
-    Check(userAgent == "kot. windows (0.5.9) v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
+    Check(userAgent == expectedDeviceName + " v2rayN/7.0" && !userAgent.Contains(device.Hwid), "branded User-Agent preserves link-format compatibility without HWID");
     deviceRequests++;
     return index == 0 ? new(System.Net.HttpStatusCode.Found) { Headers = { Location = new Uri("/download", UriKind.Relative) } } : new(System.Net.HttpStatusCode.OK) { Content = new StringContent(vless) };
 }), device);
@@ -212,7 +214,7 @@ foreach (var config in new[] { pingConfig, Configuration.Build(a.Nodes[0], 19501
         && config["dns"]!["final"]!.ToString() == "remote" && config["route"]!["default_domain_resolver"]!.ToString() == "bootstrap",
         "startup regression: direct bootstrap avoids invalid empty-direct detour; normal DNS stays through proxy");
 }
-File.WriteAllText(Path.Combine(fixtureFolder, "ping.json"), pingConfig.ToJsonString());
+File.WriteAllText(Path.Combine(configurationFolder, "ping.json"), pingConfig.ToJsonString());
 var session = new SessionLog(); session.Write("launch", "CreateProcess stage");
 try { throw new InvalidOperationException("actual failure", new IOException("inner failure")); } catch (Exception ex) { session.Error("launch", ex); }
 Check(session.Snapshot().Contains("InvalidOperationException: actual failure") && session.Snapshot().Contains("IOException: inner failure") && session.Snapshot().Contains("Program.cs:line") && session.Snapshot().Contains("CreateProcess stage"), "full log preserves exception message, inner error, stack trace and launch stage");
@@ -253,7 +255,7 @@ var autoOutbounds = automatic["outbounds"]!.AsArray();
 Check(autoOutbounds.Count == 5 && autoOutbounds[3]?["type"]?.ToString() == "urltest" && autoOutbounds[3]?["outbounds"]?.AsArray().Count == 3, "Auto configuration delegates full proxy checks to URLtest");
 Check(autoOutbounds[3]?["interrupt_exist_connections"]?.GetValue<bool>() == false && automatic["experimental"]?["clash_api"]?["external_controller"]?.ToString() == "127.0.0.1:19224", "Auto API restricted to loopback and existing inbound sessions preserved");
 Check(a.Nodes[0].Outbound["tag"]?.ToString() == "proxy", "Auto does not mutate stored outbounds");
-File.WriteAllText(Path.Combine(fixtureFolder, "automatic.json"), automatic.ToJsonString());
+File.WriteAllText(Path.Combine(configurationFolder, "automatic.json"), automatic.ToJsonString());
 foreach (string unsafePath in new[] { "../Kot.exe", "a/../../b", "C:/Kot.exe", "a\\b", "/absolute", "file:stream", "CON.txt", "LPT1", "a.", "a /b", "a//b", "a/", "a\n.exe" })
  Check(!ReleasePackage.SafeName(unsafePath), "update path rejected: " + unsafePath.Replace('\n', ' '));
 Check(ReleasePackage.SafeName("ui/index.html") && ReleasePackage.SafeName("core/sing-box.exe"), "update permits normal relative files");
@@ -293,10 +295,10 @@ Kot.Tests.SetupTests.Run(Check);
 Kot.Tests.InstallationTests.Run(Check, fixtureFolder);
 await SecurityTests.Run(Check, vless, uuid);
 await Kot.Tests.UpdateTests.Run(Check, fixtureFolder);
-await Kot.Tests.ProductTests.Run(Check, a.Nodes[0], fixtureFolder);
-await Kot.Tests.RoutingTests.Run(Check, a.Nodes[0], fixtureFolder);
+await Kot.Tests.ProductTests.Run(Check, a.Nodes[0], configurationFolder);
+await Kot.Tests.RoutingTests.Run(Check, a.Nodes[0], configurationFolder);
 await Kot.Tests.GeoIpTests.Run(Check, a.Nodes[0], fixtureFolder);
-Kot.Tests.StatisticsTests.Run(Check, fixtureFolder);
+Kot.Tests.StatisticsTests.Run(Check, Path.Combine(fixtureFolder, "statistics"));
 
 sealed class FakeTransport(Func<HttpRequestMessage, int, HttpResponseMessage> response) : HttpMessageHandler
 {
