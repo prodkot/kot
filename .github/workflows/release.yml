@@ -3,6 +3,12 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Опубликовать новую версию из main в Releases'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 jobs:
@@ -23,9 +29,14 @@ jobs:
           python-version: '3.x'
       - name: Verify tag and run core tests
         shell: pwsh
+        env:
+          PUBLISH_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: |
           $version=[regex]::Match((Get-Content Core/ClientIdentity.cs -Raw),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and application version disagree.' }
+          if ($env:PUBLISH_RELEASE -eq 'true' -and $env:GITHUB_REF -ne 'refs/heads/main') { throw 'Manual publication is only allowed from main.' }
+          python Tests/repository.py
+          if ($LASTEXITCODE -ne 0) { throw 'Repository consistency checks failed.' }
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
       - name: Native Windows process launcher
@@ -122,10 +133,23 @@ jobs:
           path: |
             artifacts/*.exe
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version=$env:GITHUB_REF_NAME -replace '^v',''
-          gh release create $env:GITHUB_REF_NAME artifacts/*.exe --title "kot. $version" --notes-file Release/NOTES.md --verify-tag
+          $version=[regex]::Match((Get-Content Core/ClientIdentity.cs -Raw),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
+          $tag="v$version"
+          $arguments=@('release','create',$tag,"artifacts/Kot-Setup-$version-Windows-x64.exe",'--title',"kot. $version",'--notes-file','Release/NOTES.md')
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -ne $tag) { throw 'Tag and application version disagree.' }
+            $arguments+='--verify-tag'
+          } else {
+            if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Manual publication is only allowed from main.' }
+            $existing=git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not check the release tag.' }
+            if ($existing) { throw "Tag $tag already exists. Use its tag workflow or increase the application version." }
+            $arguments+=@('--target',$env:GITHUB_SHA)
+          }
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

@@ -74,7 +74,9 @@ public static class StatisticsTests
         }
         File.WriteAllText(path, valid);
         string locked = Path.Combine(folder, "statistics-target-directory"); Directory.CreateDirectory(locked);
-        bool failed = false; try { UsageFile.Save(locked, loaded); } catch (IOException) { failed = true; }
+        // A file-to-directory collision is IOException on Unix and
+        // UnauthorizedAccessException on Windows; both must preserve the history.
+        bool failed = false; try { UsageFile.Save(locked, loaded); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed = true; }
         check(failed && UsageFile.Load(path).AllTime == loaded.AllTime && !Directory.GetFiles(folder, "statistics-target-directory.tmp-*").Any(), "statistics failed atomic replacement preserves previous history and cleans temporary data");
         check(UsageFile.Load(Path.Combine(folder, "not-created-history.json")).AllTime == new UsageTotals(), "statistics first install starts with zero history");
     }
