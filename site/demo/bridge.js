@@ -3,10 +3,10 @@
   // Browser-only stand-in for WebView. All state stays in this frame's memory.
   // No subscriptions, hardware IDs, system settings or network connections are read.
   const version = document.body.dataset.demoVersion;
-  const pages = ['home', 'servers', 'logs', 'settings'];
+  const pages = ['home', 'servers', 'statistics', 'logs', 'settings'];
   const listeners = new Set();
   const timers = new Map();
-  let model, tick = 0, subscriptionSequence = 1;
+  let model, tick = 0, subscriptionSequence = 1, routingSequence = 0;
   const samples = () => [
     { id: 'nl', name: 'Нидерланды', countryCode: 'NL', code: 'VL', protocol: 'vless', latency: 42 },
     { id: 'de', name: 'Германия', countryCode: 'DE', code: 'VL', protocol: 'vless', latency: 68 },
@@ -16,7 +16,9 @@
   function emit(data) { listeners.forEach(listener => listener({ data: structuredClone(data) })); }
   function notify(data) { parent.postMessage({ kind: 'kot-demo', ...data }, '*'); }
   function snapshot() {
+    updateStatistics();
     model.telemetry.count = model.telemetry.connections.length;
+    model.geoIp.countries = [...new Set(model.routing.profiles.flatMap(profile => ['directCountries','proxyCountries','blockCountries'].flatMap(key => profile.rules[key] || [])))].map(code => ({ code, ready: false, updated: null }));
     emit({ kind: 'snapshot', data: model });
     document.getElementById('demo-failure').disabled = model.state !== 'connected';
   }
@@ -32,6 +34,25 @@
   function emptyTraffic() {
     return { available: true, downloadRate: 0, uploadRate: 0, downloadTotal: 0, uploadTotal: 0, count: 0, connections: [] };
   }
+  let sessionStarted=0,previousStatisticsTime=0;
+  function emptyStatistics() {
+    const totals=()=>({download:0,upload:0,connectedSeconds:0,sessions:0});
+    return {running:false,elapsedSeconds:0,started:null,ended:null,firstRecorded:null,session:totals(),week:totals(),month:totals(),allTime:totals(),error:'',warning:''};
+  }
+  function startStatistics() {
+    sessionStarted=previousStatisticsTime=performance.now();
+    const s=model.statistics;s.running=true;s.started=new Date().toISOString();s.ended=null;s.firstRecorded||=s.started;s.elapsedSeconds=0;
+    s.session={download:0,upload:0,connectedSeconds:0,sessions:1};
+    for(const period of ['week','month','allTime'])s[period].sessions++;
+    model.telemetry=emptyTraffic();
+  }
+  function updateStatistics() {
+    const s=model.statistics;if(!s.running)return;
+    const now=performance.now(),elapsed=Math.max(0,(now-previousStatisticsTime)/1000);previousStatisticsTime=now;
+    s.elapsedSeconds=Math.max(0,(now-sessionStarted)/1000);
+    for(const period of ['session','week','month','allTime'])s[period].connectedSeconds+=elapsed;
+    if(model.state!=='connected'){s.running=false;s.ended=new Date().toISOString();}
+  }
   function chooseAuto() {
     const pool = model.nodes.filter(node => !model.favorites.length || model.favorites.includes(node.id));
     model.automaticNode = [...pool].sort((a, b) => a.latency - b.latency)[0]?.id || model.nodes[0]?.id;
@@ -46,15 +67,17 @@
     }));
   }
   function reset() {
-    timers.forEach(clearTimeout); timers.clear(); tick = 0; subscriptionSequence = 1;
+    timers.forEach(clearTimeout); timers.clear(); tick = 0; subscriptionSequence = 1; routingSequence = 0;
     model = {
       version, name: 'Личная подписка', hasSubscription: true, nodes: samples(), selected: 'nl', automaticNode: 'nl',
       state: 'idle', error: '', warnings: [], backgroundError: '', favorites: [], updated: null,
       settings: { theme: 'dark', accent: 'lime', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
       subscriptions: [{ id: 'sample-1', name: 'Личная подписка', count: 4 }], activeSubscription: 'sample-1',
       automation: { reconnect: true, refreshHours: 6, pingMinutes: 0, autoMinutes: 3, autoToleranceMs: 50 },
+      routing: { active: '', profiles: [], errors: {} },
+      geoIp: { busy: false, error: '', refreshHours: 24, countries: [] },
       ping: { busy: false, done: 0, total: 0, error: '', settings: { mode: 'http', url: 'https://example.org', timeoutMs: 5000, attempts: 2, parallelism: 3, sort: 'none' } },
-      updates: { busy: false, status: '', error: '', availableVersion: null }, telemetry: emptyTraffic(), journal: ''
+      updates: { busy: false, status: '', error: '', availableVersion: null }, telemetry: emptyTraffic(), statistics: emptyStatistics(), journal: ''
     };
     log('Интерфейс готов. Можно выбрать сервер и подключиться.');
   }
@@ -94,7 +117,7 @@
           log('Подключение отключено вручную.');
         } else if (model.nodes.length) {
           model.state = 'connecting'; log('Подключение: ' + selectedName());
-          later('connect', () => { model.state = 'connected'; model.settings.killSwitchActive = false; model.telemetry.downloadRate = 2516582; model.telemetry.uploadRate = 398459; connections(); log('Подключено. Трафик в этом окне показан для примера.'); snapshot(); }, 850);
+          later('connect', () => { model.state = 'connected'; startStatistics(); model.settings.killSwitchActive = false; model.telemetry.downloadRate = 2516582; model.telemetry.uploadRate = 398459; connections(); log('Подключено. Трафик в этом окне показан для примера.'); snapshot(); }, 850);
         }
         break;
       case 'select':
@@ -119,6 +142,33 @@
       case 'cancelPing': stopPing(); break;
       case 'pingSettings': model.ping.settings = { ...data }; break;
       case 'automationSettings': model.automation = { ...data }; break;
+      case 'geoIpSettings': model.geoIp.refreshHours = data.refreshHours; break;
+      case 'geoIpRefresh': throw Error('Загрузка баз GeoIP доступна в установленной программе. В демо сетевых запросов нет.');
+      case 'routingSave': {
+        if (data.sourceUrl) throw Error('В демо ссылки не загружаются. Сохрани профиль без ссылки.');
+        const index = model.routing.profiles.findIndex(profile => profile.id === data.id);
+        if (data.id && index < 0) throw Error('Профиль уже удалён.');
+        const saved = { id: data.id || 'routing-' + (++routingSequence), rules: structuredClone(data.rules), sourceUrl: '', refreshHours: data.refreshHours, updated: null };
+        if (index < 0) model.routing.profiles.push(saved); else model.routing.profiles[index] = saved;
+        model.routing.active = saved.id;
+        log('Сохранён пример маршрутизации. Настройки действуют только в демо.'); break;
+      }
+      case 'routingSelect':
+        if (data.id && !model.routing.profiles.some(profile => profile.id === data.id)) throw Error('Профиль уже удалён.');
+        model.routing.active = data.id; break;
+      case 'routingRemove':
+        model.routing.profiles = model.routing.profiles.filter(profile => profile.id !== data.id);
+        if (model.routing.active === data.id) model.routing.active = '';
+        break;
+      case 'routingImport': {
+        if (!data.content.trim().startsWith('{')) throw Error('В демо ссылки не загружаются. Вставь JSON-профиль kot.');
+        let rules; try { rules = JSON.parse(data.content); } catch { throw Error('Неверный JSON-профиль.'); }
+        const lists = ['directDomains','proxyDomains','blockDomains','directIps','proxyIps','blockIps','directApps','proxyApps','blockApps','directCountries','proxyCountries','blockCountries'];
+        if (rules.version !== 1 || (rules.name !== undefined && (typeof rules.name !== 'string' || rules.name.length > 60)) || lists.some(key => rules[key] !== undefined && (!Array.isArray(rules[key]) || rules[key].some(value => typeof value !== 'string')))) throw Error('Неверный JSON-профиль kot.');
+        const id = 'routing-' + (++routingSequence);
+        model.routing.profiles.push({ id, rules, sourceUrl: '', refreshHours: 24, updated: null }); model.routing.active = id; break;
+      }
+      case 'routingExport': case 'routingRefresh': throw Error('Файлы и обновления по ссылке доступны в установленной программе.');
       case 'refresh': log('Пример подписки обновлён.'); break;
       case 'import': {
         // Intentionally ignore the supplied URL. This action never makes a request.
@@ -213,6 +263,7 @@
     t.downloadRate = Math.round((2.4 + Math.sin(tick * .7) * .6) * 1048576);
     t.uploadRate = Math.round((.38 + Math.cos(tick * .5) * .12) * 1048576);
     t.downloadTotal += t.downloadRate; t.uploadTotal += t.uploadRate;
+    for(const period of ['session','week','month','allTime']){model.statistics[period].download+=t.downloadRate;model.statistics[period].upload+=t.uploadRate;}
     t.connections.forEach((connection, i) => { connection.download += Math.round(t.downloadRate / (i + 2)); connection.upload += Math.round(t.uploadRate / 3); });
     snapshot();
   }, 1000);

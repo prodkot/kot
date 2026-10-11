@@ -14,6 +14,12 @@ public static class AppLog
                 if (!nodes.Any(old => old.Id == node.Id && System.Text.Json.Nodes.JsonNode.DeepEquals(old.Outbound, node.Outbound))) nodes.Add(node);
             foreach (var s in profile.Subscriptions) if (s.Address.Length > 0) secrets.Add(s.Address);
             if (profile.Address.Length > 0) secrets.Add(profile.Address);
+            foreach (var routing in profile.RoutingProfiles)
+            {
+                if (routing.SourceUrl.Length > 0) secrets.Add(routing.SourceUrl);
+                foreach (var value in routing.Rules.DirectDomains.Concat(routing.Rules.ProxyDomains).Concat(routing.Rules.BlockDomains).Concat(routing.Rules.DirectIps).Concat(routing.Rules.ProxyIps).Concat(routing.Rules.BlockIps))
+                    if (value.Length > 0) secrets.Add(value);
+            }
         }
     }
     public static void Secret(string text) { if (text.Length > 0) lock (sync) secrets.Add(text); }

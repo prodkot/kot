@@ -16,6 +16,11 @@ public sealed class Tunnel
     Node? activeNode;
     public int ProxyPort { get; private set; }
     public int Session { get; private set; }
+    public long ConnectedMilliseconds { get; private set; }
+    public DateTimeOffset ConnectedUtc { get; private set; }
+    public event Action<int, long, DateTimeOffset, ConnectionSnapshot?>? SessionEnded;
+    public static long MonotonicMilliseconds => (long)(Stopwatch.GetTimestamp() * (1000d / Stopwatch.Frequency));
+    bool statisticsStarted;
     int apiPort;
     string apiSecret = "";
     public string AutomaticNode { get; private set; } = "";
@@ -51,10 +56,12 @@ public sealed class Tunnel
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or UserError) { AppLog.Write("auto", "selection read: " + e.GetType().Name); }
     }
-    public async Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct)
+    public Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct) => ReadConnections(ct, false);
+    async Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct, bool closing)
     {
         int port = apiPort, session = Session; string secret = apiSecret;
-        if (port == 0 || State != "connected") return null;
+        bool CanRead() => State == "connected" || closing && State == "disconnecting";
+        if (port == 0 || !CanRead()) return null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(2));
         using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false };
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
@@ -66,7 +73,7 @@ public sealed class Tunnel
         using var body = await response.Content.ReadAsStreamAsync(deadline.Token); using var buffer = new MemoryStream(); byte[] block = new byte[16384];
         while (true) { int read = await body.ReadAsync(block, deadline.Token); if (read == 0) break; if (buffer.Length + read > 2 * 1024 * 1024) throw new UserError("Слишком большой ответ локального API."); await buffer.WriteAsync(block.AsMemory(0, read), deadline.Token); }
         var value = ConnectionSnapshot.Parse(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
-        return Session == session && State == "connected" ? value : null;
+        return Session == session && CanRead() ? value : null;
     }
     static int ReservePort() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
     public event Action? Changed;
@@ -96,6 +103,9 @@ public sealed class Tunnel
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
             attempt = new CancellationTokenSource(); var ct = attempt.Token;
             Set("connecting");
+            string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
+            await GeoIpStore.Update(countries, true, ct);
+            ct.ThrowIfCancellationRequested();
             using var portReservation = new TcpListener(IPAddress.Loopback, 0); portReservation.Start();
             int port = ((IPEndPoint)portReservation.LocalEndpoint).Port; portReservation.Stop();
             AppLog.Write("tunnel", "build configuration");
@@ -104,7 +114,7 @@ public sealed class Tunnel
             AppLog.Secret(apiSecret);
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
-            var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret);
+            var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret, GeoIpStore.Cache.Paths(countries));
             ProxyPort = port; AutomaticNode = "";
             Directory.CreateDirectory(Store.Folder);
             File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -157,6 +167,7 @@ public sealed class Tunnel
             try { File.Delete(path); } catch { }
             if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
             if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
+            ConnectedMilliseconds = MonotonicMilliseconds; ConnectedUtc = DateTimeOffset.UtcNow; statisticsStarted = true;
             Set("connected");
             _ = Watch(core);
         }
@@ -190,6 +201,15 @@ public sealed class Tunnel
     }
     async Task StopCore()
     {
+        if (statisticsStarted)
+        {
+            long ended = MonotonicMilliseconds; DateTimeOffset utc = DateTimeOffset.UtcNow;
+            ConnectionSnapshot? final = null;
+            try { if (core != null && !core.HasExited) final = await ReadConnections(CancellationToken.None, true); }
+            catch (Exception ex) { AppLog.Write("telemetry", "final sample: " + ex.GetType().Name); }
+            statisticsStarted = false;
+            SessionEnded?.Invoke(Session, ended, utc, final);
+        }
         Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = "";
         try
         {

@@ -45,6 +45,8 @@ python -m venv .tools/venv
 ./.tools/venv/Scripts/python.exe Tests/ui.py
 ./.tools/venv/Scripts/python.exe Tests/flags_ui.py
 ./.tools/venv/Scripts/python.exe Tests/subscriptions_ui.py
+./.tools/venv/Scripts/python.exe Tests/routing_ui.py
+./.tools/venv/Scripts/python.exe Tests/statistics_ui.py
 ./.tools/venv/Scripts/python.exe site/check.py
 ./.tools/venv/Scripts/python.exe site/demo_browser_check.py
 ```
@@ -65,9 +67,12 @@ dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 -p:SelfC
 ```powershell
 dotnet run --project Tests/Kot.Tests.csproj -c Release -- integration
 python Tests/integration.py --core 'C:\tools\sing-box.exe'
+dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core 'C:\tools\sing-box.exe'
 ```
 
 Порты 19441–19443 должны быть свободны. На Linux-хосте, запрещающем netlink, live-проверка может завершиться кодом 77; это пропуск, а не успешная проверка соединения. В CI цепочка должна пройти полностью.
+
+Режим `geoip-core` создаёт IPv4/IPv6 SRS, проверяет реальные конфигурации с правилами стран в TUN и системном прокси, отклоняет повреждённые и содержащие домены файлы. Дополнительным аргументом можно передать скачанный официальный `geoip-ru.srs` для проверки той же командой. Этот тест не меняет сетевые настройки и не требует доступа к интернету.
 
 ## Выпуск
 

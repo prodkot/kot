@@ -10,11 +10,33 @@ public sealed partial class MainWindow
     string visiblePage = "home", telemetryError = "";
     bool readingTelemetry;
     int liveSession = -1;
+    UsageTracker usage = new(new UsageArchive());
+    readonly string usagePath = Path.Combine(Store.Folder, "traffic-history.json");
+    string statisticsError = "";
+    bool statisticsWritable = true;
+    long lastStatisticsSave;
     void InitTelemetry()
     {
+        try { usage = new(UsageFile.Load(usagePath)); }
+        catch (Exception ex)
+        {
+            statisticsWritable = false;
+            statisticsError = "Не удалось прочитать историю. Старый файл сохранён; новый учёт ведётся только в памяти.";
+            AppLog.Error("statistics load", ex);
+        }
+        tunnel.Changed += () =>
+        {
+            if (tunnel.State != "connected" || usage.ActiveSession == tunnel.Session) return;
+            usage.Start(tunnel.Session, tunnel.ConnectedMilliseconds, tunnel.ConnectedUtc);
+            SaveStatistics(true);
+        };
+        tunnel.SessionEnded += (session, milliseconds, utc, counters) =>
+        {
+            usage.End(session, milliseconds, utc, counters); SaveStatistics(true);
+        };
         telemetryTimer.Tick += async (_, _) =>
         {
-            if (readingTelemetry || exiting || !bridgeReady) return;
+            if (readingTelemetry || exiting) return;
             readingTelemetry = true;
             try
             {
@@ -22,19 +44,55 @@ public sealed partial class MainWindow
                 {
                     int session = tunnel.Session; var result = await tunnel.ReadConnections(lifetime.Token);
                     if (result != null && session == tunnel.Session)
-                    { liveSession = session; liveConnections = result; traffic = trafficSampler.Sample(session, Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency, result); telemetryError = ""; }
+                    {
+                        liveSession = session; liveConnections = result; traffic = trafficSampler.Sample(session, Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency, result); telemetryError = "";
+                        usage.Observe(session, Tunnel.MonotonicMilliseconds, DateTimeOffset.UtcNow, result);
+                    }
                     else ResetTelemetry();
                 }
                 else ResetTelemetry();
             }
             catch (OperationCanceledException) { if (!exiting) TelemetryFailure(); }
             catch (Exception ex) { if (telemetryError.Length == 0) AppLog.Error("telemetry", ex); TelemetryFailure(); }
-            finally { readingTelemetry = false; if (!exiting) { Snapshot(); ScheduleUpdateCheck(); } }
+            finally
+            {
+                readingTelemetry = false;
+                if (!exiting)
+                {
+                    if (tunnel.State == "connected") usage.Observe(tunnel.Session, Tunnel.MonotonicMilliseconds, DateTimeOffset.UtcNow);
+                    SaveStatistics(); Snapshot(); ScheduleUpdateCheck();
+                }
+            }
         };
         telemetryTimer.Start();
     }
     void ResetTelemetry() { trafficSampler.Reset(); traffic = TrafficReading.Empty; liveConnections = null; telemetryError = ""; }
     void TelemetryFailure() { trafficSampler.Reset(); traffic = TrafficReading.Empty; liveConnections = null; telemetryError = "Статистика временно недоступна."; }
+    void SaveStatistics(bool force = false)
+    {
+        long now = Tunnel.MonotonicMilliseconds;
+        if (!statisticsWritable || !force && (usage.ActiveSession == null && statisticsError.Length == 0 || now - lastStatisticsSave < 10000)) return;
+        lastStatisticsSave = now;
+        try { UsageFile.Save(usagePath, usage.Archive); statisticsError = ""; }
+        catch (Exception ex)
+        {
+            if (statisticsError.Length == 0) AppLog.Error("statistics save", ex);
+            statisticsError = "История не сохранена на диск. Текущие счётчики продолжают работать.";
+        }
+    }
+    object StatisticsModel()
+    {
+        bool running = tunnel.State == "connected" && usage.ActiveSession == tunnel.Session;
+        var archive = usage.Archive; DateTimeOffset now = DateTimeOffset.UtcNow;
+        object Totals(UsageTotals value) => new { value.Download, value.Upload, connectedSeconds = value.ConnectedMilliseconds / 1000d, value.Sessions };
+        return new
+        {
+            running, elapsedSeconds = running ? Math.Max(0, Tunnel.MonotonicMilliseconds - tunnel.ConnectedMilliseconds) / 1000d : (archive.LastSession?.Totals.ConnectedMilliseconds ?? 0) / 1000d,
+            session = Totals(archive.LastSession?.Totals ?? new()), week = Totals(usage.Period(7, now)), month = Totals(usage.Period(30, now)), allTime = Totals(archive.AllTime),
+            archive.FirstRecorded, started = archive.LastSession?.Started, ended = archive.LastSession?.Ended,
+            error = statisticsError, warning = running ? telemetryError : ""
+        };
+    }
     object TelemetryModel()
     {
         var value = tunnel.State == "connected" && liveSession == tunnel.Session ? traffic : TrafficReading.Empty;

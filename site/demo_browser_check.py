@@ -111,6 +111,22 @@ def check():
                 frame.locator('#closeOnlineUpdate').click()
                 expect(frame.locator('#onlineUpdateDialog')).not_to_be_visible()
 
+                # Routing profiles stay in memory; importing a URL never contacts it.
+                frame.locator('#routingButton').click()
+                frame.locator('#routingNew').click()
+                frame.locator('#routingName').fill('Демо маршрута')
+                frame.locator('#routingProxyDomains').fill('example.org')
+                frame.locator('#routingForm [type=submit]').click()
+                expect(frame.locator('#routingActive')).to_have_value('routing-1')
+                frame.locator('#routingImport').click()
+                frame.locator('#routingImportContent').fill('https://not-a-subscription.example/routing.json')
+                frame.locator('#routingImportForm [type=submit]').click()
+                expect(frame.locator('#routingImportError')).to_contain_text('В демо ссылки не загружаются')
+                frame.locator('#cancelRoutingImport').click()
+                frame.locator('#routingActive').select_option('')
+                expect(frame.locator('#routingEmpty')).to_be_visible()
+                frame.locator('#closeRouting').click()
+
                 # Fullscreen keeps the same document and state; Escape works inside it.
                 page.locator('#expand-demo').click()
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
@@ -163,7 +179,7 @@ def check():
                 for width in [320, 375, 390, 600, 700, 1000, 1440]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth === innerWidth'), width
-                    for section in ['servers', 'logs', 'settings', 'home']:
+                    for section in ['servers', 'statistics', 'logs', 'settings', 'home']:
                         frame.locator('[data-page=' + section + ']').click()
                         expect(frame.locator('#page-' + section)).to_be_visible()
                         assert frame.locator('body').evaluate('() => document.documentElement.scrollWidth === innerWidth'), (width, section)

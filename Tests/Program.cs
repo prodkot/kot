@@ -2,6 +2,10 @@ using Kot.Core;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+if (args.Length >= 2 && args[0] == "geoip-core")
+{
+    await Kot.Tests.GeoIpCoreTests.Run(args[1], args.Length > 2 ? args[2] : null); return;
+}
 string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
@@ -290,6 +294,9 @@ Kot.Tests.InstallationTests.Run(Check, fixtureFolder);
 await SecurityTests.Run(Check, vless, uuid);
 await Kot.Tests.UpdateTests.Run(Check, fixtureFolder);
 await Kot.Tests.ProductTests.Run(Check, a.Nodes[0], fixtureFolder);
+await Kot.Tests.RoutingTests.Run(Check, a.Nodes[0], fixtureFolder);
+await Kot.Tests.GeoIpTests.Run(Check, a.Nodes[0], fixtureFolder);
+Kot.Tests.StatisticsTests.Run(Check, fixtureFolder);
 
 sealed class FakeTransport(Func<HttpRequestMessage, int, HttpResponseMessage> response) : HttpMessageHandler
 {

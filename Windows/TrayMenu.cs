@@ -28,6 +28,7 @@ public sealed class TrayMenu : ContextMenuStrip
         toggle = Add("Подключить", "power", () => _ = Run(this.connection));
         Items.Add(new ToolStripSeparator());
         Add("Серверы", "servers", () => this.navigate("servers"));
+        Add("Статистика", "statistics", () => this.navigate("statistics"));
         Add("Логи и соединения", "logs", () => this.navigate("logs"));
         Add("Настройки", "settings", () => this.navigate("settings"));
         Items.Add(new ToolStripSeparator());
@@ -121,6 +122,7 @@ public sealed class TrayMenu : ContextMenuStrip
                 case "power": g.DrawArc(pen, 1, 1, 14, 14, -50, 280); g.DrawLine(pen, 8, 0, 8, 7); break;
                 case "open": g.DrawRectangle(pen, 1, 2, 14, 12); g.DrawLine(pen, 1, 5, 15, 5); break;
                 case "servers": g.DrawEllipse(pen, 1, 1, 14, 14); g.DrawEllipse(pen, 5, 1, 6, 14); g.DrawLine(pen, 1, 8, 15, 8); break;
+                case "statistics": g.DrawLines(pen, [new Point(1, 1), new Point(1, 15), new Point(15, 15)]); g.DrawLine(pen, 5, 12, 5, 8); g.DrawLine(pen, 9, 12, 9, 3); g.DrawLine(pen, 13, 12, 13, 6); break;
                 case "logs": for (int y = 3; y < 16; y += 5) { g.DrawLine(pen, 1, y, 2, y); g.DrawLine(pen, 6, y, 15, y); } break;
                 case "settings": for (int y = 3; y < 16; y += 5) { g.DrawLine(pen, 1, y, 15, y); int x = y == 8 ? 4 : 10; g.DrawEllipse(pen, x - 2, y - 2, 4, 4); } break;
                 case "exit": g.DrawLines(pen, [new Point(6, 1), new Point(1, 1), new Point(1, 15), new Point(6, 15)]); g.DrawLine(pen, 6, 8, 15, 8); g.DrawLines(pen, [new Point(11, 4), new Point(15, 8), new Point(11, 12)]); break;

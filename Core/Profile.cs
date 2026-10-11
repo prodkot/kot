@@ -11,6 +11,9 @@ public sealed class Profile
     public string Mode { get; set; } = "all";
     public string ConnectionMode { get; set; } = "tun";
     public string[] Bypass { get; set; } = [];
+    public List<RoutingProfile> RoutingProfiles { get; set; } = [];
+    public string ActiveRoutingProfile { get; set; } = "";
+    public GeoIpOptions GeoIp { get; set; } = new();
     public bool Startup { get; set; }
     public bool AutoConnect { get; set; }
     public bool Tray { get; set; } = true;
@@ -28,6 +31,11 @@ public sealed class Profile
         ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
+        RoutingProfiles ??= []; ActiveRoutingProfile ??= "";
+        GeoIp ??= new(); GeoIp.Validate();
+        if (RoutingProfiles.Count > 20 || RoutingProfiles.Any(p => p == null) || RoutingProfiles.Select(p => p.Id).Distinct().Count() != RoutingProfiles.Count || ActiveRoutingProfile.Length > 0 && RoutingProfiles.All(p => p.Id != ActiveRoutingProfile))
+            throw new UserError("Некорректный список профилей маршрутизации. Максимум 20 профилей.");
+        foreach (var routing in RoutingProfiles) routing.Validate();
         foreach (var subscription in Subscriptions)
         {
             if (subscription == null) throw new UserError("Некорректная подписка в профиле.");

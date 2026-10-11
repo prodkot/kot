@@ -79,7 +79,7 @@
     closeSubscriptions();
     document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='page-'+name);
     document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===name)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
-    document.querySelector('.main').scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers();
+    document.querySelector('.main').scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers(); if(name==='statistics')renderStatistics();
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
@@ -104,7 +104,7 @@
     const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
     label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=data.favorites?.length?'Из избранного':'Быстрый доступный сервер';
-    renderSubscriptions();
+    renderSubscriptions();renderRouting();
     $('backgroundError').textContent=data.backgroundError||'';$('backgroundError').hidden=!data.backgroundError;
     $('refreshButton').disabled=refreshBusy||!data.hasSubscription;$('removeSubscription').hidden=!data.hasSubscription;
     if(!$('advancedDialog').open)$('bypassDomains').value=data.settings.bypass||'';
@@ -114,7 +114,7 @@
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;
     $('pingError').hidden=!ping.error;$('pingError').textContent=ping.error||'';
-    renderTraffic(); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
+    renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
     setState(data.state,old);const renderKey=JSON.stringify([data.nodes,data.selected,data.favorites,data.ping?.settings?.sort,data.ping?.busy]);if(renderKey!==renderedServers){renderedServers=renderKey;renderServers();}
   }
   function renderServers(){
@@ -146,6 +146,44 @@
   let logTab='connections',logsPaused=false,logSnapshot=null,connectionsKey='';
   function bytes(n,rate=false){if(n===null||n===undefined||!Number.isFinite(n))return 'Нет данных';const units=['Б','КБ','МБ','ГБ','ТБ'];let i=0;while(n>=1024&&i<units.length-1){n/=1024;i++;}return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:i===0?0:1}).format(n)+' '+units[i]+(rate?'/с':'');}
   function renderTraffic(){const t=model.telemetry||{},on=model.state==='connected';$('downloadRate').textContent=on?bytes(t.available?t.downloadRate:null,true):'0 Б/с';$('uploadRate').textContent=on?bytes(t.available?t.uploadRate:null,true):'0 Б/с';$('downloadRate').title='За сеанс: '+bytes(t.downloadTotal||0);$('uploadRate').title='За сеанс: '+bytes(t.uploadTotal||0);}
+  let statisticsPeriod='session',statisticsAnchor=0,statisticsElapsed=0;
+  function duration(seconds){
+    if(!Number.isFinite(seconds)||seconds<0)return 'Нет данных';
+    const value=Math.floor(seconds),days=Math.floor(value/86400),pad=n=>String(n).padStart(2,'0');
+    return (days?days+' д ':'')+pad(Math.floor(value/3600)%24)+':'+pad(Math.floor(value/60)%60)+':'+pad(value%60);
+  }
+  function renderStatistics(snapshot=false){
+    const s=model.statistics,t=s?.[statisticsPeriod],running=!!s?.running&&model.state==='connected';
+    if(snapshot){statisticsAnchor=performance.now();statisticsElapsed=Number.isFinite(s?.elapsedSeconds)?Math.max(0,s.elapsedSeconds):0;}
+    // Only a confirmed host connection runs the clock. Stop extrapolating if the bridge stalls.
+    const extra=running?Math.min(5,Math.max(0,(performance.now()-statisticsAnchor)/1000)):0;
+    $('connectionTime').hidden=!s?.started;
+    $('connectionTime').textContent=duration(statisticsElapsed+extra);
+    $('connectionTime').title=running?'Время текущего подключения':'Длительность последнего сеанса';
+    $('connectionTime').setAttribute('aria-label',$('connectionTime').title);
+    $('statisticsSession').dataset.running=String(running);
+    $('statisticsConnectionLabel').textContent=running?'Текущее подключение':s?.started?'Последний сеанс':'Ещё не подключались';
+    const sessionDate=s?.started?new Date(s.started).toLocaleString('ru-RU'):'';
+    $('statisticsConnectionInfo').textContent=sessionDate?'Начало: '+sessionDate:'Таймер появится после подключения';
+    $('statisticsDownload').textContent=t?bytes(t.download):'Нет данных';
+    $('statisticsUpload').textContent=t?bytes(t.upload):'Нет данных';
+    $('statisticsDuration').textContent=t?duration(t.connectedSeconds+(running?extra:0)):'Нет данных';
+    const total=t&&Number.isFinite(t.download)&&Number.isFinite(t.upload)?bytes(t.download+t.upload):'Нет данных';
+    $('statisticsSummary').textContent='Всего: '+total+' · Сеансов: '+(Number.isFinite(t?.sessions)?new Intl.NumberFormat('ru-RU').format(t.sessions):'Нет данных')+(statisticsPeriod==='session'&&!running&&s?.started?' · Последний сеанс':'');
+    $('statistics').title=s?.firstRecorded?'Учёт с '+new Date(s.firstRecorded).toLocaleString('ru-RU'):'';
+    $('statisticsError').textContent=s?.error||s?.warning||'';$('statisticsError').hidden=!$('statisticsError').textContent;
+    document.querySelectorAll('[data-statistics-period]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.statisticsPeriod===statisticsPeriod));
+  }
+  const statisticsButtons=[...document.querySelectorAll('[data-statistics-period]')];
+  statisticsButtons.forEach((button,index)=>{
+    button.addEventListener('click',()=>{statisticsPeriod=button.dataset.statisticsPeriod;renderStatistics();});
+    button.addEventListener('keydown',event=>{
+      const key=event.key;if(!['ArrowLeft','ArrowRight','Home','End'].includes(key))return;
+      event.preventDefault();const next=key==='Home'?0:key==='End'?statisticsButtons.length-1:(index+(key==='ArrowRight'?1:-1)+statisticsButtons.length)%statisticsButtons.length;
+      statisticsButtons[next].focus();statisticsButtons[next].click();
+    });
+  });
+  setInterval(()=>{if(current==='statistics')renderStatistics();},250);
   function renderLogs(){
     const snap=logSnapshot||{telemetry:model.telemetry,journal:model.journal,state:model.state},t=snap.telemetry||{},query=$('logSearch').value.trim().toLocaleLowerCase('ru');
     $('logLevel').hidden=logTab!=='journal';$('journalText').hidden=logTab!=='journal';$('connectionList').hidden=logTab!=='connections';
@@ -311,6 +349,131 @@
     finally{if(attempt===deviceAttempt&&$('deviceDialog').open&&!$('deviceDialog').dataset.closing)b.disabled=false;}
   });
   $('advancedButton').addEventListener('click',()=>{$('bypassDomains').value=model.settings.bypass||'';$('advancedError').textContent='';openDialog($('advancedDialog'));});$('closeAdvanced').addEventListener('click',()=>closeDialog($('advancedDialog')));
+  let routingDraftId=null,routingBusy=false,routingDirty=false,routingRemovingId='';
+  let geoIpBusy=false,geoIpDirty=false,geoIpRequestError='';
+  const routingLists=['directDomains','proxyDomains','blockDomains','directIps','proxyIps','blockIps','directApps','proxyApps','blockApps','directCountries','proxyCountries','blockCountries'];
+  const routingField=key=>$('routing'+key[0].toUpperCase()+key.slice(1));
+  function routingSaved(){return (model.routing?.profiles||[]).find(p=>p.id===routingDraftId);}
+  function routingTab(name,focus=false){
+    for(const button of document.querySelectorAll('[data-routing-tab]')){const selected=button.dataset.routingTab===name;button.setAttribute('aria-selected',selected);button.tabIndex=selected?0:-1;if(selected&&focus)button.focus();}
+    for(const panel of document.querySelectorAll('[data-routing-panel]'))panel.hidden=panel.dataset.routingPanel!==name;
+  }
+  function renderRouting(){
+    const routing=model.routing||{active:'',profiles:[]},saved=routingSaved(),active=routing.profiles.find(p=>p.id===routing.active);
+    $('routingSummary').textContent='Маршрут: '+(active?.rules.name||'по умолчанию');
+    $('routingActive').replaceChildren(new Option('По умолчанию',''),...routing.profiles.map(p=>new Option((p.sourceUrl?'Обновляемый · ':'')+p.rules.name,p.id)));
+    $('routingActive').value=routing.active||'';$('routingActive').disabled=routingBusy||routingDirty;
+    $('routingFields').disabled=routingBusy;
+    for(const id of ['routingNew','routingImport'])$(id).disabled=routingBusy||routingDirty;
+    $('routingExport').disabled=routingBusy||routingDirty||!saved;$('routingRefresh').disabled=routingBusy||routingDirty||!saved?.sourceUrl;
+    $('routingRemove').hidden=!saved;$('routingRemove').disabled=routingBusy||routingDirty;
+    $('geoIpButton').disabled=routingBusy;
+    $('routingForm').querySelector('[type=submit]').disabled=routingBusy;
+    $('routingReset').disabled=routingBusy;
+    const status=saved?.updated?'Обновлено: '+new Date(saved.updated).toLocaleString('ru-RU'):'';
+    $('routingStatus').textContent=[routingDirty?'Есть несохранённые изменения':status,routing.errors?.[saved?.id]].filter(Boolean).join('\n');
+    renderGeoIp();
+  }
+  function loadRouting(id){
+    routingDraftId=id;routingDirty=false;$('routingError').textContent='';$('routingGeneralError').textContent='';
+    $('routingForm').hidden=id===null;$('routingEmpty').hidden=id!==null;
+    if(id!==null){
+      const saved=routingSaved(),rules=saved?.rules||{};
+      $('routingName').value=rules.name||'Мой профиль';$('routingDefault').value=rules.defaultAction||'proxy';
+      for(const key of routingLists)routingField(key).value=(rules[key]||[]).join('\n');
+      $('routingDirectDns').value=rules.directDns||'cloudflare';$('routingRemoteDns').value=rules.remoteDns||'cloudflare';
+      $('routingSource').value=saved?.sourceUrl||'';$('routingHours').value=saved?.refreshHours??24;$('routingSourceDetails').open=!!saved?.sourceUrl;
+    }
+    routingTab('domains');renderRouting();
+  }
+  function openRouting(){loadRouting(model.routing?.active||null);openDialog($('routingDialog'));}
+  for(const id of ['routingButton','homeRoutingButton'])$(id).addEventListener('click',openRouting);
+  $('closeRouting').addEventListener('click',()=>closeDialog($('routingDialog')));
+  $('routingNew').addEventListener('click',()=>{loadRouting('');$('routingName').focus();});
+  $('routingReset').addEventListener('click',()=>loadRouting(model.routing?.active||null));
+  $('routingForm').addEventListener('input',()=>{routingDirty=true;renderRouting();});
+  $('routingForm').addEventListener('change',()=>{routingDirty=true;renderRouting();});
+  document.querySelectorAll('[data-routing-tab]').forEach(button=>{
+    button.addEventListener('click',()=>routingTab(button.dataset.routingTab));
+    button.addEventListener('keydown',event=>{const names=['domains','ips','apps','countries'],index=names.indexOf(button.dataset.routingTab);let target;if(event.key==='ArrowRight')target=(index+1)%names.length;else if(event.key==='ArrowLeft')target=(index+names.length-1)%names.length;else if(event.key==='Home')target=0;else if(event.key==='End')target=names.length-1;else return;event.preventDefault();routingTab(names[target],true);});
+  });
+  $('routingActive').addEventListener('change',async()=>{
+    if(routingBusy)return;const id=$('routingActive').value;routingBusy=true;renderRouting();
+    try{await rpc('routingSelect',{id});loadRouting(id||null);}catch(e){$('routingGeneralError').textContent=e.message;}
+    finally{routingBusy=false;renderRouting();}
+  });
+  function renderGeoIp(){
+    const data=model.geoIp||{countries:[],refreshHours:24},busy=geoIpBusy||data.busy;
+    if(!geoIpDirty&&!geoIpBusy)$('geoIpHours').value=data.refreshHours??24;
+    $('geoIpHours').disabled=!!busy;
+    $('geoIpForm').querySelector('[type=submit]').disabled=!!busy;
+    $('geoIpRefresh').disabled=!!busy||!data.countries.length;
+    $('geoIpRefresh').textContent=busy?'Обновление…':'Обновить сейчас';
+    $('geoIpCountries').replaceChildren(...data.countries.map(country=>{
+      const row=document.createElement('div');row.className='geoip-country';
+      const name=document.createElement('strong');name.textContent=country.code.toUpperCase();
+      const status=document.createElement('span');status.textContent=country.ready?'Проверено: '+new Date(country.updated).toLocaleString('ru-RU'):'База ещё не загружена';
+      row.append(name,status);return row;
+    }));
+    if(!data.countries.length)$('geoIpCountries').textContent='Добавьте страны во вкладке «Страны» и сохраните профиль.';
+    $('geoIpError').textContent=geoIpRequestError||data.error||'';
+  }
+  $('geoIpButton').addEventListener('click',()=>{geoIpDirty=false;geoIpRequestError='';renderGeoIp();openDialog($('geoIpDialog'));});
+  $('closeGeoIp').addEventListener('click',()=>closeDialog($('geoIpDialog')));
+  $('geoIpHours').addEventListener('input',()=>geoIpDirty=true);
+  $('geoIpForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(geoIpBusy||model.geoIp?.busy)return;
+    const refreshHours=Number($('geoIpHours').value);geoIpBusy=true;geoIpRequestError='';renderGeoIp();
+    try{await rpc('geoIpSettings',{refreshHours});geoIpDirty=false;toast('Интервал обновления GeoIP сохранён');}
+    catch(e){geoIpRequestError=e.message;}
+    finally{geoIpBusy=false;renderGeoIp();}
+  });
+  $('geoIpRefresh').addEventListener('click',async()=>{
+    if(geoIpBusy||model.geoIp?.busy)return;geoIpBusy=true;geoIpRequestError='';renderGeoIp();
+    try{await rpc('geoIpRefresh');geoIpRequestError='';toast('Базы GeoIP обновлены');}
+    catch(e){geoIpRequestError=model.geoIp?.error?'':e.message;}
+    finally{geoIpBusy=false;renderGeoIp();}
+  });
+  $('routingForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(routingBusy)return;
+    const rules={version:1,name:$('routingName').value.trim(),defaultAction:$('routingDefault').value,directDns:$('routingDirectDns').value,remoteDns:$('routingRemoteDns').value};
+    for(const key of routingLists)rules[key]=routingField(key).value.split(/[\r\n,;]+/).map(v=>v.trim()).filter(Boolean);
+    routingBusy=true;$('routingError').textContent='';renderRouting();
+    try{await rpc('routingSave',{id:routingDraftId||'',rules,sourceUrl:$('routingSource').value.trim(),refreshHours:Number($('routingHours').value)});loadRouting(model.routing?.active||null);toast('Маршрутизация сохранена и применена');}
+    catch(e){$('routingError').textContent=e.message;}
+    finally{routingBusy=false;renderRouting();}
+  });
+  $('routingRefresh').addEventListener('click',async()=>{
+    if(routingBusy)return;const id=routingDraftId;routingBusy=true;$('routingError').textContent='';renderRouting();
+    try{await rpc('routingRefresh',{id});loadRouting(id);toast('Профиль маршрутизации обновлён');}
+    catch(e){$('routingError').textContent=e.message;}
+    finally{routingBusy=false;renderRouting();}
+  });
+  $('routingExport').addEventListener('click',async()=>{
+    if(routingBusy||!routingSaved())return;routingBusy=true;renderRouting();
+    try{await rpc('routingExport',{id:routingDraftId});}catch(e){$('routingError').textContent=e.message;}
+    finally{routingBusy=false;renderRouting();}
+  });
+  $('routingImport').addEventListener('click',()=>{$('routingImportContent').value='';$('routingImportError').textContent='';openDialog($('routingImportDialog'));});
+  $('cancelRoutingImport').addEventListener('click',()=>closeDialog($('routingImportDialog')));
+  $('routingImportForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(routingBusy)return;routingBusy=true;renderRouting();
+    const submit=$('routingImportForm').querySelector('[type=submit]');submit.disabled=true;$('routingImportError').textContent='';
+    try{await rpc('routingImport',{content:$('routingImportContent').value.trim()});loadRouting(model.routing?.active||null);closeDialog($('routingImportDialog'));toast('Профиль маршрутизации добавлен');}
+    catch(e){$('routingImportError').textContent=e.message;}
+    finally{routingBusy=false;submit.disabled=false;renderRouting();}
+  });
+  $('routingRemove').addEventListener('click',()=>{
+    const saved=routingSaved();if(!saved)return;routingRemovingId=saved.id;$('routingRemoveError').textContent='';
+    $('routingRemoveNote').textContent='Будет удалён профиль «'+saved.rules.name+'». Активный профиль заменится правилами по умолчанию.';openDialog($('routingRemoveDialog'));
+  });
+  $('cancelRoutingRemove').addEventListener('click',()=>closeDialog($('routingRemoveDialog')));
+  $('confirmRoutingRemove').addEventListener('click',async()=>{
+    if(routingBusy)return;routingBusy=true;const b=$('confirmRoutingRemove');b.disabled=true;renderRouting();
+    try{await rpc('routingRemove',{id:routingRemovingId});loadRouting(model.routing?.active||null);closeDialog($('routingRemoveDialog'));toast('Профиль маршрутизации удалён');}
+    catch(e){$('routingRemoveError').textContent=e.message;}
+    finally{routingBusy=false;b.disabled=false;renderRouting();}
+  });
   $('saveRules').addEventListener('click',async()=>{const b=$('saveRules');b.disabled=true;try{await rpc('settings',{key:'bypass',value:$('bypassDomains').value});closeDialog($('advancedDialog'));toast('Правила сохранены');}catch(e){$('advancedError').textContent=e.message;}finally{b.disabled=false;}});
   ['diagnostics','copyErrorLog'].forEach(id=>$(id).addEventListener('click',async()=>{if(await request('copyLog'))toast('Полный лог скопирован');}));
   $('pingAll').addEventListener('click',()=>request('pingAll'));$('cancelPing').addEventListener('click',()=>request('cancelPing'));
@@ -340,5 +503,5 @@
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','logs','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
+  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','statistics','logs','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
 })();

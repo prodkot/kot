@@ -112,6 +112,8 @@ public sealed partial class MainWindow
                 }
                 finally { operations.Release(); }
             }
+            await TickRouting(now, online);
+            await TickGeoIp(now, online);
             Snapshot();
         }
         catch (OperationCanceledException) { }
@@ -162,7 +164,7 @@ public sealed partial class MainWindow
         if (restored.Startup != profile.Startup) await Startup.Set(restored.Startup);
         // Keep a recoverable encrypted copy before replacing a working profile.
         string old = Path.Combine(Store.Folder, "profile.bin"); if (File.Exists(old)) File.Copy(old, Path.Combine(Store.Folder, "profile-before-restore.bin"), true);
-        KillSwitch.Release(); Store.Save(restored); profile = restored; warnings = []; backgroundError = ""; refreshAttempts.Clear(); lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
+        KillSwitch.Release(); Store.Save(restored); profile = restored; warnings = []; backgroundError = ""; refreshAttempts.Clear(); routingAttempts.Clear(); routingErrors.Clear(); geoIpAttempt = null; geoIpError = ""; lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
     }
     void DisposeAutomation()
     {

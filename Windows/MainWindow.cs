@@ -68,7 +68,7 @@ public sealed partial class MainWindow : WindowChrome
     void Restore() => RestoreWindow();
     void OpenTrayPage(string page)
     {
-        if (page is not ("home" or "servers" or "logs" or "settings")) return;
+        if (page is not ("home" or "servers" or "statistics" or "logs" or "settings")) return;
         Restore();
         if (bridgeReady) Send(new { kind = "navigate", page }); else pendingTrayPage = page;
     }
@@ -123,8 +123,9 @@ public sealed partial class MainWindow : WindowChrome
         name = profile.Name, hasSubscription = profile.Address.Length > 0,
         nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, ping = ping.Get(n.Id), code = n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
-        telemetry = TelemetryModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
-        favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation, backgroundError,
+        telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
+        favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
+        routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
         settings = new { profile.Theme, profile.Accent, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
@@ -138,7 +139,7 @@ public sealed partial class MainWindow : WindowChrome
         try
         {
             string raw = e.WebMessageAsJson;
-            if (raw.Length > 100_000) return;
+            if (raw.Length > 300_000) throw new UserError("Слишком большой запрос интерфейса.");
             using var d = JsonDocument.Parse(raw); var root = d.RootElement;
             id = root.GetProperty("id").GetInt32(); string action = root.GetProperty("action").GetString() ?? "";
             JsonElement data = root.GetProperty("data");
@@ -162,7 +163,7 @@ public sealed partial class MainWindow : WindowChrome
                 case "close": Close(); break;
                 case "toggle": _ = ToggleConnection(); break;
                 case "view":
-                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
                 case "checkUpdates": await CheckUpdates(); break;
                 case "cancelUpdate": updateAttempt?.Cancel(); break;
                 case "cancelImport": importAttempt?.Cancel(); break;
@@ -194,6 +195,10 @@ public sealed partial class MainWindow : WindowChrome
     {
         switch (action)
         {
+            case "routingSelect": case "routingSave": case "routingImport": case "routingRefresh": case "routingRemove": case "routingExport":
+                await MutateRouting(action, data); break;
+            case "geoIpRefresh": case "geoIpSettings":
+                await MutateGeoIp(action, data); break;
             case "import": case "refresh":
                 string address = action == "import" ? data.GetProperty("url").GetString()?.Trim() ?? "" : profile.Address;
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;

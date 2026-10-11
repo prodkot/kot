@@ -30,7 +30,7 @@ public static class Configuration
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
     }
-    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "")
+    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "", IReadOnlyDictionary<string, string>? geoIpPaths = null)
     {
         if (profile.ConnectionMode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим подключения.");
         bool tun = profile.ConnectionMode == "tun";
@@ -43,8 +43,68 @@ public static class Configuration
             : Build(node ?? throw new UserError("Выберите сервер."), healthPort, smart, profile.Bypass, tun);
         // A separate listener keeps the health probe on the selected server even when rules bypass its domain.
         if (!tun) ((JsonArray)config["inbounds"]!).Add(new JsonObject { ["type"] = "mixed", ["tag"] = "system-in", ["listen"] = "127.0.0.1", ["listen_port"] = proxyPort });
+        if (profile.ActiveRoutingProfile.Length > 0)
+        {
+            var routing = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile) ?? throw new UserError("Профиль маршрутизации уже удалён.");
+            routing.Validate(); ApplyRouting(config, routing.Rules, geoIpPaths);
+        }
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
+    }
+    static void ApplyRouting(JsonObject config, RoutingRules rules, IReadOnlyDictionary<string, string>? geoIpPaths)
+    {
+        JsonObject Dns(string tag, string preset, string? detour = null)
+        {
+            var (ip, host) = RoutingRules.DnsPreset(preset);
+            var server = new JsonObject { ["type"] = "https", ["tag"] = tag, ["server"] = ip, ["path"] = "/dns-query", ["tls"] = new JsonObject { ["enabled"] = true, ["server_name"] = host } };
+            if (detour != null) server["detour"] = detour;
+            return server;
+        }
+        var route = (JsonObject)config["route"]!; var routes = (JsonArray)route["rules"]!;
+        var countries = rules.Countries();
+        if (countries.Length > 0)
+        {
+            JsonArray sets = [];
+            foreach (string code in countries)
+            {
+                if (geoIpPaths == null || !geoIpPaths.TryGetValue(code, out string? path) || !Path.IsPathFullyQualified(path) || !File.Exists(path))
+                    throw new UserError($"База GeoIP {code.ToUpperInvariant()} ещё не загружена. Обновите GeoIP перед подключением.");
+                sets.Add(new JsonObject { ["type"] = "local", ["tag"] = "geoip-" + code, ["format"] = "binary", ["path"] = path });
+            }
+            route["rule_set"] = sets;
+        }
+        // Retain DNS interception, the isolated health listener and LAN access, then replace legacy domain rules.
+        while (routes.Count > 4) routes.RemoveAt(4);
+        if (countries.Length + rules.DirectIps.Length + rules.ProxyIps.Length + rules.BlockIps.Length > 0)
+        {
+            // HTTP/SOCKS requests can contain a hostname. IP and country matchers need resolved addresses;
+            // omitting server lets the configured DNS rules select the direct or VPN resolver.
+            routes.Add(new JsonObject { ["action"] = "resolve" });
+            routes.Add(new JsonObject { ["ip_is_private"] = true, ["action"] = "route", ["outbound"] = "direct" });
+        }
+        JsonArray dns = [new JsonObject { ["inbound"] = new JsonArray("health-in"), ["action"] = "route", ["server"] = "remote" }];
+        void Rule(string field, string[] values, string action, bool dnsRule = false)
+        {
+            if (values.Length == 0) return;
+            var rule = new JsonObject { [field] = JsonSerializer.SerializeToNode(values), ["action"] = action == "block" ? "reject" : "route" };
+            if (action != "block") rule[dnsRule ? "server" : "outbound"] = dnsRule ? action == "direct" ? "bootstrap" : "remote" : action;
+            (dnsRule ? dns : routes).Add(rule);
+        }
+        void Apps(string[] values, string action, bool dnsRule = false) => Rule("process_path_regex", values.Select(name => @"(?i)(?:^|[\\/])" + Regex.Escape(name) + "$" ).ToArray(), action, dnsRule);
+        // First match wins: blocks, applications, domains, explicit IPs, GeoIP, then the default route.
+        Apps(rules.BlockApps, "block"); Rule("domain_suffix", rules.BlockDomains, "block"); Rule("ip_cidr", rules.BlockIps, "block");
+        Rule("rule_set", rules.BlockCountries.Select(code => "geoip-" + code).ToArray(), "block");
+        Apps(rules.ProxyApps, "proxy"); Apps(rules.DirectApps, "direct");
+        Rule("domain_suffix", rules.ProxyDomains, "proxy"); Rule("domain_suffix", rules.DirectDomains, "direct");
+        Rule("ip_cidr", rules.ProxyIps, "proxy"); Rule("ip_cidr", rules.DirectIps, "direct");
+        Rule("rule_set", rules.ProxyCountries.Select(code => "geoip-" + code).ToArray(), "proxy");
+        Rule("rule_set", rules.DirectCountries.Select(code => "geoip-" + code).ToArray(), "direct");
+        Apps(rules.BlockApps, "block", true); Rule("domain_suffix", rules.BlockDomains, "block", true);
+        Apps(rules.ProxyApps, "proxy", true); Apps(rules.DirectApps, "direct", true);
+        Rule("domain_suffix", rules.ProxyDomains, "proxy", true); Rule("domain_suffix", rules.DirectDomains, "direct", true);
+        route["final"] = rules.DefaultAction;
+        route["find_process"] = rules.DirectApps.Length + rules.ProxyApps.Length + rules.BlockApps.Length > 0;
+        config["dns"] = new JsonObject { ["servers"] = new JsonArray(Dns("bootstrap", rules.DirectDns), Dns("remote", rules.RemoteDns, "proxy")), ["rules"] = dns, ["final"] = rules.DefaultAction == "direct" ? "bootstrap" : "remote", ["strategy"] = "prefer_ipv4" };
     }
     public static void Controller(JsonObject config, int port, string secret)
     {
