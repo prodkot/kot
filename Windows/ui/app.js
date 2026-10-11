@@ -49,14 +49,15 @@
   }
   const reduce = matchMedia('(prefers-reduced-motion: reduce)'), motions = new Map();
   const ease = 'cubic-bezier(.22,1,.36,1)';
+  function cancelMotion(el){motions.get(el)?.cancel();motions.delete(el);}
   function animate(el, frames, options={}) {
-    motions.get(el)?.cancel(); if(reduce.matches) return null;
+    cancelMotion(el); if(reduce.matches) return null;
     const motion=el.animate(frames,{duration:280,easing:ease,...options}); motions.set(el,motion);
     motion.finished.then(()=>{if(motions.get(el)===motion)motions.delete(el);}).catch(()=>{}); return motion;
   }
   reduce.addEventListener('change',()=>{if(reduce.matches){motions.forEach(a=>a.cancel());motions.clear();}});
   let model={nodes:[],selected:'',state:'idle',settings:{theme:'dark',accent:'lime',mode:'tun'}}, current='home', toastTimer, sequence=0, importBusy=false, refreshBusy=false, updateCheckBusy=false, renderedServers='';
-  const pending=new Map(), host=window.chrome?.webview;
+  const pending=new Map(), host=window.chrome?.webview,openDialogs=[];
   function rpc(action,data={}) {
     if(!host) return Promise.reject(new Error('Откройте интерфейс через Kot.exe.'));
     return new Promise((resolve,reject)=>{
@@ -64,7 +65,8 @@
       pending.set(id,{resolve,reject,timer}); host.postMessage({id,action,data});
     });
   }
-  function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;animate($('toast'),[{opacity:0,transform:'translate(-50%,7px)'},{opacity:1,transform:'translate(-50%,0)'}]);toastTimer=setTimeout(()=>{$('toast').hidden=true;},4000);}
+  function raiseToast(){const el=$('toast');if(el.hidden)return;if(el.matches(':popover-open'))el.hidePopover();const owner=openDialogs.findLast(dialog=>dialog.open)||document.body;if(el.parentElement!==owner)owner.append(el);el.showPopover();}
+  function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;raiseToast();animate($('toast'),[{opacity:0,transform:'translate(-50%,7px)'},{opacity:1,transform:'translate(-50%,0)'}]);toastTimer=setTimeout(()=>{$('toast').hidePopover();$('toast').hidden=true;cancelMotion($('toast'));},4000);}
   let brandClicks=0, meow;
   $('brandButton').addEventListener('click',()=>{
     if(++brandClicks!==443)return;
@@ -75,7 +77,8 @@
   async function request(action,data={}) {try{await rpc(action,data);return true;}catch(e){toast(e.message);return false;}}
   function moveNav(){const active=document.querySelector('[data-page][aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
   function page(name){
-    if(name===current)return; current=name;
+    if(name===current||!$('page-'+name))return;
+    const previous=$('page-'+current);for(const el of motions.keys())if(el===previous||previous.contains(el))cancelMotion(el);current=name;
     closeSubscriptions();
     document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='page-'+name);
     document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===name)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
@@ -90,7 +93,7 @@
     $('powerButton').disabled=(!model.nodes.length && state==='idle')||state==='disconnecting';
     const blocked=model.settings?.killSwitchActive&&state==='idle';
     $('connectionError').textContent=model.error||(blocked?'Kill switch блокирует интернет. Подключитесь или отключите защиту в настройках.':'');$('connectionError').hidden=!model.error&&!blocked;$('copyErrorLog').hidden=!model.error;
-    if(state!==previous){animate($('stateLabel'),[{opacity:0,transform:'translateY(3px)'},{opacity:1,transform:'translateY(0)'}],{duration:220});animate($('powerLabel'),[{opacity:0},{opacity:1}],{duration:200});if(state==='connected')animate($('powerIcon'),[{transform:'scale(.82)'},{transform:'scale(1.12)',offset:.6},{transform:'scale(1)'}],{duration:440});}
+    if(state!==previous){cancelMotion($('powerIcon'));if(current==='home'){animate($('stateLabel'),[{opacity:0,transform:'translateY(3px)'},{opacity:1,transform:'translateY(0)'}],{duration:220});animate($('powerLabel'),[{opacity:0},{opacity:1}],{duration:200});if(state==='connected')animate($('powerIcon'),[{transform:'scale(.82)'},{transform:'scale(1.12)',offset:.6},{transform:'scale(1)'}],{duration:440});}}
   }
   function apply(data){
     const old=model.state;model=data;
@@ -119,7 +122,7 @@
   }
   function renderServers(){
     const query=$('serverSearch').value.trim().toLocaleLowerCase('ru'),visible=model.nodes.filter(n=>(n.name+' '+n.protocol).toLocaleLowerCase('ru').includes(query));
-    const active=document.activeElement, focusId=active?.closest('[data-node]')?.dataset.node, focusPing=active?.classList.contains('ping-node'), focusFavorite=active?.classList.contains('favorite-node');
+    const active=document.activeElement, focusId=active?.closest('[data-node]')?.dataset.node, focusPing=active?.classList.contains('ping-node'), focusFavorite=active?.classList.contains('favorite-node'),focusQr=active?.classList.contains('qr-node');
     $('serverList').replaceChildren();$('noServers').hidden=!!visible.length;$('noServers').textContent=model.nodes.length?'Ничего не найдено':'Добавьте подписку';$('serverCount').textContent=visible.length;
     const sort=model.ping?.settings?.sort||'none';
     if(sort==='name')visible.sort((a,b)=>serverPresentation(a).name.localeCompare(serverPresentation(b).name,'ru'));
@@ -140,8 +143,9 @@
       ping.title=result?.status==='ok'?result.mode.toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.append(icon,value);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
       const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.textContent='QR';qr.setAttribute('aria-label','QR '+presentation.name);qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
-      if(focusId===item.id)(focusPing?ping:focusFavorite?favorite:button).focus({preventScroll:true});
+      if(focusId===item.id)(focusQr?qr:focusPing?ping:focusFavorite?favorite:button).focus({preventScroll:true});
     });
+    if(focusId&&!visible.some(item=>item.id===focusId))$('serverSearch').focus({preventScroll:true});
   }
 
   let logTab='connections',logsPaused=false,logSnapshot=null,connectionsKey='';
@@ -196,12 +200,12 @@
       $('logStatus').textContent=logsPaused?'На паузе':'Журнал текущего запуска';$('logEmpty').hidden=!!text.trim();$('logEmpty').textContent=query?'Ничего не найдено':'Нет событий';
     }else{
       const rows=(t.connections||[]).filter(c=>[c.destination,c.process,c.network,...(c.chains||[])].join(' ').toLocaleLowerCase('ru').includes(query));
-      const key=JSON.stringify(rows);if(key!==connectionsKey){const opened=new Set([...$('connectionList').querySelectorAll('details[open]')].map(e=>e.dataset.connection));$('connectionList').replaceChildren(...rows.map(c=>{
+      const key=JSON.stringify(rows);if(key!==connectionsKey){const focused=document.activeElement?.closest('#connectionList details')?.dataset.connection,opened=new Set([...$('connectionList').querySelectorAll('details[open]')].map(e=>e.dataset.connection));$('connectionList').replaceChildren(...rows.map(c=>{
         const card=document.createElement('details');card.className='connection-card';card.dataset.connection=c.id;card.open=opened.has(c.id);const summary=document.createElement('summary'),top=document.createElement('div');top.className='connection-top';
         const destination=document.createElement('span');destination.className='connection-dest';destination.textContent=c.destination||'Адрес неизвестен';const network=document.createElement('span');network.className='connection-network';network.textContent=(c.network||'').toUpperCase();top.append(destination,network);
         const meta=document.createElement('div');meta.className='connection-meta';const route=document.createElement('span');route.className='connection-route';label(route,(c.process?c.process+' · ':'')+(c.chains?.join(' → ')||'Маршрут неизвестен'));const total=document.createElement('span');total.className='connection-bytes';total.textContent='↓ '+bytes(c.download)+'  ↑ '+bytes(c.upload);meta.append(route,total);summary.append(top,meta);
         const detail=document.createElement('div');detail.className='connection-detail';detail.textContent='Вход: '+(c.inbound||'Не определён')+'\nПравило: '+(c.rule||'final')+(c.start?'\nНачало: '+new Date(c.start).toLocaleTimeString('ru-RU'):'');detail.style.whiteSpace='pre-line';card.append(summary,detail);return card;
-      }));connectionsKey=key;}
+      }));connectionsKey=key;if(focused){const card=[...$('connectionList').children].find(e=>e.dataset.connection===focused);(card?.querySelector('summary')||$('logSearch')).focus({preventScroll:true});}}
       $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к серверу';
     }
   }
@@ -318,11 +322,18 @@
   document.querySelectorAll('input[name=accent]').forEach(input=>input.addEventListener('change',()=>{if(input.checked)request('settings',{key:'accent',value:input.value});}));
   document.querySelectorAll('[data-setting]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:el.dataset.setting,value:el.getAttribute('aria-checked')!=='true'})));
   function clearLink(){$('profileLink').value='';$('addError').textContent='';}
-  function openDialog(dialog){if(dialog.open)return;dialog.showModal();animate(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:280});}
+  const dialogFocus=new WeakMap();
+  function rememberFocus(){
+    const el=document.activeElement,node=el?.closest('[data-node]')?.dataset.node,connection=el?.closest('[data-connection]')?.dataset.connection;
+    const owner=el?.closest('dialog');if(owner?.dataset.closing)return dialogFocus.get(owner)||(()=>null);
+    const control=['qr-node','ping-node','favorite-node','server-card'].find(name=>el?.classList.contains(name));
+    return ()=>el?.isConnected?el:node?[...$('serverList').children].find(row=>row.dataset.node===node)?.querySelector('.'+control)||$('serverSearch'):connection?[...$('connectionList').children].find(row=>row.dataset.connection===connection)?.querySelector('summary')||$('logSearch'):null;
+  }
+  function openDialog(dialog){if(dialog.open)return;dialogFocus.set(dialog,rememberFocus());dialog.showModal();openDialogs.push(dialog);raiseToast();animate(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:280});}
   function closeDialog(dialog){
-    if(dialog.dataset.closing)return;dialog.dataset.closing='true';if(dialog===$('deviceDialog'))clearHwid();if(dialog===$('addDialog')){if(importBusy)request('cancelImport');clearLink();}
-    const motion=animate(dialog,[{opacity:1,transform:'scale(1)'},{opacity:0,transform:'translateY(6px) scale(.985)'}],{duration:130});
-    const finish=()=>{dialog.close();delete dialog.dataset.closing;};if(motion)motion.finished.then(finish).catch(finish);else finish();
+    if(!dialog.open||dialog.dataset.closing)return;dialog.dataset.closing='true';if(dialog===$('deviceDialog'))clearHwid();if(dialog===$('addDialog')){if(importBusy)request('cancelImport');clearLink();}
+    const style=getComputedStyle(dialog),motion=animate(dialog,[{opacity:style.opacity,transform:style.transform},{opacity:0,transform:'translateY(6px) scale(.985)'}],{duration:130});
+    const finish=()=>{dialog.close();openDialogs.splice(openDialogs.indexOf(dialog),1);delete dialog.dataset.closing;if(!document.querySelector('dialog:modal'))dialogFocus.get(dialog)?.()?.focus({preventScroll:true});dialogFocus.delete(dialog);raiseToast();};if(motion)motion.finished.then(finish).catch(finish);else finish();
   }
   function openAdd(){clearLink();$('replaceNote').hidden=!model.hasSubscription;openDialog($('addDialog'));}
   document.querySelectorAll('[data-open-add]').forEach(el=>el.addEventListener('click',openAdd));$('cancelAdd').addEventListener('click',()=>closeDialog($('addDialog')));$('addDialog').addEventListener('close',clearLink);

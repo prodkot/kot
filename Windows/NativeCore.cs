@@ -59,7 +59,7 @@ public sealed class NativeCore : IDisposable
                 using var input = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
                 var si = new StartupInfo
                 {
-                    cb = Marshal.SizeOf<StartupInfo>(), dwFlags = 0x101, wShowWindow = 0,
+                    cb = Marshal.SizeOf<StartupInfo>(), dwFlags = 0x101, wShowWindow = 0, lpTitle = "kot. VPN core",
                     hStdInput = input.ClientSafePipeHandle.DangerousGetHandle(),
                     hStdOutput = output.ClientSafePipeHandle.DangerousGetHandle(),
                     hStdError = output.ClientSafePipeHandle.DangerousGetHandle()

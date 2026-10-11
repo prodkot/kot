@@ -3,7 +3,7 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.6.0"
+!define VERSION "0.6.1"
 !endif
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
@@ -68,6 +68,13 @@ Section "kot." SEC_MAIN
   CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe"
   CreateShortcut "$SMPROGRAMS\kot.\Удалить kot..lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\kot..lnk" "$INSTDIR\Kot.exe"
+  ExecWait '$\"$INSTDIR\Kot.exe$\" --register-shortcuts' $0
+  ${If} $0 != 0
+    IfSilent +2
+    MessageBox MB_ICONSTOP "Не удалось зарегистрировать ярлыки kot. Повторите установку."
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayName" "kot."
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "InstallLocation" "$INSTDIR"
