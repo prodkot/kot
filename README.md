@@ -1,6 +1,6 @@
 # kot.
 
-VPN-клиент для Windows на базе sing-box. Добавь свою подписку, выбери сервер и подключись.
+Клиент для Windows на базе sing-box. Добавь свою подписку, выбери сервер и подключись.
 
 **[Скачать для Windows](https://github.com/prodkot/kot/releases/latest)** · [Сайт](https://prodkot.github.io/kot/) · [Руководство](docs/GUIDE.md) · [Что нового](CHANGELOG.md)
 
