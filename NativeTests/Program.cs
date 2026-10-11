@@ -53,6 +53,7 @@ try
     using (var core = new NativeCore(fixtureExe, config, line => { stopping.Enqueue(line); if (line == "fixture-ready") ready.TrySetResult(); }))
     {
         await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Check(Kot.WindowTests.ProcessParent.Id(core.Process.Handle) == Environment.ProcessId, "VPN core stays a direct child of its kot host for process grouping");
         bool runningRejected = false;
         try { _ = core.ExitCode; } catch (InvalidOperationException ex) { runningRejected = ex.Message.Contains("still running"); }
         Check(runningRejected, "a running process has no termination code");

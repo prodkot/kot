@@ -90,7 +90,7 @@ public sealed partial class MainWindow : WindowChrome
             }
             catch (Exception ex) { AppLog.Error("startup state", ex); }
             CoreWebView2Environment env;
-            try { env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Store.Folder, "WebView")); }
+            try { env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")); }
             catch (WebView2RuntimeNotFoundException)
             {
                 string installer = Path.Combine(AppContext.BaseDirectory, "Install-WebView2.exe");
@@ -98,7 +98,7 @@ public sealed partial class MainWindow : WindowChrome
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
                 var installInfo = new ProcessStartInfo(installer) { UseShellExecute = true }; installInfo.ArgumentList.Add("/install");
                 using var install = Process.Start(installInfo); if (install != null) await install.WaitForExitAsync();
-                env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Store.Folder, "WebView"));
+                env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView"));
             }
             await web.EnsureCoreWebView2Async(env);
             var c = web.CoreWebView2;

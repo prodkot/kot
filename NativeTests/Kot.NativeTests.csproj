@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../Core/Kot.Core.csproj" />
     <Compile Include="../Windows/NativeCore.cs" Link="NativeCore.cs" />
+    <Compile Include="../WindowTests/ProcessParent.cs" Link="ProcessParent.cs" />
   </ItemGroup>
 </Project>
