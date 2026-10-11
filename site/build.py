@@ -57,6 +57,7 @@ def build(destination, release):
     (demo / "index.html").write_text(markup, encoding="utf-8")
     shutil.copy2(client / "app.js", demo / "client.js")
     shutil.copy2(client / "client-tools.js", demo / "client-tools.js")
+    shutil.copy2(client / "services.js", demo / "services.js")
     shutil.copytree(client / "sounds", demo / "sounds", dirs_exist_ok=True)
     shutil.copytree(client / "flags", demo / "flags", dirs_exist_ok=True)
     shutil.copy2(source.parent / "licenses/flag-icons-MIT.txt", demo / "flags/LICENSE.txt")

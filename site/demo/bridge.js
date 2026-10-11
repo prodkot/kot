@@ -3,7 +3,7 @@
   // Browser-only stand-in for WebView. All state stays in this frame's memory.
   // No subscriptions, hardware IDs, system settings or network connections are read.
   const version = document.body.dataset.demoVersion;
-  const pages = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'settings'];
+  const pages = ['home', 'servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings'];
   const listeners = new Set();
   const timers = new Map();
   let model, tick = 0, subscriptionSequence = 1, routingSequence = 0;

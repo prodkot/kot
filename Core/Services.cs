@@ -105,10 +105,13 @@ public static class ZapretStrategy
         command = Regex.Replace(command, @"\^\s*\r?\n", " ");
         // Read only the launch instruction; never execute the BAT preamble or tail.
         int end = command.IndexOfAny(['\r', '\n']); if (end >= 0) command = command[..end];
+        // The official FAKE TLS AUTO strategy escapes winws's literal ! for CMD.
+        command = command.Replace("^!", "!", StringComparison.Ordinal);
+        command = Regex.Replace(command, "%GameFilter(?:TCP|UDP)?%", _ => games ? "1024-65535" : "12", RegexOptions.IgnoreCase);
+        string template = Regex.Replace(command, "%BIN%|%LISTS%", "", RegexOptions.IgnoreCase);
+        if (template.IndexOfAny(['%', '^', '&', '|', '<', '>', '\0', '`']) >= 0) throw new UserError("Неподдерживаемая команда в стратегии zapret.");
         command = Regex.Replace(command, "%BIN%", _ => Path.GetFullPath(bin).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, RegexOptions.IgnoreCase);
         command = Regex.Replace(command, "%LISTS%", _ => Path.GetFullPath(lists).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, RegexOptions.IgnoreCase);
-        command = Regex.Replace(command, "%GameFilter(?:TCP|UDP)?%", _ => games ? "1024-65535" : "12", RegexOptions.IgnoreCase);
-        if (command.IndexOfAny(['%', '^', '&', '|', '<', '>', '\0', '`']) >= 0) throw new UserError("Неподдерживаемая команда в стратегии zapret.");
         var args = new List<string>(); var token = new StringBuilder(); bool quote = false;
         foreach (char c in command)
         {

@@ -112,6 +112,14 @@ def check():
                 expect(frame.locator('#onlineUpdateDialog')).not_to_be_visible()
 
                 # Native networking, files and QR stay unavailable in the isolated demo.
+                frame.locator('[data-page=services]').click()
+                expect(frame.locator('#page-services')).to_be_visible()
+                frame.locator('#zapretInstall').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('[data-service-tab=telegram]').click()
+                frame.locator('#telegramInstall').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('[data-service-tab=zapret]').click()
                 frame.locator('[data-page=diagnostics]').click()
                 expect(frame.locator('#page-diagnostics')).to_be_visible()
                 frame.locator('#runDiagnostics').click()
@@ -195,8 +203,14 @@ def check():
                 for width in [320, 375, 390, 600, 700, 1000, 1440]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth === innerWidth'), width
-                    for section in ['servers', 'statistics', 'diagnostics', 'logs', 'settings', 'home']:
-                        frame.locator('[data-page=' + section + ']').click()
+                    for section in ['servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings', 'home']:
+                        if section == 'statistics':
+                            frame.locator('.nav-button[data-page=settings]').click()
+                            frame.locator('#statisticsButton').click()
+                            expect(frame.locator('.nav-button[data-page=settings]')).to_have_attribute('aria-current', 'page')
+                            expect(frame.locator('.nav-button[data-page=statistics]')).to_have_count(0)
+                        else:
+                            frame.locator('.nav-button[data-page=' + section + ']').click()
                         expect(frame.locator('#page-' + section)).to_be_visible()
                         assert frame.locator('body').evaluate('() => document.documentElement.scrollWidth === innerWidth'), (width, section)
                     if width <= 390:

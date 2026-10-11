@@ -81,6 +81,7 @@ class SiteTests(unittest.TestCase):
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
             self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
             self.assertEqual((dest / "demo/client-tools.js").read_bytes(), (ROOT.parent / "Windows/ui/client-tools.js").read_bytes())
+            self.assertEqual((dest / "demo/services.js").read_bytes(), (ROOT.parent / "Windows/ui/services.js").read_bytes())
             self.assertTrue((dest / "demo/demo.css").is_file())
             self.assertTrue((dest / "demo/bridge.js").is_file())
             self.assertEqual((dest / "demo/flags/de.svg").read_bytes(), (ROOT.parent / "Windows/ui/flags/de.svg").read_bytes())
