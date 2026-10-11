@@ -1,0 +1,128 @@
+name: Windows development build
+on:
+  push:
+    branches: ['dev/**']
+  workflow_dispatch:
+concurrency:
+  group: development-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  release:
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.x'
+      - name: Verify development branch and run core tests
+        shell: pwsh
+        run: |
+          if (!$env:GITHUB_REF.StartsWith('refs/heads/dev/')) { throw 'Development builds require a dev branch.' }
+          python Tests/repository.py
+          if ($LASTEXITCODE -ne 0) { throw 'Repository consistency checks failed.' }
+          dotnet run --project Tests/Kot.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+      - name: Native Windows process launcher
+        shell: pwsh
+        run: |
+          $fixture=Join-Path $env:RUNNER_TEMP 'kot-native-tests'
+          dotnet publish NativeTests/Kot.NativeTests.csproj -c Release -r win-x64 --self-contained false -o $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'Native fixture build failed.' }
+          & (Join-Path $fixture 'Kot.NativeTests.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Native launcher tests failed.' }
+      - name: Native window and tray checks
+        shell: pwsh
+        run: |
+          dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 -p:SelfContained=false -p:PublishSingleFile=false -o artifacts/window-tests
+          if ($LASTEXITCODE -ne 0) { throw 'Window fixture build failed.' }
+          ./artifacts/window-tests/Kot.WindowTests.exe artifacts/window-ui
+          if ($LASTEXITCODE -ne 0) { throw 'Window and tray checks failed.' }
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+      - name: Build signed package and installer
+        shell: pwsh
+        env:
+          KOT_RELEASE_SIGNING_KEY: ${{ secrets.KOT_RELEASE_SIGNING_KEY }}
+        run: |
+          if (!$env:KOT_RELEASE_SIGNING_KEY) { throw 'Add the publisher private key to the KOT_RELEASE_SIGNING_KEY Actions secret.' }
+          $key=Join-Path $env:RUNNER_TEMP 'kot-private.pem'
+          try {
+            [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
+            ./Release/release.ps1 -Key $key
+          } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
+      - name: Temporary probe and kill switch with the bundled core and a real TUN
+        shell: pwsh
+        run: |
+          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Temporary core or real TUN kill switch test failed.' }
+      - name: Install and uninstall the signed Setup
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          function Wait-Installer($process, $stage) {
+            if (!$process.WaitForExit(120000)) {
+              Get-Process -Name 'Kot','Uninstall','Kot-Setup-*' -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,MainWindowTitle | Format-Table
+              throw "$stage did not finish within two minutes."
+            }
+            Write-Host "$stage exited with $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) {
+              $log=Join-Path $env:LOCALAPPDATA 'KotVPN/maintenance-error.txt'
+              if (Test-Path $log) { Get-Content $log }
+              throw "$stage failed."
+            }
+          }
+          $setup=Get-ChildItem artifacts/Kot-Setup-*-Windows-x64.exe | Select-Object -First 1
+          $target=Join-Path $env:RUNNER_TEMP 'kot-setup-test'
+          Write-Host "Installing $($setup.Name)"
+          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru
+          Wait-Installer $process 'Installation'
+          if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Kot.exe") -or !(Test-Path "$target/Uninstall.exe")) { throw 'Signed Setup installation failed.' }
+          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          foreach ($file in Get-ChildItem $publish -File -Recurse) {
+            $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
+            if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
+          }
+          $legacy=Get-Content Release/legacy-documents.json -Raw | ConvertFrom-Json
+          foreach ($name in $legacy) {
+            if (Test-Path (Join-Path $target $name)) { throw "Unnecessary root document installed: $name" }
+            [IO.File]::WriteAllText((Join-Path $target $name),'old installed document')
+          }
+          [IO.File]::WriteAllText("$target/user-notes.txt",'preserve this user file')
+          $process=Start-Process $setup.FullName -ArgumentList @('/S',"/D=$target") -PassThru
+          Wait-Installer $process 'Upgrade over legacy documents'
+          foreach ($name in $legacy) {
+            if (Test-Path (Join-Path $target $name)) { throw "Legacy document survived upgrade: $name" }
+          }
+          if ([IO.File]::ReadAllText("$target/user-notes.txt") -ne 'preserve this user file') { throw 'Upgrade changed unrelated user files.' }
+          foreach ($file in Get-ChildItem "$publish/licenses" -File) {
+            $installed=Join-Path "$target/licenses" $file.Name
+            if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "License notice changed during migration: $installed" }
+          }
+          foreach ($command in '--shutdown','--disable-startup','--disable-kill-switch') {
+            $process=Start-Process "$target/Kot.exe" -ArgumentList $command -PassThru
+            Wait-Installer $process $command
+          }
+          Write-Host 'Uninstalling verified payload'
+          $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru
+          Wait-Installer $process 'Uninstallation'
+          if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
+          Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: success()
+        with:
+          name: windows-development
+          path: artifacts/Kot-Setup-*-Windows-x64.exe
+          retention-days: 30
+          if-no-files-found: error

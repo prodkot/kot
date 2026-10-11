@@ -1,5 +1,7 @@
 # kot.
 
+**Ветка разработки 0.6.2.** Тестовые сборки и порядок дальнейшего слияния описаны в [Release/DEVELOPMENT.md](Release/DEVELOPMENT.md). Публикация следующего релиза отложена; 0.6.1 остаётся версией для длительной проверки.
+
 Клиент для Windows на базе sing-box. Добавь свою подписку, выбери сервер и подключись.
 
 **[Скачать для Windows](https://github.com/prodkot/kot/releases/latest)** · [Сайт](https://prodkot.github.io/kot/) · [Руководство](docs/GUIDE.md) · [Что нового](CHANGELOG.md)
