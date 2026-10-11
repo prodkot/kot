@@ -9,6 +9,7 @@ public sealed partial class MainWindow : WindowChrome
 {
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
     readonly NotifyIcon tray;
+    readonly Icon trayIcon;
     readonly TrayMenu trayMenu;
     string? pendingTrayPage;
     readonly Tunnel tunnel = new();
@@ -35,8 +36,10 @@ public sealed partial class MainWindow : WindowChrome
         Controls.Add(web);
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
-        tray = new NotifyIcon { Icon = Icon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
+        trayIcon = new Icon(Icon, SystemInformation.SmallIconSize);
+        tray = new NotifyIcon { Icon = trayIcon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Restore(); };
+        FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); trayIcon.Dispose(); };
         tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = tunnel.State == "connected" ? "kot. · Подключено" : "kot. · Не подключено"; Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
         Shown += async (_, _) => await Initialize();
@@ -304,7 +307,7 @@ public sealed partial class MainWindow : WindowChrome
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
         try { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
-        finally { tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); allowClose = true; Close(); }
+        finally { allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);

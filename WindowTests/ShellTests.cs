@@ -28,7 +28,10 @@ static class ShellTests
             string iconPath = Path.Combine(AppContext.BaseDirectory, "kot.ico");
             foreach (int size in new[] { 16, 24, 32, 48, 64, 128, 256 })
             {
-                using var icon = new Icon(iconPath, size, size);
+                // Icon's managed constructor compares the 256 frame's directory
+                // byte (0) literally and picks 128 instead. Use the Windows
+                // extractor, which understands 0 as 256, just like Explorer.
+                using var icon = size == 256 ? Icon.ExtractIcon(iconPath, 0, size)! : new Icon(iconPath, size, size);
                 check(icon.Width == size && icon.Height == size, "website icon has a native Windows frame at " + size + " pixels");
             }
             using var original = new Icon(iconPath, 64, 64);
