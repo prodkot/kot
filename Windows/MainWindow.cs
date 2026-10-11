@@ -68,7 +68,7 @@ public sealed partial class MainWindow : WindowChrome
     void Restore() => RestoreWindow();
     void OpenTrayPage(string page)
     {
-        if (page is not ("home" or "servers" or "statistics" or "logs" or "settings")) return;
+        if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) return;
         Restore();
         if (bridgeReady) Send(new { kind = "navigate", page }); else pendingTrayPage = page;
     }
@@ -120,7 +120,7 @@ public sealed partial class MainWindow : WindowChrome
     void Send(object value) { if (!exiting && bridgeReady && !web.IsDisposed && web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(value, Json)); }
     object Model() => new
     {
-        name = profile.Name, hasSubscription = profile.Address.Length > 0,
+        name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
         nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, ping = ping.Get(n.Id), code = n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
         telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
@@ -163,7 +163,16 @@ public sealed partial class MainWindow : WindowChrome
                 case "close": Close(); break;
                 case "toggle": _ = ToggleConnection(); break;
                 case "view":
-                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                case "runDiagnostics": StartTools("diagnostics", data); break;
+                case "testQuality": StartTools("quality", data); break;
+                case "cancelTools": toolsAttempt?.Cancel(); break;
+                case "readQrFile": case "readQrClipboard":
+                    string? qrText = await ReadQr(action == "readQrClipboard");
+                    Send(new { kind = "reply", id, ok = true, data = new { text = qrText } }); return;
+                case "readNodeQr":
+                    Send(new { kind = "reply", id, ok = true, data = ReadShareQr(data) }); return;
+                case "copyNodeLink": case "copyNodeQr": case "saveNodeQr": ExportShareQr(data, action); break;
                 case "checkUpdates": await CheckUpdates(); break;
                 case "cancelUpdate": updateAttempt?.Cancel(); break;
                 case "cancelImport": importAttempt?.Cancel(); break;
@@ -180,6 +189,7 @@ public sealed partial class MainWindow : WindowChrome
                     Clipboard.SetText(DeviceIdentity.Get().Hwid); break;
                 case "copyLog":
                     Clipboard.SetText(FullLog()); break;
+                case "copyDiagnostics": Clipboard.SetText(JsonSerializer.Serialize(ToolsModel(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true })); break;
                 case "diagnostics":
                     Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, core = "sing-box 1.14.2", os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
                 default:
@@ -200,6 +210,7 @@ public sealed partial class MainWindow : WindowChrome
             case "geoIpRefresh": case "geoIpSettings":
                 await MutateGeoIp(action, data); break;
             case "import": case "refresh":
+                if (action == "refresh" && profile.Local) throw new UserError("Локальный профиль обновляется повторным импортом файла.");
                 string address = action == "import" ? data.GetProperty("url").GetString()?.Trim() ?? "" : profile.Address;
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
                 AppLog.Secret(address); AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
@@ -213,13 +224,15 @@ public sealed partial class MainWindow : WindowChrome
                 }
                 if (exiting) return;
                 await ApplySubscription(address, name, result, action == "import"); break;
+            case "importText": await ApplyLocalImport(data.GetProperty("text").GetString() ?? "", data.GetProperty("name").GetString()?.Trim() ?? ""); break;
+            case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "pingSettings":
                 var options = JsonSerializer.Deserialize<PingOptions>(data.GetRawText(), Json) ?? throw new UserError("Не переданы настройки пинга.");
                 options.Validate(); await ping.Stop(clear: true); profile.Ping = options; Store.Save(profile); AppLog.Write("ping", "settings saved"); break;
             case "select":
                 string id = data.GetProperty("id").GetString() ?? "";
                 if (id != "auto" && !profile.Nodes.Any(n => n.Id == id)) throw new UserError("Сервер уже удалён. Обновите подписку.");
-                if (id != profile.Selected) { await tunnel.Stop(); profile.Selected = id; Store.Save(profile); ResumeDesired(); }
+                if (id != profile.Selected) { await StopTools(); await tunnel.Stop(); profile.Selected = id; Store.Save(profile); ResumeDesired(); }
                 break;
             case "settings":
                 string key = data.GetProperty("key").GetString() ?? ""; var value = data.GetProperty("value");
@@ -245,7 +258,7 @@ public sealed partial class MainWindow : WindowChrome
             case "switchSubscription":
                 string subscriptionId = data.GetProperty("id").GetString() ?? "";
                 if (profile.Subscriptions.All(s => s.Id != subscriptionId)) throw new UserError("Подписка уже удалена.");
-                if (subscriptionId != profile.ActiveSubscription) { await ping.Stop(clear: true); await tunnel.Stop(); profile.CaptureActive(); profile.Activate(subscriptionId); warnings = []; Store.Save(profile); AppLog.Register(profile); ResumeDesired(); }
+                if (subscriptionId != profile.ActiveSubscription) { await StopTools(); await ping.Stop(clear: true); await tunnel.Stop(); profile.CaptureActive(); profile.Activate(subscriptionId); warnings = []; Store.Save(profile); AppLog.Register(profile); ResumeDesired(); }
                 break;
             case "favorite":
                 string favorite = data.GetProperty("id").GetString() ?? "";
@@ -261,9 +274,9 @@ public sealed partial class MainWindow : WindowChrome
             case "downloadUpdate": await DownloadUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "deferUpdate": DeferUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "remove":
-                await ping.Stop(clear: true); await tunnel.Stop();
+                await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
                 profile.Subscriptions.RemoveAll(s => s.Id == profile.ActiveSubscription);
-                profile.ActiveSubscription = ""; profile.Address = ""; profile.Nodes = []; profile.Selected = ""; profile.Name = "Подписка"; profile.Updated = null; profile.Favorites = []; warnings = [];
+                profile.ActiveSubscription = ""; profile.Address = ""; profile.Local = false; profile.SubscriptionUsage = null; profile.Nodes = []; profile.Selected = ""; profile.Name = "Подписка"; profile.Updated = null; profile.Favorites = []; warnings = [];
                 if (profile.Subscriptions.Count > 0) profile.Activate(profile.Subscriptions[0].Id); else reconnect.Stop();
                 Store.Save(profile); ResumeDesired(); break;
             default: throw new UserError("Неизвестная команда.");
@@ -290,7 +303,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
-        try { await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
+        try { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
         finally { tray.Visible = false; tray.Dispose(); trayMenu.Dispose(); allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();

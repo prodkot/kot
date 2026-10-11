@@ -30,6 +30,7 @@ jobs:
           python3 Tests/subscriptions_ui.py
           python3 Tests/routing_ui.py
           python3 Tests/statistics_ui.py
+          python3 Tests/client_tools_ui.py
   integration:
     timeout-minutes: 10
     runs-on: ubuntu-latest

@@ -299,6 +299,8 @@ await Kot.Tests.ProductTests.Run(Check, a.Nodes[0], configurationFolder);
 await Kot.Tests.RoutingTests.Run(Check, a.Nodes[0], configurationFolder);
 await Kot.Tests.GeoIpTests.Run(Check, a.Nodes[0], fixtureFolder);
 Kot.Tests.StatisticsTests.Run(Check, Path.Combine(fixtureFolder, "statistics"));
+await Kot.Tests.ClientToolsTests.Run(Check, configurationFolder, fixtureFolder);
+Kot.Tests.DetailedStatisticsTests.Run(Check, Path.Combine(fixtureFolder, "details"));
 
 sealed class FakeTransport(Func<HttpRequestMessage, int, HttpResponseMessage> response) : HttpMessageHandler
 {

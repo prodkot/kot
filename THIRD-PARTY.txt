@@ -60,3 +60,18 @@ Go module dependencies of sing-box 1.14.2:
 Источник: https://commons.wikimedia.org/wiki/File:Maullido_de_gata_hembra.ogg
 Лицензия CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 Оригинальная запись без изменений: ui/sounds/meow.ogg.
+
+YamlDotNet 18.1.0
+
+Разбор серверов из Clash YAML. Автор: Antoine Aubry и участники проекта.
+Лицензия MIT: licenses/YamlDotNet-MIT.txt.
+Пакет: https://www.nuget.org/packages/YamlDotNet/18.1.0
+Исходники: https://github.com/aaubry/YamlDotNet/tree/v18.1.0
+
+ZXing.Net 0.16.11
+
+Генерация и распознавание QR. Порт ZXing: Michael Jahn и участники
+ZXing.Net; исходная библиотека ZXing: ZXing authors.
+Лицензия Apache-2.0: licenses/ZXing-Net-Apache-2.0.txt.
+Пакет: https://www.nuget.org/packages/ZXing.Net/0.16.11
+Исходники: https://github.com/micjahn/ZXing.Net
