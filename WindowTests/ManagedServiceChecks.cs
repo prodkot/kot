@@ -33,7 +33,12 @@ internal static class ManagedServiceChecks
             string link = Path.Combine(own,"link"); Directory.CreateSymbolicLink(link, outside); bool linkRejected = false;
             try { ManagedPackageFiles.Remove(own, own); } catch (UserError) { linkRejected = true; }
             check(linkRejected && File.Exists(Path.Combine(own,"keep.txt")) && File.Exists(Path.Combine(outside,"keep.txt")), "package cleanup rejects redirected directories before deleting any files");
-            Directory.Delete(link); ManagedPackageFiles.Remove(folder, own); ManagedPackageFiles.Remove(folder, outside);
+            Directory.Delete(link);
+            string manifest = Path.Combine(own,"current.json"); File.WriteAllText(manifest,"keep"); bool lockedManifestRejected = false;
+            using (var locked = new FileStream(manifest,FileMode.Open,FileAccess.Read,FileShare.Read))
+            { try { ManagedPackageFiles.Remove(folder, own, manifest); } catch (IOException) { lockedManifestRejected = true; } }
+            check(lockedManifestRejected && File.Exists(manifest) && File.Exists(Path.Combine(own,"keep.txt")), "locked installation metadata fails before package deletion and is never queued against a future installation");
+            ManagedPackageFiles.Remove(folder, own); ManagedPackageFiles.Remove(folder, outside);
             await Action("zapret", "install");
             var strategies = Item(manager, "zapret").GetProperty("strategies").EnumerateArray().Select(s => s.GetString()!).ToArray();
             check(strategies.Length >= 10 && strategies.Contains("general.bat"), "official zapret package contains validated selectable strategies");

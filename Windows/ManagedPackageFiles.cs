@@ -6,7 +6,7 @@ namespace Kot.Windows;
 internal static class ManagedPackageFiles
 {
     // Only owned paths are eligible. Never unload a driver shared with other applications.
-    public static bool Remove(string ownedRoot, string path)
+    public static bool Remove(string ownedRoot, string path, string? immediateFile = null)
     {
         string root = Path.GetFullPath(ownedRoot).TrimEnd(Path.DirectorySeparatorChar);
         path = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
@@ -30,6 +30,9 @@ internal static class ManagedPackageFiles
             directories.Add(directory);
         }
         Collect(path);
+        // The manifest has a reusable name. Never queue it for reboot deletion: a fresh
+        // installation could otherwise recreate it before the pending operation runs.
+        if (immediateFile != null && files.Remove(Path.GetFullPath(immediateFile))) File.Delete(immediateFile);
         bool deferred = false;
         foreach (string file in files)
         {

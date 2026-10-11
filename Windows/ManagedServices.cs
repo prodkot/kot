@@ -153,7 +153,7 @@ internal sealed class ManagedServices
                 case "stop": entry.Phase = "Остановка"; await Stop(entry); break;
                 case "remove":
                     entry.Phase = "Удаление пакета"; await Stop(entry);
-                    bool deferred = ManagedPackageFiles.Remove(folder, Root(entry.Id));
+                    bool deferred = ManagedPackageFiles.Remove(folder, Root(entry.Id), Manifest(entry.Id));
                     entry.Installed = null; entry.Status = deferred ? "Очистка после перезагрузки Windows" : "Не установлен";
                     AddLog(entry, deferred ? "Пакет удалён. Windows завершит удаление занятых файлов при перезагрузке." : "Пакет удалён; настройки и история сохранены."); break;
                 case "test": await Test(entry, selected, attempt.Token); break;
