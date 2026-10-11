@@ -151,7 +151,11 @@ internal sealed class ManagedServices
                 case "start": entry.Phase = "Запуск"; await Start(entry, null, attempt.Token); break;
                 case "restart": entry.Phase = "Перезапуск"; await Stop(entry); await Start(entry, null, attempt.Token); break;
                 case "stop": entry.Phase = "Остановка"; await Stop(entry); break;
-                case "remove": entry.Phase = "Удаление пакета"; await Stop(entry); if (Directory.Exists(Root(entry.Id))) Directory.Delete(Root(entry.Id), true); entry.Installed = null; entry.Status = "Не установлен"; break;
+                case "remove":
+                    entry.Phase = "Удаление пакета"; await Stop(entry);
+                    bool deferred = ManagedPackageFiles.Remove(folder, Root(entry.Id));
+                    entry.Installed = null; entry.Status = deferred ? "Очистка после перезагрузки Windows" : "Не установлен";
+                    AddLog(entry, deferred ? "Пакет удалён. Windows завершит удаление занятых файлов при перезагрузке." : "Пакет удалён; настройки и история сохранены."); break;
                 case "test": await Test(entry, selected, attempt.Token); break;
                 default: throw new UserError("Неизвестная операция сервиса.");
             }
@@ -208,7 +212,11 @@ internal sealed class ManagedServices
             // Retain the previous package for recovery; remove older managed packages.
             string? keep = old == null ? null : PackageDirectory(entry.Id, old.Executable);
             foreach (string directory in Directory.GetDirectories(Path.Combine(root, "packages")))
-                if (directory != package && directory != keep) { try { Directory.Delete(directory, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+                if (directory != package && directory != keep)
+                {
+                    try { if (ManagedPackageFiles.Remove(root, directory)) AddLog(entry, "Занятые файлы старого пакета будут удалены после перезагрузки Windows."); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or UserError) { AddLog(entry, "Не удалось очистить старый пакет: " + Store.Friendly(ex)); }
+                }
         }
         catch
         {
@@ -221,8 +229,8 @@ internal sealed class ManagedServices
         }
         finally
         {
-            TryDelete(download); if (Directory.Exists(staging)) Directory.Delete(staging, true);
-            if (!committed && package != null && Directory.Exists(package)) Directory.Delete(package, true);
+            TryDelete(download); ManagedPackageFiles.Remove(root, staging);
+            if (!committed && package != null) ManagedPackageFiles.Remove(root, package);
         }
     }
     string PackageDirectory(string id, string executable)

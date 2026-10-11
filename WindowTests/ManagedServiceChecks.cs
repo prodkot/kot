@@ -24,6 +24,16 @@ internal static class ManagedServiceChecks
         }
         try
         {
+            string own = Path.Combine(folder,"cleanup-check"), outside = Path.Combine(folder,"outside-check");
+            Directory.CreateDirectory(own); Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(own,"keep.txt"),"keep"); File.WriteAllText(Path.Combine(outside,"keep.txt"),"keep");
+            bool outsideRejected = false;
+            try { ManagedPackageFiles.Remove(own, outside); } catch (UserError) { outsideRejected = true; }
+            check(outsideRejected && File.Exists(Path.Combine(outside,"keep.txt")), "package cleanup rejects paths outside its ownership boundary");
+            string link = Path.Combine(own,"link"); Directory.CreateSymbolicLink(link, outside); bool linkRejected = false;
+            try { ManagedPackageFiles.Remove(own, own); } catch (UserError) { linkRejected = true; }
+            check(linkRejected && File.Exists(Path.Combine(own,"keep.txt")) && File.Exists(Path.Combine(outside,"keep.txt")), "package cleanup rejects redirected directories before deleting any files");
+            Directory.Delete(link); ManagedPackageFiles.Remove(folder, own); ManagedPackageFiles.Remove(folder, outside);
             await Action("zapret", "install");
             var strategies = Item(manager, "zapret").GetProperty("strategies").EnumerateArray().Select(s => s.GetString()!).ToArray();
             check(strategies.Length >= 10 && strategies.Contains("general.bat"), "official zapret package contains validated selectable strategies");
@@ -70,8 +80,15 @@ internal static class ManagedServiceChecks
             await Action("telegram", "start");
             await manager.StopAll(true);
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");
+            // A fresh manager removes stopped packages after the shutdown check. WinDivert may
+            // keep its kernel driver loaded; that owned file must be queued for reboot cleanup.
+            manager = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder);
+            await Action("zapret", "remove"); await Action("telegram", "remove");
+            check(Item(manager,"zapret").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && Item(manager,"telegram").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && !File.Exists(Path.Combine(folder,"zapret","current.json")) && !File.Exists(Path.Combine(folder,"telegram","current.json")), "removal clears both installed packages and their manifests despite the loaded WinDivert driver");
+            check(File.Exists(Path.Combine(folder,"tests.json")) && options.Zapret.Strategy == "general.bat", "package removal preserves saved strategy history and user settings");
+            check(!Directory.Exists(Path.Combine(folder,"telegram")) && Directory.GetFiles(folder,"winws.exe",SearchOption.AllDirectories).Length == 0, "removal deletes user-space executable files immediately");
         }
         catch (Exception ex) { Console.WriteLine("FAIL managed service check before cleanup: " + ex); throw; }
-        finally { await manager.StopAll(true); if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+        finally { await manager.StopAll(true); ManagedPackageFiles.Remove(folder, folder); }
     }
 }
