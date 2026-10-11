@@ -140,12 +140,31 @@ public sealed class NativeCore : IDisposable
                     if (!await Task.Run(() => WaitForExit(10000))) throw new TimeoutException("The core job did not stop.");
                 }
             }
+            // A launcher can exit while its children still own sockets, a mutex
+            // or the executable file. Wait for the whole job before reporting stop.
+            if (ActiveJobProcesses() > 0)
+            {
+                report?.Invoke("terminate remaining child processes");
+                if (!TerminateJobObject(job, 130) && ActiveJobProcesses() > 0) throw new Win32Exception();
+                var deadline = Stopwatch.StartNew();
+                while (ActiveJobProcesses() > 0)
+                {
+                    if (deadline.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("The core's child processes did not stop.");
+                    await Task.Delay(40);
+                }
+            }
             await ReadRecentOutput(true);
             report?.Invoke("core stopped; exit=" + ExitCode);
         }
         finally { Dispose(); }
     }
+    uint ActiveJobProcesses()
+    {
+        if (!QueryInformationJobObject(job, 1, out BasicAccounting value, (uint)Marshal.SizeOf<BasicAccounting>(), IntPtr.Zero)) throw new Win32Exception();
+        return value.ActiveProcesses;
+    }
     public void Dispose() { if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; } output.Dispose(); log.Clear(); Process?.Dispose(); processHandle.Dispose(); }
+    [StructLayout(LayoutKind.Sequential)] struct BasicAccounting { public long TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime; public uint TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses; }
     [StructLayout(LayoutKind.Sequential)] struct BasicLimit { public long PerProcessUserTimeLimit, PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass, SchedulingClass; }
     [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount; }
     [StructLayout(LayoutKind.Sequential)] struct ExtendedLimit { public BasicLimit Basic; public IoCounters Io; public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed; }
@@ -154,6 +173,7 @@ public sealed class NativeCore : IDisposable
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimit info, uint size);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool QueryInformationJobObject(IntPtr job, int infoClass, out BasicAccounting info, uint size, IntPtr returnLength);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateJobObject(IntPtr job, uint code);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool CreateProcess(string application, StringBuilder command, IntPtr processAttributes, IntPtr threadAttributes, bool inherit, uint flags, IntPtr environment, string? directory, ref StartupInfo startup, out ProcessInformation information);
     [DllImport("kernel32.dll", SetLastError = true)] static extern uint ResumeThread(IntPtr thread);

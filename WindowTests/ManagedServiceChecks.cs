@@ -71,6 +71,7 @@ internal static class ManagedServiceChecks
             await manager.StopAll(true);
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");
         }
+        catch (Exception ex) { Console.WriteLine("FAIL managed service check before cleanup: " + ex); throw; }
         finally { await manager.StopAll(true); if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }
 }

@@ -103,6 +103,16 @@ try
         Check(true, "closing the service job kills its descendant even after an abrupt host cleanup");
     }
     int longest = 0;
+    string orphanFile = Path.Combine(folder, "orphan.txt");
+    using (var parent = new NativeCore(fixtureExe, ["--service-parent", orphanFile], folder, "kot. fixture orphan cleanup"))
+    {
+        for (int i = 0; i < 100 && !File.Exists(orphanFile); i++) await Task.Delay(50);
+        using var descendant = System.Diagnostics.Process.GetProcessById(int.Parse(File.ReadAllText(orphanFile)));
+        using (var observer = System.Diagnostics.Process.GetProcessById(parent.Process.Id))
+        { observer.Kill(); await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+        await parent.Stop();
+        Check(descendant.HasExited, "stop waits for every child after the launcher is killed unexpectedly");
+    }
     using (var flood = new NativeCore(fixtureExe, ["--service-flood"], folder, "kot. fixture flood", line => { longest = Math.Max(longest, line.Length); }))
     {
         await flood.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
