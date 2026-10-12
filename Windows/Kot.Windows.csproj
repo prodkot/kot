@@ -25,6 +25,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31"/>
     <Content Include="ui/**" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
     <Content Include="kot.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
+    <Content Include="kot-light.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
   </ItemGroup>
   <!-- Keep the native WebView2 loader next to Kot.exe so its normal DLL lookup is unchanged. -->
   <Target Name="KeepWebViewLoaderExternal" BeforeTargets="_ComputeFilesToBundle">

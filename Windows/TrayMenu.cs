@@ -73,18 +73,18 @@ public sealed class TrayMenu : ContextMenuStrip
         Invalidate();
     }
     // WinForms recalculates menu padding when its font and text metrics change.
-    protected override Padding DefaultPadding => new((int)Math.Round(16 * DeviceDpi / 96f));
+    protected override Padding DefaultPadding => new((int)Math.Round(12 * DeviceDpi / 96f));
     void LayoutMenu()
     {
         float scale = DeviceDpi / 96f;
         int Px(int value) => (int)Math.Round(value * scale);
         SuspendLayout();
-        Padding = new Padding(Px(16));
-        ClientSize = new Size(Px(400), Px(400));
+        Padding = new Padding(Px(12));
+        ClientSize = new Size(Px(320), Px(320));
         foreach (ToolStripItem item in Items)
         {
             item.AutoSize = false; item.Margin = System.Windows.Forms.Padding.Empty;
-            item.Size = new Size(ClientSize.Width - Padding.Horizontal, Px(item is ToolStripSeparator ? 10 : item == heading ? 28 : 40));
+            item.Size = new Size(ClientSize.Width - Padding.Horizontal, Px(item is ToolStripSeparator ? 8 : item == heading ? 24 : 32));
         }
         ResumeLayout();
     }

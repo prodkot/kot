@@ -142,11 +142,11 @@ internal static class Program
             menu.Update(theme, "connected", "Германия · Frankfurt", true);
             menu.Show(window, new Point(20, 20)); Application.DoEvents();
             Check(menu.Region != null, "rounded native menu " + theme);
-            Check(menu.Width == menu.Height && Math.Abs(menu.Width - 400 * menu.DeviceDpi / 96f) <= 1, "square tray menu scales with Windows DPI " + theme);
+            Check(menu.Width == menu.Height && Math.Abs(menu.Width - 320 * menu.DeviceDpi / 96f) <= 1, "compact 320-pixel tray menu scales with Windows DPI " + theme);
             var rows = menu.Items.Cast<ToolStripItem>().ToArray();
             var commands = rows.OfType<ToolStripMenuItem>().ToArray();
             Console.WriteLine("Tray geometry " + theme + ": " + string.Join("; ", rows.Select(i => $"{i.Tag ?? "separator"} {i.Bounds}")));
-            Check(commands.Where(i => i.Enabled).All(i => i.Bounds.Width == menu.ClientSize.Width - menu.Padding.Horizontal && Math.Abs(i.Height - 40 * menu.DeviceDpi / 96f) <= 1), "tray commands have equal full-width hit areas " + theme);
+            Check(commands.Where(i => i.Enabled).All(i => i.Bounds.Width == menu.ClientSize.Width - menu.Padding.Horizontal && Math.Abs(i.Height - 32 * menu.DeviceDpi / 96f) <= 1), "tray commands have equal full-width hit areas " + theme);
             Check(commands.All(i => i.Bounds.Left >= menu.Padding.Left && i.Bounds.Right <= menu.ClientSize.Width - menu.Padding.Right && i.Bounds.Bottom <= menu.ClientSize.Height - menu.Padding.Bottom), "all tray commands fit within the common padding " + theme);
             using var bitmap = new Bitmap(menu.Width, menu.Height);
             menu.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));

@@ -23,6 +23,37 @@ public static class ShellIdentity
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "kot..lnk") })
             if (File.Exists(path)) SetShortcutId(path);
     }
+    public static void RefreshPinnedIcon(string iconPath)
+    {
+        string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+        if (!Directory.Exists(folder) || Environment.ProcessPath is not { } target) return;
+        foreach (string path in Directory.EnumerateFiles(folder, "*.lnk"))
+        {
+            try { SetShortcutIcon(path, target, iconPath); }
+            catch (Exception ex) { AppLog.Error("pinned icon refresh", ex); }
+        }
+    }
+    public static bool SetShortcutIcon(string path, string target, string iconPath)
+    {
+        object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+        object? shortcut = null;
+        try
+        {
+            dynamic wsh = shell;
+            shortcut = wsh.CreateShortcut(path);
+            dynamic link = shortcut;
+            // Only edit this executable's shortcut; leave other pinned applications alone.
+            string shortcutTarget = (string)link.TargetPath;
+            if (string.IsNullOrWhiteSpace(shortcutTarget) || !string.Equals(Path.GetFullPath(shortcutTarget), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) return false;
+            string location = Path.GetFullPath(iconPath) + ",0";
+            if (string.Equals((string)link.IconLocation, location, StringComparison.OrdinalIgnoreCase)) return true;
+            link.IconLocation = location; link.Save();
+            SHChangeNotify(0x00002000, 0x00002005, path, IntPtr.Zero); // UPDATEITEM, PATHW | FLUSHNOWAIT
+            return true;
+        }
+        finally { if (shortcut != null) Marshal.ReleaseComObject(shortcut); Marshal.ReleaseComObject(shell); }
+    }
     public static void SetShortcutId(string path)
     {
         var iid = PropertyStoreId;
@@ -52,6 +83,7 @@ public static class ShellIdentity
     }
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SetCurrentProcessExplicitAppUserModelID(string id);
     [DllImport("shell32.dll")] static extern int GetCurrentProcessExplicitAppUserModelID(out IntPtr id);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern void SHChangeNotify(uint events, uint flags, string item, IntPtr other);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHGetPropertyStoreFromParsingName(string path, IntPtr context, uint flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant value);
 }

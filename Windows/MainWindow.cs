@@ -9,7 +9,7 @@ public sealed partial class MainWindow : WindowChrome
 {
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
     readonly NotifyIcon tray;
-    readonly Icon trayIcon;
+    readonly ThemeIcons icons = new();
     readonly TrayMenu trayMenu;
     readonly StartupScreen loading;
     readonly bool startupSpin = Random.Shared.Next(100) == 0;
@@ -38,16 +38,16 @@ public sealed partial class MainWindow : WindowChrome
         Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
         BackColor = ColorTranslator.FromHtml(profile.Theme == "light" ? "#f6f6f2" : "#151718");
         web.DefaultBackgroundColor = BackColor;
-        Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+        Icon = icons.Window(profile.Theme);
         Controls.Add(web);
         loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSpin);
         Controls.Add(loading); loading.BringToFront();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
-        trayIcon = new Icon(Icon, SystemInformation.SmallIconSize);
-        tray = new NotifyIcon { Icon = trayIcon, Text = AppRuntime.DisplayName + " · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
+        tray = new NotifyIcon { Text = AppRuntime.DisplayName + " · Не подключено", ContextMenuStrip = trayMenu };
+        icons.Apply(this, tray, profile.Theme); tray.Visible = true;
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Restore(); };
-        FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); trayIcon.Dispose(); };
+        FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); Icon = null; icons.Dispose(); };
         tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = AppRuntime.DisplayName + (tunnel.State == "connected" ? " · Подключено" : " · Не подключено"); Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
         Shown += async (_, _) => await Initialize();
@@ -85,6 +85,7 @@ public sealed partial class MainWindow : WindowChrome
     }
     void UpdateTray()
     {
+        icons.Apply(this, tray, profile.Theme);
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
         trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
