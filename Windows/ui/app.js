@@ -101,6 +101,8 @@
     document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===data.settings.theme));document.querySelector('.theme-control').dataset.selected=data.settings.theme==='dark'?'0':'1';
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='tun'?'0':'1';
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));
+    const startupButton=document.querySelector('[data-setting=startup]');startupButton.disabled=!!data.portable;startupButton.title=data.portable?'В portable автозапуск Windows отключён':'';
+    document.querySelector('[data-setting=killSwitch]').title=data.portable?'Защита действует, пока работает portable. После завершения приложения блокировка снимается.':'';
     label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);
     const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
@@ -111,7 +113,7 @@
     $('refreshButton').disabled=refreshBusy||!data.hasSubscription||!!data.localSubscription;$('removeSubscription').hidden=!data.hasSubscription;
     if(!$('advancedDialog').open)$('bypassDomains').value=data.settings.bypass||'';
     $('skippedDetails').hidden=!data.warnings?.length;$('skippedNodes').replaceChildren(...(data.warnings||[]).slice(0,50).map(w=>{const p=document.createElement('p');p.textContent=w;return p;}));
-    $('titleVersion').textContent=data.version||'';$('version').textContent='kot. '+data.version+' · sing-box 1.14.2'+(data.updated?' · '+data.updated:'');
+    $('titleVersion').textContent=(data.version||'')+(data.portable?' portable':'');$('version').textContent='kot. '+data.version+(data.portable?' portable':'')+' · sing-box 1.14.2'+(data.updated?' · '+data.updated:'');
     const ping=data.ping||{};
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;
@@ -215,8 +217,8 @@
   function renderUpdate(){const u=model.updates||{},busy=updateCheckBusy||updateDownloadBusy||!!u.busy;$('updateNotice').hidden=!u.availableVersion||u.availableVersion===u.dismissedVersion||busy||$('onlineUpdateDialog').open;
     $('updateNoticeTitle').textContent='Доступно обновление '+(u.availableVersion||'');
     $('acceptUpdate').disabled=busy||updateDeferBusy;$('deferUpdate').disabled=busy||updateDeferBusy;
-    $('downloadUpdate').disabled=busy;
-    $('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion||busy;$('downloadUpdate').textContent='Обновить до '+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy;$('updateProgress').hidden=!busy;if(u.bytes&&u.size){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes;}else $('updateProgress').removeAttribute('value');}
+    $('downloadUpdate').disabled=busy||!!model.portable;
+    $('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion||busy;$('downloadUpdate').textContent='Обновить до '+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy||!!model.portable;$('onlineUpdateButton').title=model.portable?'Обновление portable: распакуйте новый тестовый архив':'';$('updateProgress').hidden=!busy;if(u.bytes&&u.size){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes;}else $('updateProgress').removeAttribute('value');}
   document.querySelectorAll('[data-log-tab]').forEach(b=>b.addEventListener('click',()=>{logTab=b.dataset.logTab;renderLogs();}));$('logSearch').addEventListener('input',renderLogs);$('logLevel').addEventListener('change',renderLogs);
   $('pauseLogs').addEventListener('click',()=>{logsPaused=!logsPaused;$('pauseLogs').setAttribute('aria-pressed',logsPaused);$('pauseLogs').textContent=logsPaused?'Продолжить':'Пауза';if(!logsPaused)logSnapshot={telemetry:model.telemetry,journal:model.journal,state:model.state};renderLogs();});$('copyViewLog').addEventListener('click',async()=>{if(await request('copyLog'))toast('Полный лог скопирован');});
   $('onlineUpdateButton').addEventListener('click',async()=>{

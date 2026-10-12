@@ -93,13 +93,14 @@ internal static class ManagedServiceChecks
             await Action("telegram", "start");
             await manager.StopAll(true);
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");
-            // A fresh manager removes stopped packages after the shutdown check. WinDivert may
-            // keep its kernel driver loaded; that owned file must be queued for reboot cleanup.
+            // Installed builds may queue a loaded WinDivert file for reboot cleanup.
+            // Portable must unload its own driver and remove the entire package immediately.
             manager = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder);
             await Action("zapret", "remove"); await Action("telegram", "remove");
             check(Item(manager,"zapret").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && Item(manager,"telegram").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && !File.Exists(Path.Combine(folder,"zapret","current.json")) && !File.Exists(Path.Combine(folder,"telegram","current.json")), "removal clears both installed packages and their manifests despite the loaded WinDivert driver");
             check(File.Exists(Path.Combine(folder,"tests.json")) && options.Zapret.Strategy == "general.bat", "package removal preserves saved strategy history and user settings");
             check(!Directory.Exists(Path.Combine(folder,"telegram")) && Directory.GetFiles(folder,"winws.exe",SearchOption.AllDirectories).Length == 0, "removal deletes user-space executable files immediately");
+            if (AppRuntime.Portable) check(Directory.GetFiles(folder,"*.sys",SearchOption.AllDirectories).Length == 0 && !Directory.Exists(Path.Combine(folder,"zapret")), "portable unloads its WinDivert driver and removes its files without reboot cleanup");
         }
         catch (Exception ex) { Console.WriteLine("FAIL managed service check before cleanup: " + ex); throw; }
         finally { await manager.StopAll(true); ManagedPackageFiles.Remove(folder, folder); }

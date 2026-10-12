@@ -16,11 +16,12 @@ public static class Startup
 
     public static Task Set(bool enabled)
     {
+        if (AppRuntime.Portable) return enabled ? Task.FromException(new UserError("Автозапуск Windows отключён в portable, чтобы не оставлять системную задачу.")) : Task.CompletedTask;
         string sid = Sid;
         return Set(enabled, "KotVPN-" + sid, sid, Environment.ProcessPath!, AppContext.BaseDirectory);
     }
 
-    public static Task<bool> IsEnabled() => IsEnabled("KotVPN-" + Sid);
+    public static Task<bool> IsEnabled() => AppRuntime.Portable ? Task.FromResult(false) : IsEnabled("KotVPN-" + Sid);
 
     // Each operation owns its COM objects on one worker thread, away from the UI.
     internal static Task Set(bool enabled, string name, string sid, string executable, string directory) => Task.Run(() =>

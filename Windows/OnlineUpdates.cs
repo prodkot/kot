@@ -13,10 +13,11 @@ public sealed partial class MainWindow
     object UpdateModel() => new { busy = updateBusy, bytes = updateBytes, status = updateStatus, error = updateError, availableVersion = remoteRelease?.Version, dismissedVersion = profile.DeferredUpdateVersion, size = remoteRelease?.Size ?? 0, checkedAt = lastUpdateCheck == DateTimeOffset.MinValue ? null : lastUpdateCheck.ToLocalTime().ToString("dd.MM HH:mm") };
     void ScheduleUpdateCheck()
     {
-        if (!updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates();
+        if (!AppRuntime.Portable && !updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates();
     }
     async Task CheckUpdates()
     {
+        AppRuntime.RequireInstalledUpdates();
         if (updateBusy) throw new UserError("Проверка или загрузка обновления уже идёт.");
         remoteRelease = null; updateBusy = true; updateStatus = "Проверка обновлений"; updateError = ""; updateBytes = 0; lastUpdateCheck = DateTimeOffset.UtcNow; nextUpdateCheck = lastUpdateCheck.AddHours(24); Snapshot();
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); updateAttempt = attempt;
@@ -37,6 +38,7 @@ public sealed partial class MainWindow
     }
     async Task DownloadUpdate(string version)
     {
+        AppRuntime.RequireInstalledUpdates();
         var release = remoteRelease ?? throw new UserError("Сначала проверьте обновления.");
         if (updateBusy) throw new UserError("Обновление уже загружается.");
         if (release.Version != version) throw new UserError("Предложение обновления изменилось. Подтвердите новую версию.");

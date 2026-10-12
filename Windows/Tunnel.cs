@@ -115,6 +115,12 @@ public sealed class Tunnel
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
             var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret, GeoIpStore.Cache.Paths(countries));
+            if (AppRuntime.Portable && profile.ConnectionMode == "tun")
+            {
+                var tun = config["inbounds"]!.AsArray().First(i => i!["type"]!.GetValue<string>() == "tun")!;
+                tun["interface_name"] = AppRuntime.TunnelName;
+                tun["address"] = new System.Text.Json.Nodes.JsonArray("172.28.232.1/30", "fdfe:dcba:232::1/126");
+            }
             ProxyPort = port; AutomaticNode = "";
             Directory.CreateDirectory(Store.Folder);
             File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

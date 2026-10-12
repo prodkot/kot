@@ -20,6 +20,14 @@
     <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(KotPortable)' == 'true'">
+    <AssemblyName>Kot.Portable</AssemblyName>
+    <DefineConstants>$(DefineConstants);KOT_PORTABLE</DefineConstants>
+    <Product>kot. portable</Product>
+    <Title>kot. portable</Title>
+    <PublishSingleFile>false</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Core/Kot.Core.csproj"/>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31"/>

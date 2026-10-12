@@ -4,8 +4,8 @@ using System.Security.Principal;
 namespace Kot.Windows;
 static class Program
 {
-    public static readonly int ShutdownMessage = (int)RegisterWindowMessage("KotVPN.Shutdown.v1");
-    public static readonly int ActivateMessage = (int)RegisterWindowMessage("KotVPN.ShowWindow.v1");
+    public static readonly int ShutdownMessage = (int)RegisterWindowMessage(AppRuntime.Scope + ".Shutdown.v1");
+    public static readonly int ActivateMessage = (int)RegisterWindowMessage(AppRuntime.Scope + ".ShowWindow.v1");
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string name);
     [DllImport("user32.dll")] static extern bool SendNotifyMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [STAThread]
@@ -14,6 +14,8 @@ static class Program
         ApplicationConfiguration.Initialize();
         try
         {
+            AppRuntime.Prepare();
+            if (args.Length == 6 && args[0] == "--portable-driver-watch") { PortableDriver.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3], args[4], args[5]); return; }
             if (args.Contains("--register-shortcuts")) { ShellIdentity.RegisterInstalledShortcuts(); return; }
             if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return; }
             if (args.Contains("--restore-proxy")) { SystemProxy.Restore(); return; }
@@ -21,7 +23,7 @@ static class Program
             if (args.Contains("--shutdown"))
             {
                 SendNotifyMessage((IntPtr)0xffff, (uint)ShutdownMessage, IntPtr.Zero, IntPtr.Zero);
-                using var running = new Mutex(false, "Local\\KotVPN-" + WindowsIdentity.GetCurrent().User!.Value);
+                using var running = new Mutex(false, AppRuntime.InstanceMutex);
                 bool closed; try { closed = running.WaitOne(30000); } catch (AbandonedMutexException) { closed = true; }
                 if (!closed) { Environment.ExitCode = 1; return; } running.ReleaseMutex(); SystemProxy.Restore(); return;
             }
@@ -36,7 +38,7 @@ static class Program
                 if (Path.GetDirectoryName(work) != root || !System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(work), "^\\.kot-update-[a-f0-9]{32}$")) throw new Kot.Core.UserError("Некорректный путь подтверждения обновления.");
                 Kot.Core.UpdateTransaction.SafePath(work); UpdateInstaller.Receipt = work;
             }
-            if (UpdateInstaller.Receipt == null)
+            if (!AppRuntime.Portable && UpdateInstaller.Receipt == null)
             using (var barrier = new Mutex(false, UpdateInstaller.MutexName))
             {
                 bool owned; try { owned = barrier.WaitOne(90000); } catch (AbandonedMutexException) { owned = true; }
@@ -48,11 +50,10 @@ static class Program
                 try { using var previous = Process.GetProcessById(pid); if (!previous.WaitForExit(60000)) throw new Kot.Core.UserError("Предыдущая версия не закрылась. Закройте её и снова запустите kot."); }
                 catch (ArgumentException) { }
             }
-            string sid = WindowsIdentity.GetCurrent().User!.Value;
-            using Mutex mutex = new(true, "Local\\KotVPN-" + sid, out bool first);
+            using Mutex mutex = new(true, AppRuntime.InstanceMutex, out bool first);
             if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
             SystemProxy.Restore();
-            if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
+            if (!AppRuntime.Portable && UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
             foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
             {
@@ -65,13 +66,13 @@ static class Program
         catch (Exception ex)
         {
             Environment.ExitCode = 1;
-            if (args.Any(a => a is "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts"))
+            if (args.Any(a => a is "--portable-driver-watch" or "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts"))
             {
                 AppLog.Error("maintenance", ex);
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }
                 return;
             }
-            MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(Store.Friendly(ex), AppRuntime.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

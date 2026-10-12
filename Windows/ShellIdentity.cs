@@ -6,7 +6,7 @@ namespace Kot.Windows;
 // processes; its WebView2 display on recent Windows 11 builds is runtime-dependent.
 public static class ShellIdentity
 {
-    public const string AppId = "Prodkot.Kot.Client";
+    public static string AppId => AppRuntime.Portable ? "Prodkot.Kot.Portable" : "Prodkot.Kot.Client";
     static readonly Guid PropertyStoreId = new("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99");
     static PropertyKey IdKey => new() { Format = new("9f4c2855-9f79-4b39-a8d0-e1d42de1d5f3"), Id = 5 };
 
@@ -18,6 +18,7 @@ public static class ShellIdentity
     }
     public static void RegisterInstalledShortcuts()
     {
+        if (AppRuntime.Portable) return;
         foreach (string path in new[] {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "kot.", "kot..lnk"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "kot..lnk") })

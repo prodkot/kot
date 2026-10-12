@@ -38,7 +38,10 @@ internal static class ManagedPackageFiles
         {
             try { File.Delete(file); }
             catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && (ex.HResult & 0xffff) is 5 or 32 or 33)
-            { Schedule(file); deferred = true; }
+            {
+                if (AppRuntime.Portable) throw new UserError("Файл portable-сервиса занят. Завершите другие программы с WinDivert и повторите удаление.");
+                Schedule(file); deferred = true;
+            }
         }
         foreach (string directory in directories)
         {

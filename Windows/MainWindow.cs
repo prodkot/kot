@@ -33,16 +33,16 @@ public sealed partial class MainWindow : WindowChrome
         services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token);
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
-        Text = "kot."; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
+        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
         Controls.Add(web);
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
         trayIcon = new Icon(Icon, SystemInformation.SmallIconSize);
-        tray = new NotifyIcon { Icon = trayIcon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
+        tray = new NotifyIcon { Icon = trayIcon, Text = AppRuntime.DisplayName + " · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Restore(); };
         FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); trayIcon.Dispose(); };
-        tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = tunnel.State == "connected" ? "kot. · Подключено" : "kot. · Не подключено"; Snapshot(); }); };
+        tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = AppRuntime.DisplayName + (tunnel.State == "connected" ? " · Подключено" : " · Не подключено"); Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
         Shown += async (_, _) => await Initialize();
         FormClosing += async (_, e) =>
@@ -82,7 +82,7 @@ public sealed partial class MainWindow : WindowChrome
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
         trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
-        tray.Text = state switch { "connected" => "kot. · Подключено", "connecting" => "kot. · Подключение", "waiting" => "kot. · Ожидание сети", _ => "kot. · Не подключено" };
+        tray.Text = AppRuntime.DisplayName + (state switch { "connected" => " · Подключено", "connecting" => " · Подключение", "waiting" => " · Ожидание сети", _ => " · Не подключено" });
     }
     async Task Initialize()
     {
@@ -98,6 +98,7 @@ public sealed partial class MainWindow : WindowChrome
             try { env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")); }
             catch (WebView2RuntimeNotFoundException)
             {
+                if (AppRuntime.Portable) throw new UserError("Не найден WebView2Runtime внутри portable. Распакуйте весь архив, а не только exe.");
                 string installer = Path.Combine(AppContext.BaseDirectory, "Install-WebView2.exe");
                 if (!File.Exists(installer)) throw new UserError("Не найден WebView2 Runtime и установщик Install-WebView2.exe.");
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
@@ -134,7 +135,7 @@ public sealed partial class MainWindow : WindowChrome
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
         settings = new { profile.Theme, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
-        updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
+        updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version, portable = AppRuntime.Portable
     };
     void Snapshot() { UpdateTray(); Send(new { kind = "snapshot", data = Model() }); }
     async Task Message(CoreWebView2WebMessageReceivedEventArgs e)

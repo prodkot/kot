@@ -100,6 +100,10 @@ internal static class Program
     [STAThread] static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        AppRuntime.Prepare();
+        if (args.Length == 6 && args[0] == "--portable-driver-watch") { PortableDriver.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3], args[4], args[5]); return Environment.ExitCode; }
+        if (args.Length == 2 && args[0] == "--portable-checks") { Kot.WindowTests.PortableChecks.Run(Check, args[1]); return 0; }
+        if (args.Length == 2 && args[0] == "--portable-wfp-owner") { Kot.WindowTests.PortableChecks.WfpOwner(args[1]); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); return 0; }
         if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return 0; }

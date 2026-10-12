@@ -5,7 +5,7 @@ using Kot.Core;
 namespace Kot.Windows;
 public static class Store
 {
-    public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KotVPN");
+    public static readonly string Folder = AppRuntime.DataFolder;
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     static readonly byte[] Entropy = Encoding.UTF8.GetBytes("KotVPN.profile.v1");
     public static Profile Load()
@@ -15,13 +15,14 @@ public static class Store
         try
         {
             byte[] plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
-            try { var profile = JsonSerializer.Deserialize<Profile>(plain, Json) ?? new(); profile.Normalize(); return profile; }
+            try { var profile = JsonSerializer.Deserialize<Profile>(plain, Json) ?? new(); profile.Normalize(); AppRuntime.Normalize(profile); return profile; }
             finally { CryptographicOperations.ZeroMemory(plain); }
         }
-        catch { throw new UserError("Не удалось открыть сохранённую подписку. Файл profile.bin оставлен в папке KotVPN; переименуйте его, чтобы начать заново."); }
+        catch { throw new UserError("Не удалось открыть сохранённую подписку. Файл profile.bin оставлен в папке " + (AppRuntime.Portable ? "data рядом с приложением" : "KotVPN") + "; переименуйте его, чтобы начать заново."); }
     }
     public static void Save(Profile profile)
     {
+        Directory.CreateDirectory(Folder); AppRuntime.Normalize(profile);
         profile.CaptureActive();
         byte[] plain = JsonSerializer.SerializeToUtf8Bytes(profile, Json);
         byte[] encrypted;

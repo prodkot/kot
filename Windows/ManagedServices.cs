@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 namespace Kot.Windows;
 
-// Manages only packages and child jobs owned by kot. No global SCM service or BAT execution.
+// Manages owned packages and child jobs. Portable also bounds the lifetime of its WinDivert driver.
 internal sealed class ManagedServices
 {
     sealed class Entry(string id)
@@ -17,6 +17,7 @@ internal sealed class ManagedServices
         public ServiceRelease? Latest;
         public DateTimeOffset? Checked;
         public NativeCore? Process;
+        public PortableDriver? Driver;
         public CancellationTokenSource? Attempt;
         public Task Work = Task.CompletedTask;
         public bool Busy;
@@ -271,6 +272,7 @@ internal sealed class ManagedServices
         entry.Status = "Запускается";
         try
         {
+            if (entry.Id == "zapret" && AppRuntime.Portable) entry.Driver = await PortableDriver.Start(exe, ct);
             entry.Process = new NativeCore(exe, arguments, Path.GetDirectoryName(exe)!, "kot. " + entry.Id, line => AddLog(entry, line));
             if (entry.Id == "telegram")
             {
@@ -292,11 +294,18 @@ internal sealed class ManagedServices
     async Task Stop(Entry entry)
     {
         var process = entry.Process; entry.Process = null;
-        try { if (process != null) await process.Stop(); }
+        try
+        {
+            if (process != null) await process.Stop();
+        }
         finally
         {
-            if (entry.Id == "telegram" && entry.Installed != null) TryDelete(Path.Combine(Path.GetDirectoryName(Exe(entry))!, "TgWsProxy_data", "config.json"));
-            entry.Status = entry.Installed == null ? "Не установлен" : "Остановлен";
+            try { var driver = entry.Driver; entry.Driver = null; if (driver != null) await driver.Stop(); }
+            finally
+            {
+                if (entry.Id == "telegram" && entry.Installed != null) TryDelete(Path.Combine(Path.GetDirectoryName(Exe(entry))!, "TgWsProxy_data", "config.json"));
+                entry.Status = entry.Installed == null ? "Не установлен" : "Остановлен";
+            }
         }
         if (process != null) AddLog(entry, "Остановлен вместе с дочерними процессами");
     }
