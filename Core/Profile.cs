@@ -131,12 +131,18 @@ public sealed class ReconnectPolicy
     public bool Desired { get; private set; }
     public int Failures { get; private set; }
     public DateTimeOffset Next { get; private set; }
-    public void Start(DateTimeOffset now) { Desired = true; Failures = 0; Next = now; }
-    public void Stop() { Desired = false; Failures = 0; Next = DateTimeOffset.MaxValue; }
-    public void Healthy() { Failures = 0; }
+    bool established;
+    public void Start(DateTimeOffset now) { established = false; Desired = true; ResetDelay(now); }
+    public void ResetDelay(DateTimeOffset now) { Failures = 0; Next = now; }
+    public void Stop() { established = false; Desired = false; Failures = 0; Next = DateTimeOffset.MaxValue; }
+    public void Healthy() { established = true; Failures = 0; }
     public void Retry(DateTimeOffset now)
     {
+        if (!Desired) return;
         Failures = Math.Min(Failures + 1, 10);
+        // A server that never connected must eventually expose its error instead
+        // of spinning forever. Established sessions still recover automatically.
+        if (!established && Failures >= 3) { Desired = false; Next = DateTimeOffset.MaxValue; return; }
         int[] delays = [2, 5, 10, 20, 30, 60]; Next = now.AddSeconds(delays[Math.Min(Failures - 1, delays.Length - 1)]);
     }
     public bool Due(DateTimeOffset now, bool online) => Desired && online && now >= Next;

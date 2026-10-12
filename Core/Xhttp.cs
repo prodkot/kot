@@ -142,7 +142,16 @@ public static class Xhttp
         }
         // A missing route must fail closed, including unauthenticated SOCKS requests.
         outputs.Insert(0, new JsonObject { ["tag"] = "blocked", ["protocol"] = "blackhole" });
-        return new JsonObject { ["log"] = new JsonObject { ["loglevel"] = "warning" }, ["inbounds"] = inputs, ["outbounds"] = outputs, ["routing"] = new JsonObject { ["domainStrategy"] = "AsIs", ["rules"] = rules } };
+        // Windows can resolve through the DNS Client service, whose process is not Xray.
+        // With TUN or WFP active, system DNS would either loop through the unfinished
+        // proxy or be blocked. Bootstrap only transport endpoints inside Xray instead.
+        return new JsonObject
+        {
+            ["log"] = new JsonObject { ["loglevel"] = "info" },
+            ["dns"] = new JsonObject { ["servers"] = new JsonArray("https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"), ["queryStrategy"] = "UseIP" },
+            ["inbounds"] = inputs, ["outbounds"] = outputs,
+            ["routing"] = new JsonObject { ["domainStrategy"] = "AsIs", ["rules"] = rules }
+        };
     }
     public static JsonObject Outbound(Node node)
     {
@@ -156,7 +165,13 @@ public static class Xhttp
         target[node.Protocol == "trojan" ? "password" : "users"] = node.Protocol == "trojan" ? JsonValue.Create(G("password")) : new JsonArray(user);
         JsonObject settings = new() { [node.Protocol == "trojan" ? "servers" : "vnext"] = new JsonArray(target) };
         var t = (JsonObject)o["transport"]!.DeepClone(); t.Remove("type");
-        JsonObject stream = new() { ["network"] = "xhttp", ["security"] = "none", ["xhttpSettings"] = t };
+        JsonObject stream = new()
+        {
+            ["network"] = "xhttp", ["security"] = "none", ["xhttpSettings"] = t,
+            // ForceIP forbids falling back to system DNS after a failed lookup.
+            // Penetrate applies the same resolver to extra.downloadSettings.
+            ["sockopt"] = new JsonObject { ["domainStrategy"] = "ForceIP", ["penetrate"] = true, ["happyEyeballs"] = new JsonObject { ["tryDelayMs"] = 250 } }
+        };
         if (o["tls"] is JsonObject tls && tls["enabled"]?.GetValue<bool>() == true)
         {
             string fingerprint = tls["utls"]?["fingerprint"]?.ToString() ?? "";

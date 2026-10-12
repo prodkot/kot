@@ -77,7 +77,7 @@ public sealed partial class MainWindow
             if (networkChanged)
             {
                 networkChanged = false;
-                if (signature != networkSignature) { networkSignature = signature; if (profile.Automation.Reconnect && reconnect.Desired) { AppLog.Write("network", "physical network changed or resumed"); await tunnel.Stop(); reconnect.Start(now); } }
+                if (signature != networkSignature) { networkSignature = signature; if (profile.Automation.Reconnect && reconnect.Desired) { AppLog.Write("network", "physical network changed or resumed"); await tunnel.Stop(); reconnect.ResetDelay(now); } }
             }
             if (reconnect.Desired && tunnel.State == "idle" && !connecting && operations.CurrentCount > 0)
             {

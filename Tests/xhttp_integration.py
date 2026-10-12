@@ -150,7 +150,7 @@ class Processes:
             assert log.stat().st_size < 1024 * 1024, 'Unbounded fixture log'
 
 
-def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, reality_port=None, extra=False, xudp=False, negative_tls=False, bridge_only=False):
+def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, reality_port=None, extra=False, xudp=False, negative_tls=False, bridge_only=False, domain=False, legacy_dns=False):
     generated = ROOT / 'Tests/generated/xhttp'
     client = json.loads((generated / f'{protocol}-{mode}-client.json').read_text())
     bridge = json.loads((generated / f'{protocol}-{mode}-xray.json').read_text())
@@ -174,6 +174,15 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
         server_stream['realitySettings'] = {'target': f'127.0.0.1:{reality_port}', 'serverNames': ['fixture.test'], 'privateKey': 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHl8', 'shortIds': ['0123456789abcdef']}
     if extra:
         stream['xhttpSettings']['extra'] = {'xPaddingBytes': '100-200', 'noSSEHeader': True, 'headers': {'X-Fixture': 'kot'}, 'xmux': {'maxConnections': 2, 'maxConcurrency': 0}, 'downloadSettings': {'address': '127.0.0.1', 'port': server_port, 'network': 'xhttp', 'security': 'tls', 'tlsSettings': stream['tlsSettings'], 'xhttpSettings': {'path': '/fixture', 'mode': 'stream-one'}}}
+    if domain:
+        # These reserved names cannot resolve in system DNS. Only Xray's own
+        # resolver knows the endpoints, including the separate download stream.
+        outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['address'] = 'xhttp-endpoint.fixture.invalid'
+        bridge['dns']['hosts'] = {'xhttp-endpoint.fixture.invalid': '127.0.0.1', 'xhttp-download.fixture.invalid': '127.0.0.1'}
+        if extra:
+            stream['xhttpSettings']['extra']['downloadSettings']['address'] = 'xhttp-download.fixture.invalid'
+        if legacy_dns:
+            stream.pop('sockopt')
     if xudp:
         outbound['mux'] = {'enabled': True, 'concurrency': -1, 'xudpConcurrency': 8, 'xudpProxyUDP443': 'allow'}
     server = {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': server_port, 'protocol': protocol, 'settings': settings, 'streamSettings': server_stream}], 'outbounds': [{'protocol': 'freedom'}]}
@@ -189,6 +198,17 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
             proxy_port = bridge_port
         else:
             processes.start(core, client, proxy_port)
+        if legacy_dns:
+            rejected = False
+            try:
+                proxy_http(proxy_port, web_port, credentials)
+            except (OSError, http.client.HTTPException):
+                rejected = True
+            assert rejected, 'Legacy system DNS unexpectedly resolved the reserved fixture'
+            logs = '\n'.join(log.read_text(errors='replace') for log in directory.glob('*.log'))
+            assert 'xhttp-endpoint.fixture.invalid' in logs and ('lookup ' in logs or 'resolve' in logs), logs[-4000:]
+            print('PASS reproduces legacy XHTTP failure: endpoint resolution ignores Xray DNS', flush=True)
+            return
         if negative_tls:
             with contextlib.suppress(OSError, http.client.HTTPException):
                 proxy_http(proxy_port, web_port, credentials)
@@ -206,7 +226,7 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
         except (OSError, http.client.HTTPException):
             rejected = True
         assert rejected, 'Sidecar failure fell back to direct'
-        print(f'PASS {protocol} XHTTP {mode} {"REALITY" if reality_port else "TLS"}{" extra/downloadSettings" if extra else ""}{" XUDP" if xudp else ""}: HTTP, UDP, authentication, no direct fallback', flush=True)
+        print(f'PASS {protocol} XHTTP {mode} {"REALITY" if reality_port else "TLS"}{" extra/downloadSettings" if extra else ""}{" XUDP" if xudp else ""}{" independent endpoint DNS" if domain else ""}: HTTP, UDP, authentication, no direct fallback', flush=True)
     except Exception:
         for log in directory.glob('*.log'):
             print(log.name, log.read_text(errors='replace')[-3000:], flush=True)
@@ -250,16 +270,17 @@ def main():
         for server in servers:
             threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            cases = [(p, m, None, False, False, False) for p in ('vless', 'vmess', 'trojan') for m in ('auto', 'packet-up', 'stream-up', 'stream-one')]
-            cases += [('vless', m, reality.server_port, False, False, False) for m in ('auto', 'packet-up', 'stream-up', 'stream-one')]
-            cases += [('vless', 'packet-up', None, True, False, False), ('vless', 'packet-up', None, False, True, False), ('vmess', 'stream-up', None, False, True, False), ('vless', 'auto', None, False, False, True)]
+            cases = [(p, m, None, False, False, False, False, False) for p in ('vless', 'vmess', 'trojan') for m in ('auto', 'packet-up', 'stream-up', 'stream-one')]
+            cases += [('vless', m, reality.server_port, False, False, False, False, False) for m in ('auto', 'packet-up', 'stream-up', 'stream-one')]
+            cases += [('vless', 'packet-up', None, True, False, False, False, False), ('vless', 'packet-up', None, False, True, False, False, False), ('vmess', 'stream-up', None, False, True, False, False, False), ('vless', 'auto', None, False, False, True, False, False)]
+            cases += [('vless', 'packet-up', None, False, False, False, True, True), ('vless', 'packet-up', None, False, False, False, True, False), ('vless', 'packet-up', None, True, False, False, True, False), ('vless', 'auto', reality.server_port, False, False, False, True, False)]
             for i, case in enumerate(cases):
                 if args.case_index is not None and i != args.case_index:
                     continue
                 assert time.monotonic() < deadline, 'XHTTP integration matrix exceeded three minutes'
                 work = directory / str(i); work.mkdir()
-                protocol, mode, dest, extra, xudp, negative = case
-                chain(core, xray, work, protocol, mode, web.server_port, echo.server_address[1], cert, key, dest, extra, xudp, negative, args.bridge_only)
+                protocol, mode, dest, extra, xudp, negative, domain, legacy_dns = case
+                chain(core, xray, work, protocol, mode, web.server_port, echo.server_address[1], cert, key, dest, extra, xudp, negative, args.bridge_only, domain, legacy_dns)
         finally:
             for server in servers:
                 server.shutdown(); server.server_close()

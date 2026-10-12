@@ -13,6 +13,7 @@ public sealed class XraySession : IAsyncDisposable
     public IReadOnlyDictionary<string, XhttpBridge> Bridges => bridges;
     public string Executable { get; private set; } = "";
     public Task WaitForExitAsync() => core?.WaitForExitAsync() ?? Task.CompletedTask;
+    public async Task<string> RecentOutput() => core == null ? "" : AppLog.Clean(await core.ReadRecentOutput(core.HasExited));
     public async Task EnsureRunning()
     {
         if (core == null || !core.HasExited) return;

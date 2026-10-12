@@ -107,6 +107,37 @@ public static class XhttpChecks
             // Require a real server response, rather than trusting that handshake.
             check(KillSwitch.Detect() && !await Exchange(ct), "XHTTP core termination preserves the guard and cannot exchange data directly");
             await tun.Stop(); tun.Dispose(); tun = null; KillSwitch.Release();
+            // Exercise the application's actual startup and health checks with
+            // global WFP filters, not only a separately launched TUN fixture.
+            string bundled = Path.Combine(AppContext.BaseDirectory, "core"); Directory.CreateDirectory(bundled);
+            File.Copy(singBox, Path.Combine(bundled, "sing-box.exe"), true);
+            File.Copy(xray, Path.Combine(bundled, "xray.exe"), true);
+            var connection = new Tunnel([$"http://127.0.0.1:{webPort}/"], TimeSpan.FromSeconds(5));
+            profile.KillSwitch = true;
+            try
+            {
+                await connection.Connect(profile).WaitAsync(TimeSpan.FromSeconds(20), ct);
+                check(connection.State == "connected" && connection.UsesXhttp && KillSwitch.Detect(), "production Tunnel.Connect completes XHTTP health checks with global WFP armed");
+                check(await connection.Probe(ct), "connected production XHTTP session carries a real HTTP response");
+                await connection.Stop();
+                check(KillSwitch.Detect(), "stopping the session preserves the guard until an intentional release");
+            }
+            finally { await connection.Stop(); KillSwitch.Release(); }
+            var unreachable = node with { Outbound = (System.Text.Json.Nodes.JsonObject)node.Outbound.DeepClone() };
+            unreachable.Outbound["server_port"] = Port();
+            var failedProfile = new Profile { Nodes = [unreachable], Selected = unreachable.Id, ConnectionMode = "tun", KillSwitch = true };
+            var failure = new Tunnel([$"http://127.0.0.1:{webPort}/"], TimeSpan.FromSeconds(2));
+            try
+            {
+                await failure.Connect(failedProfile).WaitAsync(TimeSpan.FromSeconds(20), ct);
+                check(failure.State == "idle" && failure.Error.Length > 0 && failure.CoreDetails.Contains("Xray:"), "unreachable XHTTP exits connecting and includes native Xray diagnostics");
+                check(failure.ProxyPort == 0 && !failure.UsesXhttp && KillSwitch.Detect(), "failed production XHTTP cleans up both cores and preserves the guard");
+                var pending = failure.Connect(failedProfile);
+                await Task.Delay(300, ct); await failure.Stop(); await pending;
+                check(failure.State == "idle" && failure.Error.Length == 0, "cancelling production XHTTP completes without a timeout error");
+                check(Directory.GetFiles(Store.Folder, "xhttp-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "production XHTTP success, failure and cancellation remove credential configurations");
+            }
+            finally { await failure.Stop(); KillSwitch.Release(); }
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, extraAllowed: Environment.ProcessPath!);
             check(await Open("1.1.1.1", 443, ct), "WFP permits the exact additional core executable");
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox);

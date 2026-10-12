@@ -254,10 +254,15 @@ var badOptions = new AutomationOptions { AutoMinutes = 0 }; bool badAutomation =
 var policy = new ReconnectPolicy(); var moment = DateTimeOffset.UtcNow;
 policy.Start(moment); Check(policy.Due(moment, true) && !policy.Due(moment, false), "reconnect waits for network");
 policy.Retry(moment); Check(!policy.Due(moment.AddSeconds(1), true) && policy.Due(moment.AddSeconds(2), true), "reconnect initial delay");
+policy.Retry(moment); policy.Retry(moment);
+Check(!policy.Desired && policy.Failures == 3 && !policy.Due(moment.AddDays(10), true), "a server that never connected stops after three failed attempts");
+policy.Start(moment); policy.Healthy(); policy.ResetDelay(moment);
 for (int i = 0; i < 20; i++) policy.Retry(moment);
 Check(policy.Failures == 10 && policy.Next == moment.AddSeconds(60), "reconnect backoff is bounded");
+Check(policy.Desired, "established connections keep recovering after a network change");
 policy.Healthy(); Check(policy.Failures == 0, "healthy connection resets retry failures");
 policy.Stop(); Check(!policy.Due(moment.AddDays(10), true), "manual stop never reconnects");
+policy.Retry(moment); Check(!policy.Desired && policy.Failures == 0, "a late failure cannot revive a stopped connection");
 var automatic = Configuration.BuildAutomatic([a.Nodes[0], ws, ss], 19223, false, [], new(), 19224, "test-secret-012345678901234567890123456789");
 var autoOutbounds = automatic["outbounds"]!.AsArray();
 Check(autoOutbounds.Count == 5 && autoOutbounds[3]?["type"]?.ToString() == "urltest" && autoOutbounds[3]?["outbounds"]?.AsArray().Count == 3, "Auto configuration delegates full proxy checks to URLtest");
