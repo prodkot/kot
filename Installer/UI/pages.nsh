@@ -17,7 +17,7 @@ UninstPage instfiles "" un.ProgressShow
 Function ${prefix}.onGUIInit
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
-  File /oname=Manrope.ttf "${PAYLOAD}/ui/fonts/Manrope.ttf"
+  File /oname=Manrope.ttf "${PAYLOAD}\ui\fonts\Manrope.ttf"
   KotUI::Init /NOUNLOAD "$PLUGINSDIR\Manrope.ttf" "${VERSION}" "${mode}"
 FunctionEnd
 !macroend
@@ -62,7 +62,7 @@ FunctionEnd
 Function License
   Pop $Control
   SetOutPath "$PLUGINSDIR"
-  File /oname=kot-LICENSE.txt "${PAYLOAD}/licenses/kot-LICENSE.txt"
+  File /oname=kot-LICENSE.txt "${PAYLOAD}\licenses\kot-LICENSE.txt"
   ExecShell "open" "$PLUGINSDIR\kot-LICENSE.txt"
 FunctionEnd
 Function OptionsShow
