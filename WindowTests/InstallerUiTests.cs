@@ -99,6 +99,7 @@ static class InstallerUiTests
         }
         foreach(var button in buttons)
         {
+            string caption=Text(button);
             bool checkbox=(GetWindowLong(button,-16)&15) is 2 or 3;
             int originalCheck=(int)SendMessage(button,0xF0,IntPtr.Zero,IntPtr.Zero);
             SendMessage(GetParent(button),0x28,button,(IntPtr)1); // WM_NEXTDLGCTL, actual focus on the installer thread
@@ -137,13 +138,18 @@ static class InstallerUiTests
             }
             finally
             {
-                // Moving focus cancels the held key without activating Next,
-                // Cancel, Browse or the launch checkbox.
+                // Windows can still activate a synthetic Space key-up after
+                // focus moves. Cancel the native press with an outside mouse
+                // release first, clearing its internal activation latch too.
+                SendMessage(button,0x201,(IntPtr)1,center);
+                SendMessage(button,0x200,IntPtr.Zero,(IntPtr)(-1));
+                SendMessage(button,0x202,IntPtr.Zero,(IntPtr)(-1));
+                SendMessage(button,0x2A3,IntPtr.Zero,IntPtr.Zero);
                 var other=buttons.First(child=>child!=button);
                 SendMessage(GetParent(other),0x28,other,(IntPtr)1);
-                SendMessage(button,0xF3,IntPtr.Zero,IntPtr.Zero); // BM_SETSTATE, clear a cancelled press
                 SendMessage(button,0x101,(IntPtr)32,(IntPtr)unchecked((int)0xC0000001));
             }
+            check(Text(button)==caption,"cancelled keyboard press leaves the current page open: "+caption);
             Palette(button,"after keyboard focus moves");
             check((int)SendMessage(button,0xF0,IntPtr.Zero,IntPtr.Zero)==originalCheck,"cancelled Space preserves checkbox state: "+Text(button));
         }
