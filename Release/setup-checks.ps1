@@ -107,7 +107,7 @@ try {
       [IO.File]::WriteAllText((Join-Path $profile 'traffic-history.json'),$traffic)
 
       $oldSetup=Join-Path $scratch 'Kot-Setup-0.6.1-Windows-x64.exe'
-      Invoke-WebRequest 'https://github.com/prodkot/kot/releases/download/v0.6.1/Kot-Setup-0.6.1-Windows-x64.exe' -OutFile $oldSetup -TimeoutSec 120
+      Invoke-WebRequest 'https://github.com/prodkot/kot/releases/download/v0.6.1/Kot-Setup-0.6.1-Windows-x64.exe' -OutFile $oldSetup -TimeoutSec 120 -MaximumRetryCount 2 -RetryIntervalSec 2
       # The pinned publisher key validates both the old Setup and its payload.
       Extract $oldSetup $legacy '0.6.1'
       if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike '0.6.1*') { throw 'Legacy fixture does not contain the released 0.6.1 client.' }
