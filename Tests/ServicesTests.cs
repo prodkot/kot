@@ -16,10 +16,10 @@ public static class ServicesTests
         var options = new ServiceOptions(); options.Validate();
         var clone = JsonSerializer.Deserialize<ServiceOptions>(JsonSerializer.Serialize(options))!;
         check(clone.Telegram.Secret == options.Telegram.Secret && clone.Telegram.Secret.Length == 32, "service settings and generated MTProto secret survive serialization");
-        using (var cfg = JsonDocument.Parse(options.Telegram.PortableConfig()))
+        using (var cfg = JsonDocument.Parse(options.Telegram.ServiceConfig()))
         {
             var c = cfg.RootElement;
-            check(c.GetProperty("host").GetString() == "127.0.0.1" && !c.GetProperty("check_updates").GetBoolean() && !c.GetProperty("autostart").GetBoolean(), "official Telegram portable configuration binds only loopback and kot owns updates/autostart");
+            check(c.GetProperty("host").GetString() == "127.0.0.1" && !c.GetProperty("check_updates").GetBoolean() && !c.GetProperty("autostart").GetBoolean(), "official Telegram service configuration binds only loopback and kot owns updates/autostart");
             check(c.GetProperty("secret").GetString() == options.Telegram.Secret && options.Telegram.Link.EndsWith("secret=dd" + options.Telegram.Secret), "MTProto link matches official dd-secret format");
         }
         foreach (int port in new[] {0,443,65536}) Reject(() => new TelegramProxyOptions { Port=port }.Validate(), "invalid Telegram port " + port);

@@ -61,7 +61,7 @@ public sealed class TelegramProxyOptions
     }
     public string Link { get { Validate(); return $"tg://proxy?server=127.0.0.1&port={Port}&secret=dd{Secret.ToLowerInvariant()}"; } }
     // The official Windows binary has a tray entry point, not the Python CLI.
-    public byte[] PortableConfig()
+    public byte[] ServiceConfig()
     {
         Validate();
         return JsonSerializer.SerializeToUtf8Bytes(new

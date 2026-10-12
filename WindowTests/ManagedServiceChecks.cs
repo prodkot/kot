@@ -67,11 +67,11 @@ internal static class ManagedServiceChecks
             string[] license = Directory.GetFiles(Path.Combine(folder, "telegram"), "LICENSE.txt", SearchOption.AllDirectories);
             check(license.Length == 1 && File.ReadAllText(license[0]).Contains("Copyright (c) 2026 Flowseal"), "managed Telegram package keeps its MIT attribution");
             await Action("telegram", "start");
-            check(manager.IsRunning("telegram") && await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "official portable TgWsProxy opens the configured loopback port");
+            check(manager.IsRunning("telegram") && await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "official TgWsProxy opens the configured loopback port");
             check(!JsonSerializer.Serialize(manager.Model(true), Json).Contains(options.Telegram.Secret), "Telegram secret is absent from the UI snapshot and service logs");
             await Action("telegram", "restart");
             await Action("telegram", "stop");
-            check(!await ManagedServices.PortOpen(options.Telegram.Port, limit.Token) && Directory.GetFiles(folder, "config.json", SearchOption.AllDirectories).Length == 0, "Telegram stop closes its listener and removes the plaintext portable config");
+            check(!await ManagedServices.PortOpen(options.Telegram.Port, limit.Token) && Directory.GetFiles(folder, "config.json", SearchOption.AllDirectories).Length == 0, "Telegram stop closes its listener and removes the plaintext service config");
             using (var occupied = new TcpListener(IPAddress.Loopback, options.Telegram.Port))
             {
                 occupied.Start(); manager.Begin("telegram", "start"); await manager.Wait("telegram").WaitAsync(limit.Token);
@@ -94,13 +94,11 @@ internal static class ManagedServiceChecks
             await manager.StopAll(true);
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");
             // Installed builds may queue a loaded WinDivert file for reboot cleanup.
-            // Portable must unload its own driver and remove the entire package immediately.
             manager = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder);
             await Action("zapret", "remove"); await Action("telegram", "remove");
             check(Item(manager,"zapret").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && Item(manager,"telegram").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && !File.Exists(Path.Combine(folder,"zapret","current.json")) && !File.Exists(Path.Combine(folder,"telegram","current.json")), "removal clears both installed packages and their manifests despite the loaded WinDivert driver");
             check(File.Exists(Path.Combine(folder,"tests.json")) && options.Zapret.Strategy == "general.bat", "package removal preserves saved strategy history and user settings");
             check(!Directory.Exists(Path.Combine(folder,"telegram")) && Directory.GetFiles(folder,"winws.exe",SearchOption.AllDirectories).Length == 0, "removal deletes user-space executable files immediately");
-            if (AppRuntime.Portable) check(Directory.GetFiles(folder,"*.sys",SearchOption.AllDirectories).Length == 0 && !Directory.Exists(Path.Combine(folder,"zapret")), "portable unloads its WinDivert driver and removes its files without reboot cleanup");
         }
         catch (Exception ex) { Console.WriteLine("FAIL managed service check before cleanup: " + ex); throw; }
         finally { await manager.StopAll(true); ManagedPackageFiles.Remove(folder, folder); }

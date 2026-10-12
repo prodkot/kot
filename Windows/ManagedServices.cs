@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 namespace Kot.Windows;
 
-// Manages owned packages and child jobs. Portable also bounds the lifetime of its WinDivert driver.
+// Manages owned packages and child jobs without stopping shared Windows drivers.
 internal sealed class ManagedServices
 {
     sealed class Entry(string id)
@@ -17,7 +17,6 @@ internal sealed class ManagedServices
         public ServiceRelease? Latest;
         public DateTimeOffset? Checked;
         public NativeCore? Process;
-        public PortableDriver? Driver;
         public CancellationTokenSource? Attempt;
         public Task Work = Task.CompletedTask;
         public bool Busy;
@@ -257,7 +256,9 @@ internal sealed class ManagedServices
         {
             if (await PortOpen(options().Telegram.Port, ct)) throw new UserError("Локальный порт Telegram занят. Измените порт или остановите другой прокси.");
             string data = Path.Combine(Path.GetDirectoryName(exe)!, "TgWsProxy_data"); Directory.CreateDirectory(data);
-            Atomic(Path.Combine(data, "config.json"), options().Telegram.PortableConfig());
+            // The official application detects this pre-populated directory beside its exe.
+            // Keep its settings separate from independently installed TgWsProxy copies.
+            Atomic(Path.Combine(data, "config.json"), options().Telegram.ServiceConfig());
             File.WriteAllText(Path.Combine(data, ".first_run_done_mtproto"), "managed by kot"); File.WriteAllText(Path.Combine(data, ".ipv6_warned"), "see kot service help");
         }
         string[] arguments;
@@ -268,11 +269,10 @@ internal sealed class ManagedServices
             string path = Strategies(entry).FirstOrDefault(s => Path.GetFileName(s) == selected) ?? throw new UserError("Стратегия не найдена в установленном пакете.");
             arguments = ZapretStrategy.Parse(File.ReadAllText(path), Path.GetDirectoryName(exe)!, Path.Combine(root, "lists"), options().Zapret.GameFilter);
         }
-        else arguments = ["--portable"];
+        else arguments = [];
         entry.Status = "Запускается";
         try
         {
-            if (entry.Id == "zapret" && AppRuntime.Portable) entry.Driver = await PortableDriver.Start(exe, ct);
             entry.Process = new NativeCore(exe, arguments, Path.GetDirectoryName(exe)!, "kot. " + entry.Id, line => AddLog(entry, line));
             if (entry.Id == "telegram")
             {
@@ -300,12 +300,8 @@ internal sealed class ManagedServices
         }
         finally
         {
-            try { var driver = entry.Driver; entry.Driver = null; if (driver != null) await driver.Stop(); }
-            finally
-            {
-                if (entry.Id == "telegram" && entry.Installed != null) TryDelete(Path.Combine(Path.GetDirectoryName(Exe(entry))!, "TgWsProxy_data", "config.json"));
-                entry.Status = entry.Installed == null ? "Не установлен" : "Остановлен";
-            }
+            if (entry.Id == "telegram" && entry.Installed != null) TryDelete(Path.Combine(Path.GetDirectoryName(Exe(entry))!, "TgWsProxy_data", "config.json"));
+            entry.Status = entry.Installed == null ? "Не установлен" : "Остановлен";
         }
         if (process != null) AddLog(entry, "Остановлен вместе с дочерними процессами");
     }

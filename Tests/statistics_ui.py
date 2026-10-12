@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = r'''(() => {
 let listener;
-const model={version:'0.6.2',name:'Личная подписка',hasSubscription:true,
+const model={version:'0.7.0',name:'Личная подписка',hasSubscription:true,
  nodes:[{id:'nl',name:'Нидерланды',countryCode:'NL',protocol:'vless',code:'VL'}],selected:'nl',state:'connected',error:'',warnings:[],favorites:[],
  settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:false,killSwitch:false,bypass:''},
  subscriptions:[{id:'s',name:'Личная подписка',count:1}],activeSubscription:'s',

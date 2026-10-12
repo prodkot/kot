@@ -102,7 +102,6 @@ public sealed partial class MainWindow : WindowChrome
             try { env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")); }
             catch (WebView2RuntimeNotFoundException)
             {
-                if (AppRuntime.Portable) throw new UserError("Не найден WebView2Runtime внутри portable. Распакуйте весь архив, а не только exe.");
                 string installer = Path.Combine(AppContext.BaseDirectory, "Install-WebView2.exe");
                 if (!File.Exists(installer)) throw new UserError("Не найден WebView2 Runtime и установщик Install-WebView2.exe.");
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
@@ -142,7 +141,7 @@ public sealed partial class MainWindow : WindowChrome
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
         settings = new { profile.Theme, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
-        updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version, portable = AppRuntime.Portable
+        updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
     void Snapshot() { UpdateTray(); Send(new { kind = "snapshot", data = Model() }); }
     async Task Message(CoreWebView2WebMessageReceivedEventArgs e)

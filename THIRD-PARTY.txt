@@ -27,11 +27,6 @@ https://go.microsoft.com/fwlink/p/?LinkId=2124703
 Условия распространения:
 https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
 Сам WebView2 Runtime устанавливается отдельно на условиях Microsoft.
-Только тестовая portable-сборка включает Fixed Version Runtime 155.0.4283.45
-для x64 без установки в систему. Официальный источник:
-https://developer.microsoft.com/en-us/microsoft-edge/webview2/
-Версия, точная ссылка и SHA-256: Release/webview2-fixed.json.
-В WebView2Runtime сохранён полный пакет Microsoft со всеми его уведомлениями.
 
 .NET и Windows Forms
 

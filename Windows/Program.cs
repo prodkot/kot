@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 namespace Kot.Windows;
 static class Program
 {
@@ -14,8 +13,6 @@ static class Program
         ApplicationConfiguration.Initialize();
         try
         {
-            AppRuntime.Prepare();
-            if (args.Length == 6 && args[0] == "--portable-driver-watch") { PortableDriver.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3], args[4], args[5]); return; }
             if (args.Contains("--register-shortcuts")) { ShellIdentity.RegisterInstalledShortcuts(); return; }
             if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return; }
             if (args.Contains("--restore-proxy")) { SystemProxy.Restore(); return; }
@@ -38,7 +35,7 @@ static class Program
                 if (Path.GetDirectoryName(work) != root || !System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(work), "^\\.kot-update-[a-f0-9]{32}$")) throw new Kot.Core.UserError("Некорректный путь подтверждения обновления.");
                 Kot.Core.UpdateTransaction.SafePath(work); UpdateInstaller.Receipt = work;
             }
-            if (!AppRuntime.Portable && UpdateInstaller.Receipt == null)
+            if (UpdateInstaller.Receipt == null)
             using (var barrier = new Mutex(false, UpdateInstaller.MutexName))
             {
                 bool owned; try { owned = barrier.WaitOne(90000); } catch (AbandonedMutexException) { owned = true; }
@@ -53,7 +50,7 @@ static class Program
             using Mutex mutex = new(true, AppRuntime.InstanceMutex, out bool first);
             if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
             SystemProxy.Restore();
-            if (!AppRuntime.Portable && UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
+            if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
             foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
             {
@@ -66,7 +63,7 @@ static class Program
         catch (Exception ex)
         {
             Environment.ExitCode = 1;
-            if (args.Any(a => a is "--portable-driver-watch" or "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts"))
+            if (args.Any(a => a is "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts"))
             {
                 AppLog.Error("maintenance", ex);
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }

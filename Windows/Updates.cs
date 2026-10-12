@@ -7,7 +7,6 @@ public sealed partial class MainWindow
 {
     async Task InstallPackage(string path, string? advertisedVersion = null, CancellationToken ct = default)
     {
-        AppRuntime.RequireInstalledUpdates();
         if (new FileInfo(path).Length > RemoteUpdates.MaximumArchive) throw new UserError("Установщик обновления слишком большой.");
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var archive = await Task.Run(() => SetupPackage.Open(file, new Version(ClientIdentity.Version), advertisedVersion), ct);
@@ -79,7 +78,6 @@ internal static class UpdateInstaller
     }
     public static void Apply()
     {
-        AppRuntime.RequireInstalledUpdates();
         string work = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar), root = Path.GetDirectoryName(work)!;
         if (!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(work), "^\\.kot-update-[a-f0-9]{32}$")) throw new UserError("Некорректная папка установщика.");
         var transaction = new UpdateTransaction(root, work);

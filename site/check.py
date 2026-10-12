@@ -1,4 +1,4 @@
-"""Check release provenance, packaged assets and portable relative URLs."""
+"""Check release provenance, packaged assets and relative URLs."""
 from copy import deepcopy
 from html.parser import HTMLParser
 from pathlib import Path
@@ -30,7 +30,7 @@ class SiteTests(unittest.TestCase):
                 release_metadata(RELEASE | patch)
         for patch in ({"browser_download_url": "https://example.org/setup.exe"},
                       {"browser_download_url": URL.replace("prodkot/kot", "someone/kot")},
-                      {"size": -1}, {"size": True}, {"size": 0}, {"name": "portable.zip"}):
+                      {"size": -1}, {"size": True}, {"size": 0}, {"name": "unsupported.zip"}):
             release = deepcopy(RELEASE)
             release["assets"][0].update(patch)
             with self.subTest(patch=patch), self.assertRaises(ValueError):

@@ -162,7 +162,7 @@ public sealed partial class MainWindow
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (new FileInfo(dialog.FileName).Length > 20 * 1024 * 1024 + 52) throw new UserError("Резервная копия слишком большая.");
         byte[] data = await File.ReadAllBytesAsync(dialog.FileName); var restored = await Task.Run(() => Backup.Import(data, password));
-        AppRuntime.Normalize(restored); AppLog.Register(restored); await services.StopAll(); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
+        AppLog.Register(restored); await services.StopAll(); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
         if (restored.Startup != profile.Startup) await Startup.Set(restored.Startup);
         // Keep a recoverable encrypted copy before replacing a working profile.
         string old = Path.Combine(Store.Folder, "profile.bin"); if (File.Exists(old)) File.Copy(old, Path.Combine(Store.Folder, "profile-before-restore.bin"), true);
