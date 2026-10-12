@@ -80,6 +80,20 @@ static class ShellTests
             }
             check(!ShellIdentity.SetShortcutIcon(path, Path.Combine(folder, "another-app.exe"), Path.Combine(AppContext.BaseDirectory, "kot-light.ico")),
                 "theme refresh does not change a shortcut for another executable");
+            string unicodeFolder = Path.Combine(folder, "Проверка kot"); Directory.CreateDirectory(unicodeFolder);
+            string unicodeTarget = Path.Combine(unicodeFolder, "Kot.exe"), unicodeIcon = Path.Combine(unicodeFolder, "kot.ico");
+            File.Copy(target, unicodeTarget); File.Copy(Path.Combine(AppContext.BaseDirectory, "kot.ico"), unicodeIcon);
+            ShellIdentity.RegisterInstalledShortcut(path, unicodeTarget, unicodeIcon);
+            var saved = ShellIdentity.ReadShortcut(path);
+            check(saved.Target == unicodeTarget && saved.IconPath == unicodeIcon && saved.IconIndex == 0
+                && saved.Arguments == "--startup" && saved.WorkingDirectory == unicodeFolder && ShellIdentity.ShortcutId(path) == ShellIdentity.AppId,
+                "installed shortcut round-trips Unicode paths, abstract icon, arguments and application ID");
+            check(ShellIdentity.SetShortcutIcon(path, unicodeTarget, Path.Combine(AppContext.BaseDirectory, "kot-light.ico")),
+                "pinned icon refresh recognizes an executable in a Unicode folder");
+            saved = ShellIdentity.ReadShortcut(path);
+            check(saved.Target == unicodeTarget && saved.Arguments == "--startup" && saved.WorkingDirectory == unicodeFolder
+                && saved.IconPath == Path.Combine(AppContext.BaseDirectory, "kot-light.ico") && ShellIdentity.ShortcutId(path) == ShellIdentity.AppId,
+                "Unicode icon refresh preserves the launch command and taskbar grouping");
             foreach (string theme in new[] { "dark", "light" })
             {
                 string iconPath = Path.Combine(AppContext.BaseDirectory, theme == "light" ? "kot-light.ico" : "kot.ico");

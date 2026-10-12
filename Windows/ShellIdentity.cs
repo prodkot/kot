@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Text;
 namespace Kot.Windows;
 
 // Stable across versions and shared by the executable and its installed shortcuts.
@@ -24,9 +26,39 @@ public static class ShellIdentity
             if (File.Exists(path))
             {
                 if (Environment.ProcessPath is { } target)
-                    SetShortcutIcon(path, target, Path.Combine(AppContext.BaseDirectory, "kot.ico"));
-                SetShortcutId(path);
+                    RegisterInstalledShortcut(path, target, Path.Combine(AppContext.BaseDirectory, "kot.ico"));
             }
+    }
+    public static void RegisterInstalledShortcut(string path, string target, string iconPath)
+    {
+        // These are the installer's two app-owned shortcuts. Write their paths
+        // through the Unicode shell interface, including on non-Russian Windows.
+        var link = LoadShortcut(path, 2);
+        try
+        {
+            link.SetPath(Path.GetFullPath(target));
+            link.SetWorkingDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
+            link.SetIconLocation(Path.GetFullPath(iconPath), 0);
+            ((IPersistFile)link).Save(Path.GetFullPath(path), true);
+        }
+        finally { Marshal.ReleaseComObject(link); }
+        SetShortcutId(path);
+        SHChangeNotify(0x00002000, 0x00002005, path, IntPtr.Zero);
+    }
+    public readonly record struct Shortcut(string Target, string IconPath, int IconIndex, string Arguments, string WorkingDirectory);
+    public static Shortcut ReadShortcut(string path)
+    {
+        var link = LoadShortcut(path, 0);
+        try
+        {
+            var target = new StringBuilder(32768); var icon = new StringBuilder(32768);
+            var args = new StringBuilder(32768); var directory = new StringBuilder(32768);
+            link.GetPath(target, target.Capacity, IntPtr.Zero, 4); // SLGP_RAWPATH
+            link.GetIconLocation(icon, icon.Capacity, out int index);
+            link.GetArguments(args, args.Capacity); link.GetWorkingDirectory(directory, directory.Capacity);
+            return new(target.ToString(), icon.ToString(), index, args.ToString(), directory.ToString());
+        }
+        finally { Marshal.ReleaseComObject(link); }
     }
     public static void RefreshPinnedIcon(string iconPath)
     {
@@ -41,23 +73,48 @@ public static class ShellIdentity
     }
     public static bool SetShortcutIcon(string path, string target, string iconPath)
     {
-        object shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-        object? shortcut = null;
+        var link = LoadShortcut(path, 2);
         try
         {
-            dynamic wsh = shell;
-            shortcut = wsh.CreateShortcut(path);
-            dynamic link = shortcut;
             // Only edit this executable's shortcut; leave other pinned applications alone.
-            string shortcutTarget = (string)link.TargetPath;
+            var buffer = new StringBuilder(32768);
+            link.GetPath(buffer, buffer.Capacity, IntPtr.Zero, 4);
+            string shortcutTarget = buffer.ToString();
             if (string.IsNullOrWhiteSpace(shortcutTarget) || !string.Equals(Path.GetFullPath(shortcutTarget), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) return false;
-            string location = Path.GetFullPath(iconPath) + ",0";
-            if (string.Equals((string)link.IconLocation, location, StringComparison.OrdinalIgnoreCase)) return true;
-            link.IconLocation = location; link.Save();
+            string location = Path.GetFullPath(iconPath);
+            buffer.Clear(); link.GetIconLocation(buffer, buffer.Capacity, out int index);
+            if (index == 0 && string.Equals(buffer.ToString(), location, StringComparison.OrdinalIgnoreCase)) return true;
+            link.SetIconLocation(location, 0); ((IPersistFile)link).Save(Path.GetFullPath(path), true);
             SHChangeNotify(0x00002000, 0x00002005, path, IntPtr.Zero); // UPDATEITEM, PATHW | FLUSHNOWAIT
             return true;
         }
-        finally { if (shortcut != null) Marshal.ReleaseComObject(shortcut); Marshal.ReleaseComObject(shell); }
+        finally { Marshal.ReleaseComObject(link); }
+    }
+    static IShellLinkW LoadShortcut(string path, int mode)
+    {
+        var link = (IShellLinkW)new NativeShellLink();
+        try { ((IPersistFile)link).Load(Path.GetFullPath(path), mode); return link; }
+        catch { Marshal.ReleaseComObject(link); throw; }
+    }
+    [ComImport, Guid("00021401-0000-0000-c000-000000000046")] class NativeShellLink { }
+    [ComImport, Guid("000214f9-0000-0000-c000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellLinkW
+    {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int count, IntPtr data, uint flags);
+        void GetIDList(out IntPtr id); void SetIDList(IntPtr id);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder text, int count);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string text);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int count);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string path);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder args, int count);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string args);
+        void GetHotkey(out short key); void SetHotkey(short key);
+        void GetShowCmd(out int command); void SetShowCmd(int command);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int count, out int index);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string path, int index);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
+        void Resolve(IntPtr window, uint flags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
     }
     public static void SetShortcutId(string path)
     {
