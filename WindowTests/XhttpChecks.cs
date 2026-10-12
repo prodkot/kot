@@ -6,6 +6,8 @@ using System.Net.Security;
 using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Text;
+using System.Text.Json.Nodes;
+using System.Collections.Concurrent;
 namespace Kot.WindowTests;
 
 public static class XhttpChecks
@@ -34,6 +36,39 @@ public static class XhttpChecks
             return (await reader.ReadLineAsync(timeout.Token))?.StartsWith("HTTP/1.", StringComparison.Ordinal) == true;
         }
         catch (Exception ex) when (ex is SocketException or IOException or AuthenticationException || ex is OperationCanceledException && !ct.IsCancellationRequested) { return false; }
+    }
+    static async Task RequestBridge(XhttpBridge bridge, int webPort, CancellationToken ct)
+    {
+        using var handler = new HttpClientHandler { Proxy = new WebProxy($"socks5://127.0.0.1:{bridge.Port}") { Credentials = new NetworkCredential(bridge.Username, bridge.Password) }, UseProxy = true };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+        try { using var response = await client.GetAsync($"http://127.0.0.1:{webPort}/", ct); }
+        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException && !ct.IsCancellationRequested) { }
+    }
+    static async Task QuicRouting(string xray, Node h3, XraySession session, int webPort, ConcurrentQueue<string> lines, CancellationToken ct, Action<bool, string> check)
+    {
+        // Google is only a QUIC routing target, not an XHTTP test server. Check
+        // the selected outbound, without depending on a remote HTTP response.
+        const string target = "8.8.8.8:443";
+        string legacyFile = Path.Combine(Store.Folder, "xhttp-legacy-" + Guid.NewGuid().ToString("N") + ".json");
+        var bridge = new XhttpBridge(Port(), "legacy-fixture", new string('l', 64));
+        try
+        {
+            File.WriteAllText(legacyFile, Xhttp.Build([h3], new Dictionary<string, XhttpBridge> { [h3.Id] = bridge }).ToJsonString());
+            using var legacy = new NativeCore(xray, ["run", "-c", legacyFile], Path.GetDirectoryName(xray)!, "legacy QUIC routing fixture", _ => { });
+            while (!await Open("127.0.0.1", bridge.Port, ct)) { if (legacy.HasExited) throw new Exception(await legacy.ReadRecentOutput(true)); await Task.Delay(100, ct); }
+            lines.Clear();
+            await RequestBridge(bridge, webPort, ct);
+            // This reproduces the old process-only bypass: dual-stack UDP's
+            // IPv4 packets cannot find Xray in the IPv4 owner table on Windows.
+            bool loop = lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target));
+            Console.WriteLine("LEGACY QUIC process bypass enters proxy: " + loop);
+            await legacy.Stop();
+        }
+        finally { File.Delete(legacyFile); }
+        lines.Clear();
+        await RequestBridge(session.Bridges[h3.Id], webPort, ct);
+        check(lines.Any(line => line.Contains("inbound/socks[xray-direct-in]: inbound packet connection to " + target)) && lines.Any(line => line.Contains("outbound/direct[direct]: outbound packet connection to " + target)), "HTTP/3 transport reaches the physical direct dialer with Windows TUN and WFP active");
+        check(!lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target)), "HTTP/3 transport never loops back into its own XHTTP outbound");
     }
     public static async Task Run(string singBox, string xray, Action<bool, string> check)
     {
@@ -83,13 +118,19 @@ public static class XhttpChecks
             bool failed = false;
             try { await using var ignored = await XraySession.Start([invalid], ct, xray); } catch (UserError) { failed = true; }
             check(failed && Directory.GetFiles(Store.Folder, "xhttp-*.json").Length == before, "Xray preflight rejects unsupported settings and cleans up");
-            session = await XraySession.Start([node], ct, xray) ?? throw new Exception("Missing bridge");
+            var h3 = Subscriptions.ParseNode($"vless://{uuid}@8.8.8.8:443?type=xhttp&security=tls&sni=dns.google&fp=firefox&alpn=h3&path=%2Fkot-fixture&mode=auto&extra=" + Uri.EscapeDataString("""{"xmux":{"maxConnections":3,"hMaxRequestTimes":"600-900","hMaxReusableSecs":"1800-3000"}}"""));
+            session = await XraySession.Start([node, h3], ct, xray) ?? throw new Exception("Missing bridge");
             int bridgePort = session.Bridges[node.Id].Port;
             var profile = new Profile { Nodes = [node], Selected = node.Id, ConnectionMode = "tun" };
-            File.WriteAllText(tunFile, Configuration.BuildConnection(profile, Port(), xhttp: session.Bridges, xrayExecutable: xray).ToJsonString());
+            var configuration = Configuration.BuildConnection(profile, Port(), xhttp: session.Bridges, xhttpEgress: session.Egress);
+            // Retain the old bypass only in this fixture, to demonstrate why
+            // relying on process detection cannot protect HTTP/3 sockets.
+            Xhttp.BypassCore(configuration, xray);
+            File.WriteAllText(tunFile, configuration.ToJsonString());
             check(await Open("1.1.1.1", 443, ct), "XHTTP TUN baseline reaches a real TCP destination");
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, extraAllowed: xray);
-            tun = new NativeCore(singBox, tunFile, _ => { });
+            var lines = new ConcurrentQueue<string>();
+            tun = new NativeCore(singBox, tunFile, line => { lines.Enqueue(line); while (lines.Count > 300) lines.TryDequeue(out _); });
             ulong luid = 0;
             while (luid == 0) { if (tun.HasExited) throw new Exception(await tun.ReadRecentOutput(true)); try { luid = KillSwitch.TunnelInterface(); } catch (UserError) { await Task.Delay(100, ct); } }
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, luid, xray);
@@ -101,6 +142,7 @@ public static class XhttpChecks
                 await Task.Delay(200, ct);
             }
             check(true, "real Windows TUN exchanges HTTPS via XHTTP without looping Xray traffic");
+            await QuicRouting(xray, h3, session, webPort, lines, ct, check);
             await session.DisposeAsync(); session = null;
             check(!await Open("127.0.0.1", bridgePort, ct), "disposing XHTTP stops its native job and closes the bridge");
             // A live TUN stack can acknowledge TCP before its outbound connects.

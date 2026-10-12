@@ -11,6 +11,7 @@ public sealed class XraySession : IAsyncDisposable
     readonly string path = Path.Combine(Store.Folder, "xhttp-" + Guid.NewGuid().ToString("N") + ".json");
     readonly Dictionary<string, XhttpBridge> bridges = [];
     public IReadOnlyDictionary<string, XhttpBridge> Bridges => bridges;
+    public XhttpBridge Egress { get; private set; } = null!;
     public string Executable { get; private set; } = "";
     public Task WaitForExitAsync() => core?.WaitForExitAsync() ?? Task.CompletedTask;
     public async Task<string> RecentOutput() => core == null ? "" : AppLog.Clean(await core.ReadRecentOutput(core.HasExited));
@@ -28,18 +29,20 @@ public sealed class XraySession : IAsyncDisposable
         try
         {
             if (!File.Exists(session.Executable)) throw new UserError("Ядро Xray для XHTTP не найдено. Переустановите kot.");
-            foreach (var node in selected)
+            XhttpBridge Reserve()
             {
-                ct.ThrowIfCancellationRequested(); NodeSecurity.Validate(node);
+                ct.ThrowIfCancellationRequested();
                 TcpListener listener; int port;
                 do { listener = new(IPAddress.Loopback, 0); listener.Start(); port = ((IPEndPoint)listener.LocalEndpoint).Port; if (excludedPorts.Contains(port)) listener.Stop(); } while (excludedPorts.Contains(port));
                 reservations.Add(listener);
                 string user = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), password = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
                 AppLog.Secret(user); AppLog.Secret(password);
-                session.bridges.Add(node.Id, new(port, user, password));
+                return new(port, user, password);
             }
+            session.Egress = Reserve();
+            foreach (var node in selected) { NodeSecurity.Validate(node); session.bridges.Add(node.Id, Reserve()); }
             Directory.CreateDirectory(Store.Folder);
-            await File.WriteAllTextAsync(session.path, Xhttp.Build(selected, session.bridges).ToJsonString(), ct);
+            await File.WriteAllTextAsync(session.path, Xhttp.Build(selected, session.bridges, session.Egress).ToJsonString(), ct);
             using (var check = new NativeCore(session.Executable, ["run", "-test", "-c", session.path], Path.GetDirectoryName(session.Executable)!, "kot. Xray configuration check", text => AppLog.Write("xray-check", text)))
             {
                 try { await check.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10), ct); }

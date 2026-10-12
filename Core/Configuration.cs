@@ -30,7 +30,7 @@ public static class Configuration
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
     }
-    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "", IReadOnlyDictionary<string, string>? geoIpPaths = null, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null, string? xrayExecutable = null)
+    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "", IReadOnlyDictionary<string, string>? geoIpPaths = null, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null, XhttpBridge? xhttpEgress = null)
     {
         if (profile.ConnectionMode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим подключения.");
         bool tun = profile.ConnectionMode == "tun";
@@ -50,8 +50,8 @@ public static class Configuration
         }
         if (Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses))
         {
-            if (tun && string.IsNullOrEmpty(xrayExecutable)) throw new UserError("Для TUN XHTTP нужен путь к ядру Xray.");
-            Xhttp.BypassCore(config, xrayExecutable);
+            if (xhttpEgress == null) throw new UserError("Для XHTTP нужен локальный выход ядра Xray.");
+            Xhttp.AddEgress(config, xhttpEgress);
         }
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;

@@ -129,7 +129,7 @@ public static class Xhttp
         if (bridge.Port is < 1 or > 65535 || bridge.Username.Length == 0 || bridge.Password.Length < 32) throw new UserError("Небезопасное локальное соединение XHTTP.");
         return new JsonObject { ["type"] = "socks", ["tag"] = "proxy", ["server"] = "127.0.0.1", ["server_port"] = bridge.Port, ["version"] = "5", ["username"] = bridge.Username, ["password"] = bridge.Password };
     }
-    public static JsonObject Build(IReadOnlyList<Node> nodes, IReadOnlyDictionary<string, XhttpBridge> bridges)
+    public static JsonObject Build(IReadOnlyList<Node> nodes, IReadOnlyDictionary<string, XhttpBridge> bridges, XhttpBridge? egress = null)
     {
         JsonArray inputs = [], outputs = [], rules = [];
         foreach (var node in nodes.Where(Uses).DistinctBy(n => n.Id))
@@ -137,21 +137,44 @@ public static class Xhttp
             var bridge = bridges[node.Id]; _ = SingBoxOutbound(node, bridges);
             string inbound = "in-" + node.Id, outbound = "node-" + node.Id;
             inputs.Add(new JsonObject { ["tag"] = inbound, ["listen"] = "127.0.0.1", ["port"] = bridge.Port, ["protocol"] = "socks", ["settings"] = new JsonObject { ["auth"] = "password", ["accounts"] = new JsonArray(new JsonObject { ["user"] = bridge.Username, ["pass"] = bridge.Password }), ["udp"] = true, ["ip"] = "127.0.0.1" } });
-            var output = Outbound(node); output["tag"] = outbound; outputs.Add(output);
+            var output = Outbound(node); output["tag"] = outbound;
+            if (egress != null) output["streamSettings"]!["sockopt"]!["dialerProxy"] = "transport-direct";
+            outputs.Add(output);
             rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray(inbound), ["outboundTag"] = outbound });
         }
         // A missing route must fail closed, including unauthenticated SOCKS requests.
         outputs.Insert(0, new JsonObject { ["tag"] = "blocked", ["protocol"] = "blackhole" });
+        if (egress != null)
+        {
+            ValidateBridge(egress);
+            outputs.Add(new JsonObject { ["tag"] = "transport-direct", ["protocol"] = "socks", ["settings"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = egress.Port, ["users"] = new JsonArray(new JsonObject { ["user"] = egress.Username, ["pass"] = egress.Password }) }) } });
+            rules.Insert(0, new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("transport-dns"), ["outboundTag"] = "transport-direct" });
+        }
         // Windows can resolve through the DNS Client service, whose process is not Xray.
         // With TUN or WFP active, system DNS would either loop through the unfinished
         // proxy or be blocked. Bootstrap only transport endpoints inside Xray instead.
         return new JsonObject
         {
             ["log"] = new JsonObject { ["loglevel"] = "info" },
-            ["dns"] = new JsonObject { ["servers"] = new JsonArray("https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"), ["queryStrategy"] = "UseIP" },
+            // Non-local DoH follows transport-dns through the same physical dialer.
+            // No Windows DNS Client lookup or native QUIC socket enters the TUN.
+            ["dns"] = new JsonObject { ["tag"] = "transport-dns", ["servers"] = egress == null ? new JsonArray("https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query") : new JsonArray("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), ["queryStrategy"] = "UseIP" },
             ["inbounds"] = inputs, ["outbounds"] = outputs,
             ["routing"] = new JsonObject { ["domainStrategy"] = "AsIs", ["rules"] = rules }
         };
+    }
+    static void ValidateBridge(XhttpBridge bridge)
+    {
+        if (bridge.Port is < 1 or > 65535 || bridge.Username.Length == 0 || bridge.Password.Length < 32) throw new UserError("Небезопасное локальное соединение XHTTP.");
+    }
+    public static void AddEgress(JsonObject config, XhttpBridge bridge)
+    {
+        ValidateBridge(bridge);
+        // Authenticate before permitting transport traffic. Match the dedicated
+        // listener before sniffing, DNS hijacking, or any user routing rule.
+        ((JsonArray)config["inbounds"]!).Add(new JsonObject { ["type"] = "socks", ["tag"] = "xray-direct-in", ["listen"] = "127.0.0.1", ["listen_port"] = bridge.Port, ["users"] = new JsonArray(new JsonObject { ["username"] = bridge.Username, ["password"] = bridge.Password }) });
+        ((JsonArray)config["route"]!["rules"]!).Insert(0, new JsonObject { ["inbound"] = new JsonArray("xray-direct-in"), ["action"] = "route", ["outbound"] = "direct" });
+        ((JsonArray)config["dns"]!["rules"]!).Insert(0, new JsonObject { ["inbound"] = new JsonArray("xray-direct-in"), ["action"] = "route", ["server"] = "bootstrap" });
     }
     public static JsonObject Outbound(Node node)
     {

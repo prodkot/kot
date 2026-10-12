@@ -1,5 +1,6 @@
 """Real sing-box -> authenticated SOCKS -> Xray XHTTP chains, without changing host routes."""
 import argparse
+import errno
 import hashlib
 import zipfile
 import contextlib
@@ -109,11 +110,50 @@ class TLSWeb(http.server.ThreadingHTTPServer):
             pass
 
 
+class DnsFixture(http.server.BaseHTTPRequestHandler):
+    # Minimal HTTP/2 DoH fixture. Only DATA is relevant to DNS; no third-party
+    # HTTP server dependency and no platform certificate store modifications.
+    def handle(self):
+        if recv(self.connection, 24) != b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n':
+            return
+        def frame(kind, flags, stream, body=b''):
+            self.connection.sendall(len(body).to_bytes(3, 'big') + bytes([kind, flags]) + stream.to_bytes(4, 'big') + body)
+        frame(4, 0, 0)
+        requests = {}
+        try:
+            while True:
+                header = recv(self.connection, 9)
+                size, kind, flags, stream = int.from_bytes(header[:3], 'big'), header[3], header[4], int.from_bytes(header[5:], 'big')
+                assert size < 65536
+                body = recv(self.connection, size)
+                if kind == 4 and not flags & 1:
+                    frame(4, 1, 0)
+                elif kind == 0:
+                    requests[stream] = requests.get(stream, b'') + body
+                    if not flags & 1:
+                        continue
+                    query = requests.pop(stream)
+                    assert 12 < len(query) < 4096
+                    end = 12
+                    while query[end] != 0:
+                        end += query[end] + 1
+                    end += 5
+                    question = query[12:end]
+                    ipv4 = question[-4:-2] == b'\x00\x01'
+                    answer = b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\x7f\x00\x00\x01' if ipv4 else b''
+                    packet = query[:2] + b'\x81\x80\x00\x01' + (b'\x00\x01' if ipv4 else b'\x00\x00') + b'\x00\x00\x00\x00' + question + answer
+                    value = b'application/dns-message'
+                    frame(1, 4, stream, b'\x88\x0f\x10' + bytes([len(value)]) + value)
+                    frame(0, 1, stream, packet)
+        except OSError:
+            pass
+
+
 class Processes:
     def __init__(self, directory):
         self.directory, self.children, self.logs = directory, [], []
 
-    def start(self, exe, config, listener, xray=False):
+    def start(self, exe, config, listener, xray=False, udp_listener=False, trust_cert=None):
         name = f'{len(self.children)}-{exe.name}'
         path = self.directory / (name + '.json'); path.write_text(json.dumps(config))
         command = [str(exe), 'run', '-c', str(path)]
@@ -121,18 +161,28 @@ class Processes:
         test = subprocess.run(validation, capture_output=True, timeout=15)
         assert test.returncode == 0, test.stderr.decode(errors='replace')
         log = open(self.directory / (name + '.log'), 'wb'); self.logs.append(log)
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, env={'SSL_CERT_FILE': str(trust_cert)} if trust_cert else None)
         self.children.append(child)
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline:
             if child.poll() is not None:
                 log.flush()
                 raise AssertionError((self.directory / (name + '.log')).read_text()[-6000:])
-            try:
-                with socket.create_connection(('127.0.0.1', listener), .1):
-                    return child
-            except OSError:
-                time.sleep(.05)
+            if udp_listener:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                    try:
+                        probe.bind(('127.0.0.1', listener))
+                    except OSError as error:
+                        if error.errno == errno.EADDRINUSE:
+                            return child
+                        raise
+            else:
+                try:
+                    with socket.create_connection(('127.0.0.1', listener), .1):
+                        return child
+                except OSError:
+                    pass
+            time.sleep(.05)
         raise AssertionError('Core listener startup timeout')
 
     def close(self):
@@ -150,11 +200,14 @@ class Processes:
             assert log.stat().st_size < 1024 * 1024, 'Unbounded fixture log'
 
 
-def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, reality_port=None, extra=False, xudp=False, negative_tls=False, bridge_only=False, domain=False, legacy_dns=False):
+def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, reality_port=None, extra=False, xudp=False, negative_tls=False, bridge_only=False, domain=False, legacy_dns=False, h3=False, dns_port=None):
     generated = ROOT / 'Tests/generated/xhttp'
-    client = json.loads((generated / f'{protocol}-{mode}-client.json').read_text())
-    bridge = json.loads((generated / f'{protocol}-{mode}-xray.json').read_text())
-    server_port, bridge_port, proxy_port = port(), port(), port()
+    client = json.loads((generated / f'{protocol}{"-h3" if h3 else ""}-{mode}-client.json').read_text())
+    bridge = json.loads((generated / f'{protocol}{"-h3" if h3 else ""}-{mode}-xray.json').read_text())
+    server_port, bridge_port, proxy_port, egress_port = port(), port(), port(), port()
+    egress = client['inbounds'][-1]
+    egress['listen_port'] = egress_port
+    bridge['outbounds'][-1]['settings']['servers'][0]['port'] = egress_port
     client['inbounds'][0]['listen_port'] = proxy_port
     client['outbounds'][0]['server_port'] = bridge_port
     client['route']['auto_detect_interface'] = False
@@ -166,7 +219,7 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
     if negative_tls:
         stream['tlsSettings']['serverName'] = 'wrong.fixture.test'
     settings = {'clients': [{'password': 'fixture-password'}]} if protocol == 'trojan' else {'clients': [{'id': UUID}], **({'decryption': 'none'} if protocol == 'vless' else {})}
-    server_stream = {'network': 'xhttp', 'security': 'tls', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}, 'tlsSettings': {'alpn': ['h2'], 'certificates': [{'certificateFile': str(cert), 'keyFile': str(key)}]}}
+    server_stream = {'network': 'xhttp', 'security': 'tls', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}, 'tlsSettings': {'alpn': ['h3' if h3 else 'h2'], 'certificates': [{'certificateFile': str(cert), 'keyFile': str(key)}]}}
     if reality_port:
         stream.pop('tlsSettings'); stream['security'] = 'reality'
         stream['realitySettings'] = {'serverName': 'fixture.test', 'fingerprint': 'chrome', 'publicKey': 'j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8', 'shortId': '0123456789abcdef'}
@@ -178,7 +231,10 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
         # These reserved names cannot resolve in system DNS. Only Xray's own
         # resolver knows the endpoints, including the separate download stream.
         outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['address'] = 'xhttp-endpoint.fixture.invalid'
-        bridge['dns']['hosts'] = {'xhttp-endpoint.fixture.invalid': '127.0.0.1', 'xhttp-download.fixture.invalid': '127.0.0.1'}
+        if dns_port:
+            bridge['dns']['servers'] = [f'https://127.0.0.1:{dns_port}/dns-query']
+        else:
+            bridge['dns']['hosts'] = {'xhttp-endpoint.fixture.invalid': '127.0.0.1', 'xhttp-download.fixture.invalid': '127.0.0.1'}
         if extra:
             stream['xhttpSettings']['extra']['downloadSettings']['address'] = 'xhttp-download.fixture.invalid'
         if legacy_dns:
@@ -188,8 +244,14 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
     server = {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': server_port, 'protocol': protocol, 'settings': settings, 'streamSettings': server_stream}], 'outbounds': [{'protocol': 'freedom'}]}
     processes = Processes(directory)
     try:
-        upstream = processes.start(xray, server, server_port, True)
-        sidecar = processes.start(xray, bridge, bridge_port, True)
+        upstream = processes.start(xray, server, server_port, True, udp_listener=h3)
+        if bridge_only:
+            # Restricted hosts cannot start sing-box's interface monitor. Still
+            # exercise the generated authenticated dialerProxy with a real SOCKS
+            # UDP relay; CI below runs the actual sing-box egress listener.
+            relay = {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': egress_port, 'protocol': 'socks', 'settings': {'auth': 'password', 'accounts': [{'user': 'relay', 'pass': 'r' * 64}], 'udp': True, 'ip': '127.0.0.1'}}], 'outbounds': [{'protocol': 'freedom'}]}
+            processes.start(xray, relay, egress_port, True)
+        sidecar = processes.start(xray, bridge, bridge_port, True, trust_cert=cert if dns_port else None)
         credentials = ('fixture', 'p' * 64) if bridge_only else None
         if bridge_only:
             path = directory / 'sing-box-check.json'; path.write_text(json.dumps(client))
@@ -219,6 +281,9 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
         with socket.create_connection(('127.0.0.1', bridge_port), 2) as sock:
             sock.sendall(b'\x05\x01\x00')
             assert recv(sock, 2) == b'\x05\xff', 'Unauthenticated Xray bridge accepted'
+        with socket.create_connection(('127.0.0.1', egress_port), 2) as sock:
+            sock.sendall(b'\x05\x01\x00')
+            assert recv(sock, 2) == b'\x05\xff', 'Unauthenticated direct egress accepted'
         sidecar.terminate(); sidecar.wait(timeout=5)
         rejected = False
         try:
@@ -226,7 +291,7 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
         except (OSError, http.client.HTTPException):
             rejected = True
         assert rejected, 'Sidecar failure fell back to direct'
-        print(f'PASS {protocol} XHTTP {mode} {"REALITY" if reality_port else "TLS"}{" extra/downloadSettings" if extra else ""}{" XUDP" if xudp else ""}{" independent endpoint DNS" if domain else ""}: HTTP, UDP, authentication, no direct fallback', flush=True)
+        print(f'PASS {protocol} XHTTP {mode}{" HTTP/3 + XMUX" if h3 else ""} {"REALITY" if reality_port else "TLS"}{" extra/downloadSettings" if extra else ""}{" XUDP" if xudp else ""}{" independent endpoint DNS" if domain else ""}: HTTP, UDP, authentication, no direct fallback{"; live bootstrap DoH via egress" if dns_port else ""}', flush=True)
     except Exception:
         for log in directory.glob('*.log'):
             print(log.name, log.read_text(errors='replace')[-3000:], flush=True)
@@ -260,13 +325,15 @@ def main():
     deadline = time.monotonic() + 180
     with tempfile.TemporaryDirectory(prefix='xhttp-', dir=ROOT / 'Tests/generated') as temp:
         directory = pathlib.Path(temp); cert, key = directory / 'cert.pem', directory / 'key.pem'
-        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=fixture.test', '-addext', 'subjectAltName=DNS:fixture.test'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=fixture.test', '-addext', 'subjectAltName=DNS:fixture.test,IP:127.0.0.1'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
         web = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Web)
         echo = socketserver.ThreadingUDPServer(('127.0.0.1', 0), Echo)
         reality = TLSWeb(('127.0.0.1', 0), Web)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); context.load_cert_chain(cert, key); context.set_alpn_protocols(['h2'])
         reality.context = context
-        servers = [web, echo, reality]
+        dns = TLSWeb(('127.0.0.1', 0), DnsFixture)
+        dns.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); dns.context.load_cert_chain(cert, key); dns.context.set_alpn_protocols(['h2'])
+        servers = [web, echo, reality, dns]
         for server in servers:
             threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
@@ -274,13 +341,18 @@ def main():
             cases += [('vless', m, reality.server_port, False, False, False, False, False) for m in ('auto', 'packet-up', 'stream-up', 'stream-one')]
             cases += [('vless', 'packet-up', None, True, False, False, False, False), ('vless', 'packet-up', None, False, True, False, False, False), ('vmess', 'stream-up', None, False, True, False, False, False), ('vless', 'auto', None, False, False, True, False, False)]
             cases += [('vless', 'packet-up', None, False, False, False, True, True), ('vless', 'packet-up', None, False, False, False, True, False), ('vless', 'packet-up', None, True, False, False, True, False), ('vless', 'auto', reality.server_port, False, False, False, True, False)]
+            cases = [(*case, False) for case in cases]
+            cases += [(p, m, None, False, False, False, False, False, True) for p in ('vless', 'vmess', 'trojan') for m in ('auto', 'packet-up')]
+            cases += [('vless', 'auto', None, False, False, False, True, False, True)]
+            cases = [(*case, None) for case in cases]
+            cases += [('vless', 'auto', None, False, False, False, True, False, True, dns.server_port)]
             for i, case in enumerate(cases):
                 if args.case_index is not None and i != args.case_index:
                     continue
                 assert time.monotonic() < deadline, 'XHTTP integration matrix exceeded three minutes'
                 work = directory / str(i); work.mkdir()
-                protocol, mode, dest, extra, xudp, negative, domain, legacy_dns = case
-                chain(core, xray, work, protocol, mode, web.server_port, echo.server_address[1], cert, key, dest, extra, xudp, negative, args.bridge_only, domain, legacy_dns)
+                protocol, mode, dest, extra, xudp, negative, domain, legacy_dns, h3, dns_port = case
+                chain(core, xray, work, protocol, mode, web.server_port, echo.server_address[1], cert, key, dest, extra, xudp, negative, args.bridge_only, domain, legacy_dns, h3, dns_port)
         finally:
             for server in servers:
                 server.shutdown(); server.server_close()

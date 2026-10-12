@@ -51,8 +51,15 @@ public static class XhttpTests
         check(Xhttp.ConnectionNodes(profile).Count == 1 && Xhttp.ConnectionNodes(profile)[0].Id == alias.Id, "Xray candidate list matches favorite-only automatic selection");
         profile.Favorites.Clear();
         var routing = new RoutingProfile { Rules = new RoutingRules { Name = "Fixture", DefaultAction = "proxy", ProxyDomains = ["example.com"] } }; profile.RoutingProfiles = [routing]; profile.ActiveRoutingProfile = routing.Id;
-        var config = Configuration.BuildConnection(profile, 18080, xhttp: bridges, xrayExecutable: Path.GetFullPath("fixture/xray.exe"));
-        check(config["route"]!["rules"]![0]!["process_path"] != null && config["dns"]!["rules"]![0]!["server"]?.ToString() == "bootstrap" && config["route"]!["find_process"]?.GetValue<bool>() == true, "Xray bypass survives custom routing and precedes DNS interception");
+        var egress = new XhttpBridge(19083, "relay", new string('r', 64));
+        var config = Configuration.BuildConnection(profile, 18080, xhttp: bridges, xhttpEgress: egress);
+        check(config["route"]!["rules"]![0]!["inbound"]![0]?.ToString() == "xray-direct-in" && config["dns"]!["rules"]![0]!["server"]?.ToString() == "bootstrap", "authenticated Xray egress survives custom routing and precedes DNS interception");
+        check(config["inbounds"]!.AsArray().Single(i => i!["tag"]?.ToString() == "xray-direct-in")!["users"]![0]!["password"]?.ToString() == egress.Password, "transport egress requires session-specific credentials");
+        var relayed = Xhttp.Build([node], bridges, egress);
+        check(relayed["outbounds"]![1]!["streamSettings"]!["sockopt"]!["dialerProxy"]?.ToString() == "transport-direct" && relayed["dns"]!["servers"]![0]?.ToString() == "https://1.1.1.1/dns-query" && relayed["routing"]!["rules"]![0]!["inboundTag"]![0]?.ToString() == "transport-dns", "XHTTP transport and bootstrap DoH use the physical sing-box dialer");
+        const string xmux = """{"xmux":{"maxConnections":3,"hMaxRequestTimes":"600-900","hMaxReusableSecs":"1800-3000"}}""";
+        var h3 = Subscriptions.ParseNode($"vless://{Uuid}@example.com:443?type=xhttp&security=tls&sni=example.com&fp=firefox&alpn=h3&path=%2Ffixture&mode=auto&extra=" + Uri.EscapeDataString(xmux));
+        check(JsonNode.DeepEquals(h3.Outbound, Subscriptions.ParseNode(NodeLinks.Export(h3)).Outbound) && Xhttp.Outbound(h3)["streamSettings"]!["tlsSettings"]!["alpn"]![0]?.ToString() == "h3" && Xhttp.Outbound(h3)["streamSettings"]!["xhttpSettings"]!["extra"]!["xmux"]!["hMaxRequestTimes"]?.ToString() == "600-900", "HTTP/3, Firefox and XMUX ranges survive import, export and native conversion");
         check(config["outbounds"]![0]!["type"]?.ToString() == "socks" && config["outbounds"]![1]!["tag"]?.ToString() == "node-" + alias.Id, "automatic URL test retains node identities through bridges");
         var tls = Xhttp.Outbound(node)["streamSettings"]!["tlsSettings"]!;
         check(tls["allowInsecure"]?.GetValue<bool>() == false && Xhttp.Outbound(vm)["protocol"]?.ToString() == "vmess", "Xray conversion keeps TLS verification and actual protocol");
@@ -64,16 +71,21 @@ public static class XhttpTests
         Directory.CreateDirectory(directory);
         foreach (string protocol in new[] { "vless", "vmess", "trojan" })
         foreach (string mode in new[] { "auto", "packet-up", "stream-up", "stream-one" })
+        foreach (bool h3 in new[] { false, true })
         {
+            if (h3 && mode is not ("auto" or "packet-up")) continue;
             JsonObject o = new() { ["type"] = protocol, ["tag"] = "proxy", ["server"] = "127.0.0.1", ["server_port"] = 19471, ["transport"] = Xhttp.Transport("fixture.test", "/fixture", mode) };
             if (protocol == "trojan") o["password"] = "fixture-password"; else o["uuid"] = Uuid;
             if (protocol == "vmess") o["security"] = "auto";
-            o["tls"] = new JsonObject { ["enabled"] = true, ["server_name"] = "fixture.test", ["alpn"] = new JsonArray("h2") };
+            o["tls"] = new JsonObject { ["enabled"] = true, ["server_name"] = "fixture.test", ["alpn"] = new JsonArray(h3 ? "h3" : "h2"), ["utls"] = new JsonObject { ["enabled"] = true, ["fingerprint"] = "firefox" } };
+            if (h3) o["transport"]!["extra"] = JsonNode.Parse("""{"xmux":{"maxConnections":3,"hMaxRequestTimes":"600-900","hMaxReusableSecs":"1800-3000"}}""");
             var node = new Node("fixture", "Fixture", protocol, o);
             Dictionary<string, XhttpBridge> bridges = new() { [node.Id] = new(19472, "fixture", new string('p', 64)) };
-            string name = protocol + "-" + mode;
-            File.WriteAllText(Path.Combine(directory, name + "-xray.json"), Xhttp.Build([node], bridges).ToJsonString());
-            File.WriteAllText(Path.Combine(directory, name + "-client.json"), Configuration.Build(node, 19473, false, [], tun: false, xhttp: bridges).ToJsonString());
+            var egress = new XhttpBridge(19474, "relay", new string('r', 64));
+            string name = protocol + (h3 ? "-h3" : "") + "-" + mode;
+            File.WriteAllText(Path.Combine(directory, name + "-xray.json"), Xhttp.Build([node], bridges, egress).ToJsonString());
+            var client = Configuration.Build(node, 19473, false, [], tun: false, xhttp: bridges); Xhttp.AddEgress(client, egress);
+            File.WriteAllText(Path.Combine(directory, name + "-client.json"), client.ToJsonString());
         }
     }
 }
