@@ -63,7 +63,11 @@ static class InstallerUiTests
     {
         if(button==IntPtr.Zero||!IsWindowEnabled(button)) throw new Exception("Installer button missing or disabled");
         GetClientRect(button,out var bounds);
-        var center=(IntPtr)((bounds.Bottom/2<<16)|(bounds.Right/2&0xFFFF));
+        bool checkbox=(GetWindowLong(button,-16)&15) is 2 or 3;
+        // A native checkbox accepts clicks on its tick/text, not the unused
+        // space to the right of a short caption in a wide layout rectangle.
+        int x=checkbox?(int)(8*GetDpiForWindow(button)/96f):bounds.Right/2;
+        var center=(IntPtr)((bounds.Bottom/2<<16)|(x&0xFFFF));
         SendMessage(button,0x201,(IntPtr)1,center);
         PostMessage(button,0x202,IntPtr.Zero,center);
     }
@@ -112,7 +116,8 @@ static class InstallerUiTests
                 Palette(button,"after losing default-action status");
             }
             GetClientRect(button,out var bounds);
-            var center=(IntPtr)((bounds.Bottom/2<<16)|(bounds.Right/2&0xFFFF));
+            int x=checkbox?(int)(8*GetDpiForWindow(button)/96f):bounds.Right/2;
+            var center=(IntPtr)((bounds.Bottom/2<<16)|(x&0xFFFF));
             try
             {
                 SendMessage(button,0x201,(IntPtr)1,center); // WM_LBUTTONDOWN with MK_LBUTTON
