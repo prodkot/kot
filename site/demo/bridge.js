@@ -71,7 +71,7 @@
     model = {
       version, name: 'Личная подписка', hasSubscription: true, nodes: samples(), selected: 'nl', automaticNode: 'nl',
       state: 'idle', error: '', warnings: [], backgroundError: '', favorites: [], updated: null,
-      settings: { theme: 'dark', accent: 'lime', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
+      settings: { theme: 'dark', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
       subscriptions: [{ id: 'sample-1', name: 'Личная подписка', count: 4 }], activeSubscription: 'sample-1',
       automation: { reconnect: true, refreshHours: 6, pingMinutes: 0, autoMinutes: 3, autoToleranceMs: 50 },
       routing: { active: '', profiles: [], errors: {} },

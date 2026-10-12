@@ -87,9 +87,10 @@ def check():
 
                 frame.locator('[data-page=settings]').click()
                 frame.locator('[data-theme=light]').click()
-                frame.locator('.accent-choice:has(input[value=purple])').click()
                 expect(frame.locator('body')).to_have_class('theme-light')
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('input[name=accent]')).to_have_count(0)
+                assert frame.locator('body').get_attribute('data-accent') is None
+                expect(frame.locator('#brandButton span')).to_have_css('color', 'rgb(203, 233, 145)')
                 frame.locator('[data-setting=killSwitch]').click()
                 frame.locator('#demo-failure').click()
                 expect(frame.locator('#connectionError')).to_contain_text('Kill switch')
@@ -154,7 +155,7 @@ def check():
                 # Fullscreen keeps the same document and state; Escape works inside it.
                 page.locator('#expand-demo').click()
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('body')).to_have_class('theme-light')
                 page.evaluate("window.postMessage({kind:'kot-demo',close:true}, '*')")
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
                 frame.locator('#hwidButton').click()
@@ -163,7 +164,7 @@ def check():
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
                 frame.locator('#hwidButton').press('Escape')
                 expect(page.locator('#expand-demo')).to_have_attribute('aria-expanded', 'false')
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('body')).to_have_class('theme-light')
 
                 # Reset during a pending operation discards the old frame and timers.
                 frame.locator('[data-page=home]').click()
