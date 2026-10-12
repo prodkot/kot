@@ -26,7 +26,7 @@ $uiFolder=Join-Path $extractorFolder 'ui'
 ./Release/build-installer-ui.ps1 -Output $uiFolder
 $setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"
 $payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
-& $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" Installer/Kot.nsi
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" Installer/Kot.nsi
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 ./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version

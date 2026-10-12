@@ -42,6 +42,12 @@ FunctionEnd
   SendMessage $Control ${WM_SETTEXT} 0 "STR:${text}"
 !macroend
 Function Welcome
+  ; NSIS runs a native page's leave callback only on Next. On Back the old
+  ; directory dialog is still alive until nsDialogs::Create replaces it.
+  GetDlgItem $Control $Dialog 1008
+  ${If} $Control != 0
+    SendMessage $Control ${BM_GETCHECK} 0 0 $DesktopShortcut
+  ${EndIf}
   !insertmacro NewPage
   !insertmacro Label "" 0 6 76 76 "hero"
   !insertmacro Label "Привет, это kot." 0 108 568 44 "heading"

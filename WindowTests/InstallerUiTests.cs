@@ -18,14 +18,20 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window, int index);
-    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
-    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool SetWindowText(IntPtr window, string text);
+    [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] static extern IntPtr SendTextMessage(IntPtr window, int message, IntPtr size, StringBuilder text, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr parent, int id);
     [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, int flags);
-    static string Text(IntPtr window) { var text=new StringBuilder(2048); GetWindowText(window,text,text.Capacity); return text.ToString(); }
+    static string Text(IntPtr window)
+    {
+        // Edit text belongs to the installer process, so GetWindowText is not
+        // sufficient. WM_GETTEXT is marshalled by Windows across processes.
+        var text=new StringBuilder(2048);
+        SendTextMessage(window,0xD,(IntPtr)text.Capacity,text,2,2000,out _);
+        return text.ToString();
+    }
     static List<IntPtr> Children(IntPtr window) { List<IntPtr> result=[]; EnumChildWindows(window,(child,_)=>{result.Add(child);return true;},IntPtr.Zero); return result; }
     static IntPtr ByText(IntPtr window, string caption) => Children(window).FirstOrDefault(child=>IsWindowVisible(child)&&Text(child)==caption);
     static IntPtr ById(IntPtr window, int id) => Children(window).FirstOrDefault(child=>IsWindowVisible(child)&&GetDlgCtrlID(child)==id);

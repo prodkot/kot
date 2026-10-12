@@ -36,7 +36,7 @@ ShowInstDetails show
 ShowUninstDetails show
 InstallColors f2f4ed 151718
 LoadLanguageFile "${NSISDIR}/Contrib/Language files/Russian.nlf"
-!include "UI/pages.nsh"
+!include /CHARSET=UTF8 "${__FILEDIR__}\UI\pages.nsh"
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "kot. требует Windows x64."
