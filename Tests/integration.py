@@ -63,3 +63,6 @@ finally:
         try:p.wait(timeout=5)
         except subprocess.TimeoutExpired:p.kill();p.wait()
     server.shutdown();server.server_close()
+
+# The same integration entry point also verifies the XHTTP transport matrix.
+subprocess.run([sys.executable, str(ROOT/'Tests/xhttp_integration.py'), '--core', str(core)], check=True, timeout=300)

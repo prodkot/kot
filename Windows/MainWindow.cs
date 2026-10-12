@@ -265,7 +265,7 @@ public sealed partial class MainWindow : WindowChrome
                     case "tray": profile.Tray = value.GetBoolean(); break;
                     case "killSwitch":
                         bool protect = value.GetBoolean();
-                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
+                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, tunnel.UsesXhttp);
                         if (!protect) KillSwitch.Release();
                         profile.KillSwitch = protect; break;
                     case "sendHwid": profile.SendHwid = value.GetBoolean(); break;

@@ -9,6 +9,8 @@ if (args.Length >= 2 && args[0] == "geoip-core")
 string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
+Kot.Tests.XhttpTests.Run(Check);
+Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);
 var a = Subscriptions.Parse(vless + "\r\n" + vless + "\nvless://broken@example.com:443\n");
 Check(a.Nodes.Count == 1 && a.Warnings.Count == 1 && a.Nodes[0].Name == "Мой сервер", "unicode, CRLF, deduplication, bad-node report");
@@ -21,7 +23,7 @@ var ss = Subscriptions.ParseNode("ss://" + Convert.ToBase64String(Encoding.UTF8.
 Check(ss.Outbound["password"]?.ToString() == "p@ss:word", "SIP002 password preserved");
 var vm = Subscriptions.ParseNode("vmess://" + Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { v = "2", ps = "VM", add = "example.com", port = 443, id = uuid, aid = 0, scy = "auto", net = "ws", path = "/ws", host = "example.com", tls = "tls" }))));
 Check(vm.Outbound["transport"]?["type"]?.ToString() == "ws", "VMess JSON");
-foreach (string invalid in new[] { $"vless://{uuid}@example.com:443?type=xhttp", "ss://YWVzLTEyOC1nY206cHc=@example.com:8388?plugin=v2ray-plugin", "<html>login</html>" })
+foreach (string invalid in new[] { $"vless://{uuid}@example.com:443?type=unknown", "ss://YWVzLTEyOC1nY206cHc=@example.com:8388?plugin=v2ray-plugin", "<html>login</html>" })
 { bool rejected = false; try { Subscriptions.Parse(invalid); } catch(UserError) { rejected = true; } Check(rejected, "unsupported format rejected"); }
 var domains = Configuration.Domains("example.com\n.example.org\nexample.com");
 Check(domains.SequenceEqual(new[] { "example.com", "example.org" }), "rules normalization");

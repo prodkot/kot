@@ -7,7 +7,9 @@ if (args.Length > 1 && args[0] == "--service-args")
 }
 if (args.Length > 1 && args[0] == "--service-hold")
 {
-    File.WriteAllText(args[1], Environment.ProcessId.ToString()); await Task.Delay(30000); return 0;
+    // Publish readiness only after closing the writer, so readers cannot race its file lock.
+    File.WriteAllText(args[1] + ".tmp", Environment.ProcessId.ToString()); File.Move(args[1] + ".tmp", args[1]);
+    await Task.Delay(30000); return 0;
 }
 if (args.Length > 1 && args[0] == "--service-parent")
 {

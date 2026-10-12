@@ -1,7 +1,4 @@
 using Kot.Core;
-using System.Net;
-using System.Net.Sockets;
-using System.Text.Json;
 namespace Kot.Windows;
 
 public sealed class PingService
@@ -75,34 +72,7 @@ public sealed class PingService
             int port = node.Outbound["server_port"]?.GetValue<int>() ?? throw new UserError("Нет порта сервера.");
             return await Latency.Sample(options, token => Latency.Tcp(host, port, options.TimeoutMs, token), ct, ex => AppLog.Error("ping tcp " + node.Id, ex));
         }
-        NativeCore? core = null;
-        string path = Path.Combine(Store.Folder, "ping-" + Guid.NewGuid().ToString("N") + ".json");
-        try
-        {
-            using var reservation = new TcpListener(IPAddress.Loopback, 0); reservation.Start();
-            int port = ((IPEndPoint)reservation.LocalEndpoint).Port; reservation.Stop();
-            var config = Configuration.Build(node, port, false, [], tun: false);
-            config["log"]!["level"] = "info";
-            await File.WriteAllTextAsync(path, config.ToJsonString(), ct);
-            ct.ThrowIfCancellationRequested();
-            core = new NativeCore(Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe"), path, text => AppLog.Write("ping-core " + node.Id, text));
-            // Listener readiness is outside the latency sample; never count a successful local TCP check as HTTP success.
-            var deadline = DateTime.UtcNow.AddSeconds(10); bool ready = false;
-            while (DateTime.UtcNow < deadline)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (core.HasExited) throw new UserError("Ядро проверки завершилось: " + CoreDiagnostics.Summary(AppLog.Clean(await core.ReadRecentOutput(true))));
-                try { await Latency.Tcp("127.0.0.1", port, 250, ct); ready = true; break; }
-                catch (Exception ex) when (ex is SocketException || ex is OperationCanceledException && !ct.IsCancellationRequested) { }
-                await Task.Delay(100, ct);
-            }
-            if (!ready) throw new UserError("Ядро проверки не открыло локальный порт.");
-            return await Latency.Sample(options, token => Latency.Http(options.Url, port, options.TimeoutMs, token), ct, ex => AppLog.Error("ping http " + node.Id, ex));
-        }
-        finally
-        {
-            if (core != null) { try { await core.Stop(); } catch (Exception ex) { AppLog.Error("ping cleanup", ex); core.Dispose(); } }
-            try { File.Delete(path); } catch (Exception ex) { AppLog.Error("ping config cleanup", ex); }
-        }
+        await using var probe = await ProbeCore.Start(node, ct);
+        return await Latency.Sample(options, token => Latency.Http(options.Url, probe.Port, options.TimeoutMs, token), ct, ex => AppLog.Error("ping http " + node.Id, ex));
     }
 }

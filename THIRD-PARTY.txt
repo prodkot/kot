@@ -18,6 +18,16 @@ Wintun встроен upstream в sing-tun; отдельная DLL не треб
 Chromium / Cronet:
 https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 
+Xray 26.3.27
+
+Отдельный процесс для транспорта XHTTP; используется официальный xray.exe
+без изменений. Геобазы Xray и дополнительные инструменты не включены.
+Лицензия MPL-2.0: licenses/Xray-MPL-2.0.txt.
+Уведомления зависимостей и точные архивы: licenses/Xray-Go-NOTICES.txt.
+Релиз: https://github.com/XTLS/Xray-core/releases/tag/v26.3.27
+Исходники: https://github.com/XTLS/Xray-core/archive/refs/tags/v26.3.27.tar.gz
+Точные исходники включены в upstream/Xray-core-26.3.27-source.tar.gz.
+
 WebView2
 
 SDK Microsoft.Web.WebView2 1.0.4258.31:

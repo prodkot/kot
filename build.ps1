@@ -15,6 +15,11 @@ if ((Get-FileHash "$cache/sing-box.zip" -Algorithm SHA256).Hash -ne "C2D8BFFF918
 Expand-Archive "$cache/sing-box.zip" "$cache/core" -Force
 New-Item -ItemType Directory -Force "$publish/core" | Out-Null
 Copy-Item "$cache/core/sing-box-1.14.2-windows-amd64/sing-box.exe","$cache/core/sing-box-1.14.2-windows-amd64/libcronet.dll" "$publish/core"
+Invoke-WebRequest 'https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-64.zip' -OutFile "$cache/xray.zip"
+if ((Get-FileHash "$cache/xray.zip" -Algorithm SHA256).Hash -ne 'D004C39288CE9ADA487C6F398C7C545F7D749E44BDFDD59DBC9F865AFBA4E1AD') { throw 'Unexpected Xray archive checksum' }
+Expand-Archive "$cache/xray.zip" "$cache/xray" -Force
+# XHTTP needs the unmodified executable; bundled geo databases and extra tools are not used.
+Copy-Item "$cache/xray/xray.exe" "$publish/core/xray.exe"
 Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$publish/Install-WebView2.exe"
 $signature=Get-AuthenticodeSignature "$publish/Install-WebView2.exe"
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'WebView2 installer signature is not valid Microsoft signature.' }

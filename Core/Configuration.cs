@@ -12,16 +12,16 @@ public static class Configuration
             if (item.Length > 253 || !Regex.IsMatch(item, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")) throw new UserError("Введите домены без https:// и путей, по одному в строке.");
         return items;
     }
-    public static JsonObject BuildAutomatic(IReadOnlyList<Node> nodes, int port, bool smart, string[] bypass, AutomationOptions options, int apiPort = 0, string apiSecret = "", bool tun = true)
+    public static JsonObject BuildAutomatic(IReadOnlyList<Node> nodes, int port, bool smart, string[] bypass, AutomationOptions options, int apiPort = 0, string apiSecret = "", bool tun = true, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null)
     {
         options.Validate();
         if (nodes.Count == 0) throw new UserError("Нет серверов для автоматического выбора.");
-        var config = Build(nodes[0], port, smart, bypass, tun);
+        var config = Build(nodes[0], port, smart, bypass, tun, xhttp);
         var outputs = new JsonArray(); var tags = new JsonArray();
         foreach (var node in nodes)
         {
             NodeSecurity.Validate(node);
-            var outbound = (JsonObject)node.Outbound.DeepClone(); string tag = "node-" + node.Id;
+            var outbound = Xhttp.SingBoxOutbound(node, xhttp); string tag = "node-" + node.Id;
             outbound["tag"] = tag; outputs.Add(outbound); tags.Add(tag);
         }
         outputs.Add(new JsonObject { ["type"] = "urltest", ["tag"] = "proxy", ["outbounds"] = tags,
@@ -30,7 +30,7 @@ public static class Configuration
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
     }
-    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "", IReadOnlyDictionary<string, string>? geoIpPaths = null)
+    public static JsonObject BuildConnection(Profile profile, int healthPort, int proxyPort = 0, int apiPort = 0, string apiSecret = "", IReadOnlyDictionary<string, string>? geoIpPaths = null, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null, string? xrayExecutable = null)
     {
         if (profile.ConnectionMode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим подключения.");
         bool tun = profile.ConnectionMode == "tun";
@@ -39,14 +39,19 @@ public static class Configuration
         var candidates = profile.Favorites.Count > 0 ? profile.Nodes.Where(n => profile.Favorites.Contains(n.Id)).ToList() : profile.Nodes;
         if (candidates.Count == 0) candidates = profile.Nodes;
         var node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
-        var config = profile.Selected == "auto" ? BuildAutomatic(candidates, healthPort, smart, profile.Bypass, profile.Automation, tun: tun)
-            : Build(node ?? throw new UserError("Выберите сервер."), healthPort, smart, profile.Bypass, tun);
+        var config = profile.Selected == "auto" ? BuildAutomatic(candidates, healthPort, smart, profile.Bypass, profile.Automation, tun: tun, xhttp: xhttp)
+            : Build(node ?? throw new UserError("Выберите сервер."), healthPort, smart, profile.Bypass, tun, xhttp);
         // A separate listener keeps the health probe on the selected server even when rules bypass its domain.
         if (!tun) ((JsonArray)config["inbounds"]!).Add(new JsonObject { ["type"] = "mixed", ["tag"] = "system-in", ["listen"] = "127.0.0.1", ["listen_port"] = proxyPort });
         if (profile.ActiveRoutingProfile.Length > 0)
         {
             var routing = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile) ?? throw new UserError("Профиль маршрутизации уже удалён.");
             routing.Validate(); ApplyRouting(config, routing.Rules, geoIpPaths);
+        }
+        if (Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses))
+        {
+            if (tun && string.IsNullOrEmpty(xrayExecutable)) throw new UserError("Для TUN XHTTP нужен путь к ядру Xray.");
+            Xhttp.BypassCore(config, xrayExecutable);
         }
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
@@ -112,7 +117,7 @@ public static class Configuration
         config["experimental"] = new JsonObject { ["clash_api"] = new JsonObject { ["external_controller"] = "127.0.0.1:" + port, ["secret"] = secret, ["access_control_allow_origin"] = new JsonArray("https://kot.local") } };
         ((JsonObject)config["route"]!)["find_process"] = true;
     }
-    public static JsonObject Build(Node node, int port, bool smart, string[] bypass, bool tun = true)
+    public static JsonObject Build(Node node, int port, bool smart, string[] bypass, bool tun = true, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null)
     {
         NodeSecurity.Validate(node);
         JsonObject Dns(string tag, string? detour = null)
@@ -138,7 +143,7 @@ public static class Configuration
             ["log"] = new JsonObject { ["level"] = "info", ["timestamp"] = false },
             ["dns"] = new JsonObject { ["servers"] = new JsonArray(Dns("bootstrap"), Dns("remote", "proxy")), ["rules"] = dnsRules, ["final"] = "remote", ["strategy"] = "prefer_ipv4" },
             ["inbounds"] = inbound,
-            ["outbounds"] = new JsonArray(node.Outbound.DeepClone(), new JsonObject { ["type"] = "direct", ["tag"] = "direct" }),
+            ["outbounds"] = new JsonArray(Xhttp.SingBoxOutbound(node, xhttp), new JsonObject { ["type"] = "direct", ["tag"] = "direct" }),
             ["route"] = new JsonObject { ["rules"] = routeRules, ["final"] = "proxy", ["auto_detect_interface"] = true, ["default_domain_resolver"] = "bootstrap" }
         };
     }

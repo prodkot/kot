@@ -110,6 +110,12 @@ public static partial class ClashImport
             JsonObject t = new() { ["type"] = network == "h2" ? "http" : network };
             var opts = p[network + "-opts"] as JsonObject;
             if (network == "grpc") t["service_name"] = opts?["grpc-service-name"]?.ToString() ?? "";
+            else if (network is "xhttp" or "splithttp")
+            {
+                if (opts != null && opts.Any(kv => kv.Key is not ("host" or "path" or "mode" or "extra"))) throw new UserError("Неизвестный параметр Clash XHTTP.");
+                var extra = opts?["extra"] is JsonObject extraObject ? XhttpYamlExtra(extraObject) : opts?["extra"];
+                t = Xhttp.Transport(opts?["host"]?.ToString() ?? "", opts?["path"]?.ToString() ?? "", opts?["mode"]?.ToString() ?? "", extra is JsonObject ? extra.ToJsonString() : extra?.ToString() ?? "");
+            }
             else if (network is "ws" or "http" or "h2" or "httpupgrade")
             {
                 t["path"] = opts?["path"] is JsonArray paths ? paths.FirstOrDefault()?.ToString() ?? "/" : opts?["path"]?.ToString() ?? "/";
@@ -137,5 +143,17 @@ public static partial class ClashImport
         // Reuse the same validation and wire format as ordinary share links.
         var candidate = new Node("", name, kind, o); string link = NodeLinks.Export(candidate); var parsed = Subscriptions.ParseNode(link);
         return parsed with { Id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(link))).ToLowerInvariant() };
+    }
+    static JsonObject XhttpYamlExtra(JsonObject source)
+    {
+        var result = (JsonObject)source.DeepClone();
+        foreach (var (key, value) in source)
+        {
+            if (key == "headers") continue; // A numeric or boolean-looking header remains text.
+            if (value is JsonObject nested) result[key] = XhttpYamlExtra(nested);
+            else if (key is "xPaddingObfsMode" or "noGRPCHeader" or "noSSEHeader" or "allowInsecure" && bool.TryParse(value?.ToString(), out bool flag)) result[key] = flag;
+            else if (key is "port" or "xPaddingBytes" or "uplinkChunkSize" or "scMaxEachPostBytes" or "scMinPostsIntervalMs" or "scStreamUpServerSecs" or "scMaxBufferedPosts" or "serverMaxHeaderBytes" or "maxConcurrency" or "maxConnections" or "cMaxReuseTimes" or "hMaxRequestTimes" or "hMaxReusableSecs" or "hKeepAlivePeriod" && int.TryParse(value?.ToString(), out int number)) result[key] = number;
+        }
+        return result;
     }
 }
