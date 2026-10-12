@@ -128,7 +128,12 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
 }
 static void Place(HWND window,int x,int y,int width,int height) { MoveWindow(window,Scale(x),Scale(y),Scale(width),Scale(height),TRUE); }
 static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR) {
-    if(message==WM_COMMAND && LOWORD(w)==9009) { SendMessageW(window,WM_CLOSE,0,0); return 0; }
+    if((message==WM_COMMAND && LOWORD(w)==9009)||message==WM_CLOSE) {
+        HWND cancel=GetDlgItem(window,IDCANCEL),next=GetDlgItem(window,IDOK);
+        if(IsWindowEnabled(cancel)) SendMessageW(window,WM_COMMAND,IDCANCEL,reinterpret_cast<LPARAM>(cancel));
+        else if(IsWindowEnabled(next)) SendMessageW(window,WM_COMMAND,IDOK,reinterpret_cast<LPARAM>(next));
+        return 0;
+    }
     if(message==WM_NCHITTEST) {
         POINT point{static_cast<short>(LOWORD(l)),static_cast<short>(HIWORD(l))}; ScreenToClient(window,&point);
         if(point.y<Scale(64)&&point.x<Scale(584)) return HTCAPTION;

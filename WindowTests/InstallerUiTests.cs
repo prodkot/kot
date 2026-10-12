@@ -93,7 +93,7 @@ static class InstallerUiTests
         {
             var cancel=Start(setup,"/D="+target); processes.Add(cancel); var window=Window(cancel);
             Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome"); Capture(window,folder,"setup-welcome",check);
-            Click(GetDlgItem(window,2)); Close(cancel,false);
+            Click(GetDlgItem(window,9009)); Close(cancel,false);
             check(!Directory.Exists(target),"cancelling custom Setup before installation creates no application files");
             var install=Start(setup,"/D="+target); processes.Add(install); window=Window(install);
             Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome again");
