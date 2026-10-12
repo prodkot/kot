@@ -89,6 +89,10 @@ Function Finish
   Pop $RunApp
   KotUI::Control /NOUNLOAD "$RunApp" "0" "246" "568" "28" "checkbox"
   ${NSD_Check} $RunApp
+  GetDlgItem $Control $HWNDPARENT 3
+  ShowWindow $Control ${SW_HIDE}
+  GetDlgItem $Control $HWNDPARENT 2
+  EnableWindow $Control 0
   !insertmacro ButtonText "Готово"
   nsDialogs::Show
 FunctionEnd
@@ -97,6 +101,8 @@ Function FinishLeave
   ${If} $0 == ${BST_CHECKED}
     Exec '$\"$INSTDIR\Kot.exe$\"'
   ${EndIf}
+  SetErrorLevel 0
+  Quit
 FunctionEnd
 Function un.Confirm
   !insertmacro NewPage

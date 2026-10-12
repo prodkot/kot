@@ -44,14 +44,16 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
     wchar_t name[64]{}; GetClassNameW(window,name,64);
     bool button = _wcsicmp(name,L"Button")==0;
     bool progress = _wcsicmp(name,PROGRESS_CLASSW)==0;
+    bool label = _wcsicmp(name,L"Static")==0;
     bool hero = GetPropW(window,L"kot.hero")!=nullptr;
+    if(message==WM_SETTEXT && GetPropW(window,L"kot.progress-status")) l=reinterpret_cast<LPARAM>(uninstalling?L"Удаляем kot.":L"Устанавливаем kot.");
     if (message==WM_NCDESTROY) { RemoveWindowSubclass(window,ControlProc,1); return DefSubclassProc(window,message,w,l); }
     if (button && message==WM_MOUSEMOVE && !GetPropW(window,L"kot.hover")) {
         SetPropW(window,L"kot.hover",reinterpret_cast<HANDLE>(1)); TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,window,0}; TrackMouseEvent(&track); InvalidateRect(window,nullptr,FALSE);
     }
     if (message==WM_MOUSELEAVE) { RemovePropW(window,L"kot.hover"); InvalidateRect(window,nullptr,FALSE); }
-    if ((button||progress||hero) && message==WM_ERASEBKGND) return 1;
-    if ((button||progress||hero) && (message==WM_PAINT||message==WM_PRINTCLIENT)) {
+    if ((button||progress||label) && message==WM_ERASEBKGND) return 1;
+    if ((button||progress||label) && (message==WM_PAINT||message==WM_PRINTCLIENT)) {
         PAINTSTRUCT paint{}; HDC dc = message==WM_PAINT ? BeginPaint(window,&paint) : reinterpret_cast<HDC>(w);
         RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,backgroundBrush);
         if (hero) Logo(dc,0,0,std::min(bounds.right,bounds.bottom));
@@ -61,8 +63,18 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
             int position=static_cast<int>(SendMessageW(window,PBM_GETPOS,0,0));
             int span=range.iHigh-range.iLow; track.right=span>0 ? MulDiv(bounds.right,position-range.iLow,span) : 0;
             if(track.right>0) Box(dc,track,accent,accent,6);
+        } else if(label) {
+            wchar_t caption[2048]{}; GetWindowTextW(window,caption,2048);
+            auto font=reinterpret_cast<HFONT>(SendMessageW(window,WM_GETFONT,0,0));
+            DrawTextIn(dc,caption,bounds,font?font:regular,GetPropW(window,L"kot.primary")?text:muted,DT_LEFT|DT_WORDBREAK);
         } else {
-            wchar_t label[1024]{}; GetWindowTextW(window,label,1024);
+            wchar_t buffer[1024]{}; GetWindowTextW(window,buffer,1024);
+            std::wstring caption(buffer);
+            caption.erase(std::remove(caption.begin(),caption.end(),L'&'),caption.end());
+            if(GetDlgCtrlID(window)==IDOK||GetDlgCtrlID(window)==3) {
+                if(caption.compare(0,2,L"< ")==0) caption.erase(0,2);
+                if(caption.size()>=2 && caption.compare(caption.size()-2,2,L" >")==0) caption.resize(caption.size()-2);
+            }
             auto kind=GetWindowLongW(window,GWL_STYLE)&BS_TYPEMASK;
             bool checkbox=kind==BS_AUTOCHECKBOX||kind==BS_CHECKBOX;
             bool primary=GetDlgCtrlID(window)==IDOK;
@@ -77,12 +89,12 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
                     MoveToEx(dc,tick.left+Scale(4),tick.top+Scale(8),nullptr); LineTo(dc,tick.left+Scale(7),tick.top+Scale(11)); LineTo(dc,tick.left+Scale(12),tick.top+Scale(5));
                     SelectObject(dc,previous); DeleteObject(pen);
                 }
-                bounds.left=Scale(28); DrawTextIn(dc,label,bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+                bounds.left=Scale(28); DrawTextIn(dc,caption.c_str(),bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
             } else {
                 COLORREF fill=enabled&&primary ? accent : hover ? RGB(40,45,46) : surface;
                 if(GetDlgCtrlID(window)==9009) fill=hover?RGB(120,44,44):background;
                 Box(dc,bounds,fill,primary&&enabled?accent:line,10);
-                DrawTextIn(dc,label,bounds,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+                DrawTextIn(dc,caption.c_str(),bounds,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
             }
             if(GetFocus()==window) { RECT focus=bounds; InflateRect(&focus,-Scale(4),-Scale(4)); DrawFocusRect(dc,&focus); }
         }
@@ -94,6 +106,7 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
     return result;
 }
 static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
+    if(message==WM_COMMAND && LOWORD(w)==1027) ShowWindow(GetDlgItem(window,9063),SW_HIDE);
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) {
         HWND child=reinterpret_cast<HWND>(l); HDC dc=reinterpret_cast<HDC>(w);
         SetTextColor(dc,GetPropW(child,L"kot.primary")?text:muted); SetBkColor(dc,message==WM_CTLCOLOREDIT?surface:background);
@@ -178,10 +191,21 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         Place(GetDlgItem(page,1023),0,246,568,20); Place(GetDlgItem(page,1024),0,270,568,20);
     }
     if(role==L"progress") {
-        ShowWindow(GetDlgItem(page,1031),SW_HIDE); ShowWindow(GetDlgItem(page,1027),SW_HIDE);
-        Place(GetDlgItem(page,1006),0,12,568,40); SendMessageW(GetDlgItem(page,1006),WM_SETFONT,reinterpret_cast<WPARAM>(bold),TRUE); SetPropW(GetDlgItem(page,1006),L"kot.primary",reinterpret_cast<HANDLE>(1));
-        Place(GetDlgItem(page,1004),0,72,568,6); SetWindowLongW(GetDlgItem(page,1004),GWL_STYLE,GetWindowLongW(GetDlgItem(page,1004),GWL_STYLE)&~WS_BORDER);
-        HWND list=GetDlgItem(page,1016); Place(list,0,102,568,196); SetWindowLongW(list,GWL_STYLE,GetWindowLongW(list,GWL_STYLE)&~WS_BORDER); ShowWindow(list,SW_SHOW); ListView_SetColumnWidth(list,0,Scale(540));
+        ShowWindow(GetDlgItem(page,1031),SW_HIDE);
+        HWND status=GetDlgItem(page,1006); Place(status,0,12,568,44);
+        SetPropW(status,L"kot.primary",reinterpret_cast<HANDLE>(1)); SetPropW(status,L"kot.progress-status",reinterpret_cast<HANDLE>(1));
+        SetWindowTextW(status,L""); SendMessageW(status,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE);
+        HWND progress=GetDlgItem(page,1004); Place(progress,0,72,568,6);
+        HWND list=GetDlgItem(page,1016); Place(list,0,160,568,138); ListView_SetColumnWidth(list,0,Scale(540));
+        HWND controls[]{progress,list};
+        for(HWND control:controls) {
+            SetWindowLongW(control,GWL_STYLE,GetWindowLongW(control,GWL_STYLE)&~WS_BORDER);
+            SetWindowLongW(control,GWL_EXSTYLE,GetWindowLongW(control,GWL_EXSTYLE)&~(WS_EX_CLIENTEDGE|WS_EX_STATICEDGE));
+            SetWindowPos(control,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED);
+        }
+        HWND details=GetDlgItem(page,1027); Place(details,0,112,116,32); SetWindowTextW(details,L"Подробнее");
+        HWND hint=CreateWindowExW(0,L"Static",uninstalling?L"Ваш профиль, подписки и статистика сохранятся.":L"Приложение скоро будет готово к работе.\r\nВаши сохранённые подключения останутся на месте.",WS_CHILD|WS_VISIBLE|SS_NOPREFIX,0,0,0,0,page,reinterpret_cast<HMENU>(9063),GetModuleHandleW(nullptr),nullptr);
+        Place(hint,0,160,568,58); SkinControl(hint,0);
     }
     InvalidateRect(page,nullptr,TRUE);
 }
@@ -192,6 +216,7 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
     if(role==L"heading") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1)); }
     if(role==L"body") SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1));
     if(role==L"hero") SetPropW(window,L"kot.hero",reinterpret_cast<HANDLE>(1));
+    InvalidateRect(window,nullptr,TRUE);
 }
 BOOL WINAPI DllMain(HINSTANCE,DWORD reason,LPVOID) {
     if(reason==DLL_PROCESS_DETACH) {

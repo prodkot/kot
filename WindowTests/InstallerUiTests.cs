@@ -63,6 +63,18 @@ static class InstallerUiTests
         bitmap.Save(Path.Combine(folder,name+".png"),ImageFormat.Png);
         var pixel=bitmap.GetPixel((int)(20*scale),(int)(100*scale));
         check(pixel.R==21&&pixel.G==23&&pixel.B==24,"custom Setup paints the app background: "+name);
+        if(name is "setup-welcome" or "setup-finish" or "setup-uninstall")
+        {
+            int textPixels=0,iconPixels=0;
+            for(int y=(int)(190*scale);y<(int)(238*scale);y++)
+                for(int x=(int)(36*scale);x<(int)(604*scale);x++)
+                { var color=bitmap.GetPixel(x,y); if(color.R>130&&color.G>130&&color.B>100) textPixels++; }
+            for(int y=(int)(88*scale);y<(int)(164*scale);y++)
+                for(int x=(int)(36*scale);x<(int)(112*scale);x++)
+                { var color=bitmap.GetPixel(x,y); if(color.G>140&&color.R>100) iconPixels++; }
+            check(textPixels>100*scale*scale,"custom page heading is visibly painted: "+name);
+            check(iconPixels>50*scale*scale,"custom page displays the actual abstract icon: "+name);
+        }
         var next=GetDlgItem(window,1); GetWindowRect(next,out var button);
         check(button.Right<=bounds.Right&&button.Bottom<=bounds.Bottom&&button.Left>=bounds.Left,"Setup action remains inside the custom window: "+name);
     }

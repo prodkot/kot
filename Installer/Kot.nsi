@@ -32,8 +32,8 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Kot contributors"
 Icon "${PAYLOAD}/kot.ico"
 UninstallIcon "${PAYLOAD}/kot.ico"
 BrandingText " "
-ShowInstDetails show
-ShowUninstDetails show
+ShowInstDetails hide
+ShowUninstDetails hide
 InstallColors f2f4ed 151718
 LoadLanguageFile "${NSISDIR}/Contrib/Language files/Russian.nlf"
 !include /CHARSET=UTF8 "UI\pages.nsh"
