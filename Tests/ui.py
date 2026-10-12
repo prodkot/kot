@@ -82,10 +82,12 @@ with sync_playwright() as p:
     page.evaluate("fixtureSnapshot({settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},error:''})")
     for theme in ('light','dark'):
         page.locator(f'[data-theme={theme}]').click()
-        for accent in ('gray','lime','green','purple'):
-            page.locator(f'.accent-choice:has(input[value={accent}])').click();expect(page.locator('body')).to_have_attribute('data-accent',accent)
-            expect(page.locator('#brandButton span')).to_have_text('.')
-            color=page.locator('body').evaluate('(e)=>getComputedStyle(e).getPropertyValue("--accent").trim()')
+        expect(page.locator('.accent-control, input[name=accent]')).to_have_count(0)
+        expect(page.locator('#brandButton span')).to_have_text('.')
+        for old_accent in ('gray','lime','green','purple'):
+            page.evaluate('({theme,accent})=>fixtureSnapshot({settings:{theme,mode:"tun",startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:"",accent}})', {'theme':theme,'accent':old_accent})
+            assert page.locator('body').get_attribute('data-accent') is None
+            color='#cbe991' if theme=='light' else '#d5f88c'
             rgb=', '.join(str(int(color[i:i+2],16)) for i in (1,3,5))
             expect(page.locator('#brandButton span')).to_have_css('color',f'rgb({rgb})')
     page.locator('[data-setting=startup]').click();expect(page.locator('[data-setting=startup]')).to_have_attribute('aria-checked','true')
@@ -110,7 +112,7 @@ with sync_playwright() as p:
         page.evaluate("fixtureNavigate", target);expect(page.locator("#page-"+target)).to_be_visible()
     page.evaluate("fixtureNavigate", "untrusted");expect(page.locator("#page-home")).to_be_visible()
     page.evaluate("fixtureNavigate", "settings")
-    page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('.accent-choice:has(input[value=lime])').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
+    page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
     page.locator('[data-page=servers]').click();page.locator('#subscriptionSelect').click();page.locator('#subscriptionOptions [data-subscription=sub2]').click();expect(page.locator('#subscriptionSelect')).to_have_attribute('data-subscription','sub2')
     page.locator('.favorite-node').first.click();expect(page.locator('.favorite-node').first).to_have_attribute('aria-pressed','true');expect(page.locator('#autoDescription')).to_have_text('Из избранного')
     page.locator('#autoServer').click();expect(page.locator('#selectedName')).to_have_text('Авто')
@@ -200,4 +202,4 @@ with sync_playwright() as p:
     page.locator('[data-page=settings]').click();page.locator('#advancedButton').click();page.locator('#removeSubscription').click();page.locator('#confirmRemove').click();expect(page.locator('#powerButton')).to_be_disabled()
     assert not errors,errors
     browser.close()
-print(json.dumps({'ui':'passed','themes_and_accents':8,'unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))
+print(json.dumps({'ui':'passed','themes':2,'legacy_accents':'ignored','meow':'each 443rd activation','unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))

@@ -33,7 +33,7 @@ public sealed class TrayMenu : ContextMenuStrip
         Add("Настройки", "settings", () => this.navigate("settings"));
         Items.Add(new ToolStripSeparator());
         Add("Выйти из приложения", "exit", () => _ = Run(this.exit));
-        Update("dark", "lime", "idle", "", false);
+        Update("dark", "idle", "", false);
     }
     ToolStripMenuItem Label(string text, string tag)
     {
@@ -53,7 +53,7 @@ public sealed class TrayMenu : ContextMenuStrip
         catch (Exception ex) { AppLog.Error("tray action", ex); MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { busy = false; }
     }
-    public void Update(string theme, string color, string state, string server, bool hasNodes)
+    public void Update(string theme, string state, string server, bool hasNodes)
     {
         bool light = theme == "light";
         background = ColorTranslator.FromHtml(light ? "#f5f6ef" : "#171b1c");
@@ -61,7 +61,7 @@ public sealed class TrayMenu : ContextMenuStrip
         muted = ColorTranslator.FromHtml(light ? "#69716a" : "#989f9b");
         line = ColorTranslator.FromHtml(light ? "#dce0d5" : "#333b37");
         hover = ColorTranslator.FromHtml(light ? "#e7ebdf" : "#272e2a");
-        accent = ColorTranslator.FromHtml(color switch { "gray" => light ? "#53605b" : "#b2beb7", "green" => light ? "#357052" : "#8cdaa7", "purple" => light ? "#7661a8" : "#c8b6f4", _ => light ? "#61772b" : "#d2f58a" });
+        accent = ColorTranslator.FromHtml(light ? "#61772b" : "#d2f58a");
         BackColor = background; ForeColor = foreground;
         string label = state switch { "connected" => "Подключено", "connecting" => "Подключение", "disconnecting" => "Отключение", "waiting" => "Ожидание сети", _ => "Не подключено" };
         string safe = new(server.Where(c => !char.IsControl(c)).Take(100).ToArray());

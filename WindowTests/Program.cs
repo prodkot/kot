@@ -123,20 +123,20 @@ internal static class Program
         window.ToggleMaximize();
         int opened = 0, toggled = 0; string page = "";
         using var menu = new TrayMenu(() => opened++, p => page = p, () => { toggled++; return Task.CompletedTask; }, () => Task.CompletedTask);
-        menu.Update("dark", "lime", "idle", "", false);
+        menu.Update("dark", "idle", "", false);
         var power = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "power");
         Check(!power.Enabled, "connect disabled without a subscription");
-        menu.Update("dark", "lime", "connected", "Test & node\nwith control", true);
+        menu.Update("dark", "connected", "Test & node\nwith control", true);
         Check(menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("Test & node") && !menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("\n"), "server label preserves ampersands and removes control characters");
         Check(power.Enabled && power.Text == "Отключить", "tray connection action follows state");
         power.PerformClick(); Check(toggled == 1, "tray action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "open").PerformClick(); Check(opened == 1, "open action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "logs").PerformClick(); Check(page == "logs", "tray opens the logs page");
-        menu.Update("dark", "lime", "waiting", "Авто", true); Check(power.Text == "Отменить подключение", "reconnect can be cancelled from tray");
+        menu.Update("dark", "waiting", "Авто", true); Check(power.Text == "Отменить подключение", "reconnect can be cancelled from tray");
         string folder = args.Length > 0 ? args[0] : "artifacts/window-ui"; Directory.CreateDirectory(folder);
         foreach (string theme in new[] { "dark", "light" })
         {
-            menu.Update(theme, "lime", "connected", "Германия · Frankfurt", true);
+            menu.Update(theme, "connected", "Германия · Frankfurt", true);
             menu.Show(window, new Point(20, 20)); Application.DoEvents();
             Check(menu.Region != null, "rounded native menu " + theme);
             using var bitmap = new Bitmap(menu.Width, menu.Height);

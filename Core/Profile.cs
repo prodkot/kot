@@ -8,7 +8,6 @@ public sealed class Profile
     public List<Node> Nodes { get; set; } = [];
     public string Selected { get; set; } = "";
     public string Theme { get; set; } = "dark";
-    public string Accent { get; set; } = "lime";
     // Legacy routing preference remains independent from the connection method.
     public string Mode { get; set; } = "all";
     public string ConnectionMode { get; set; } = "tun";
@@ -92,7 +91,7 @@ public sealed class Profile
                 NodeSecurity.Validate(node);
             }
         }
-        if (Theme is not ("dark" or "light") || Accent is not ("gray" or "lime" or "green" or "purple") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
+        if (Theme is not ("dark" or "light") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
     }
     static void RejectFiles(System.Text.Json.Nodes.JsonNode? node)
     {

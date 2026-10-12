@@ -81,7 +81,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
-        trayMenu.Update(profile.Theme, profile.Accent, state, name, profile.Nodes.Count > 0);
+        trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
         tray.Text = state switch { "connected" => "kot. · Подключено", "connecting" => "kot. · Подключение", "waiting" => "kot. · Ожидание сети", _ => "kot. · Не подключено" };
     }
     async Task Initialize()
@@ -132,7 +132,7 @@ public sealed partial class MainWindow : WindowChrome
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
         routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
-        settings = new { profile.Theme, profile.Accent, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
+        settings = new { profile.Theme, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
@@ -248,7 +248,6 @@ public sealed partial class MainWindow : WindowChrome
                 switch (key)
                 {
                     case "theme": string theme = value.GetString()!; if (theme is not ("dark" or "light")) throw new UserError("Неизвестная тема."); profile.Theme = theme; break;
-                    case "accent": string accent = value.GetString()!; if (accent is not ("lime" or "gray" or "green" or "purple")) throw new UserError("Неизвестный акцент."); profile.Accent = accent; break;
                     case "mode": string mode = value.GetString()!; if (mode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим."); restart = mode != profile.ConnectionMode; if (restart) await tunnel.Stop(); profile.ConnectionMode = mode; break;
                     case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass) || profile.Mode != "smart"; if (restart) await tunnel.Stop(); profile.Bypass = domains; profile.Mode = "smart"; break;
                     case "startup": bool enabled = value.GetBoolean(); await Startup.Set(enabled); profile.Startup = enabled; break;

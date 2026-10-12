@@ -224,7 +224,13 @@ var otherNode = Subscriptions.ParseNode("trojan://second-secret@other.example:44
 string manyClean = CoreDiagnostics.RedactMany("a@b:secret second-secret other.example example.com at NativeCore.cs:line 42", new[] { privateNode, otherNode });
 Check(!manyClean.Contains("secret") && !manyClean.Contains("example") && manyClean.Contains("NativeCore.cs:line 42"), "full log redacts secrets of all tested servers while keeping stack location");
 
-var oldProfile = new Profile { Name = "Old", Address = "https://subscription.example/sub", Nodes = a.Nodes, Selected = a.Nodes[0].Id, Theme = "light", Accent = "purple" };
+var oldProfile = new Profile { Name = "Old", Address = "https://subscription.example/sub", Nodes = a.Nodes, Selected = a.Nodes[0].Id, Theme = "light" };
+var legacyJson = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+string legacyAccentJson = JsonSerializer.Serialize(oldProfile, legacyJson).Replace("\"theme\":\"light\"", "\"theme\":\"light\",\"accent\":\"purple\"");
+oldProfile = JsonSerializer.Deserialize<Profile>(legacyAccentJson, legacyJson)!;
+oldProfile.Validate();
+Check(oldProfile.Theme == "light" && oldProfile.Nodes.Single().Id == a.Nodes[0].Id, "legacy accent setting is ignored without losing theme or subscriptions");
+Check(!JsonSerializer.Serialize(oldProfile, legacyJson).Contains("\"accent\""), "removed accent setting is not persisted again");
 oldProfile.Normalize(); string firstSubscription = oldProfile.ActiveSubscription;
 Check(oldProfile.Subscriptions.Count == 1 && oldProfile.Nodes.Count == 1 && oldProfile.Selected == a.Nodes[0].Id, "legacy profile migration preserves nodes and selection");
 oldProfile.Normalize(); Check(oldProfile.Subscriptions.Count == 1 && oldProfile.ActiveSubscription == firstSubscription, "profile migration is idempotent");
@@ -236,7 +242,7 @@ oldProfile.DeferredUpdateVersion = "0.5.9";
 var encrypted = Backup.Export(oldProfile, "correct-password");
 Check(!Encoding.UTF8.GetString(encrypted).Contains(uuid) && !Encoding.UTF8.GetString(encrypted).Contains("subscription.example"), "backup contains no plaintext credentials");
 var restoredProfile = Backup.Import(encrypted, "correct-password");
-Check(restoredProfile.Subscriptions.Count == 2 && restoredProfile.Selected == "auto" && restoredProfile.Theme == "light" && restoredProfile.Accent == "purple", "encrypted backup restores all providers and preferences");
+Check(restoredProfile.Subscriptions.Count == 2 && restoredProfile.Selected == "auto" && restoredProfile.Theme == "light", "encrypted backup restores all providers and preferences");
 Check(restoredProfile.DeferredUpdateVersion == "0.5.9", "declined update survives encrypted profile persistence");
 Check(JsonSerializer.Deserialize<Profile>("{}")!.DeferredUpdateVersion == "", "legacy profiles default to no declined update");
 bool badPassword = false; try { Backup.Import(encrypted, "wrong-password"); } catch(UserError) { badPassword = true; } Check(badPassword, "backup rejects wrong password");
