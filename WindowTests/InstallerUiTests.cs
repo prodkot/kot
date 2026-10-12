@@ -20,6 +20,8 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window, int index);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] static extern IntPtr SendTextMessage(IntPtr window, int message, IntPtr size, StringBuilder text, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr parent, int id);
+    [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr window);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
@@ -50,10 +52,14 @@ static class InstallerUiTests
     static void Click(IntPtr button)
     {
         if(button==IntPtr.Zero||!IsWindowEnabled(button)) throw new Exception("Installer button missing or disabled");
-        PostMessage(button,0xF5,IntPtr.Zero,IntPtr.Zero); // BM_CLICK, async so progress can be captured.
+        // BM_CLICK may be ignored on an inactive dialog after the install
+        // worker switches pages. Deliver the same BN_CLICKED notification
+        // a native button sends, asynchronously so progress can be captured.
+        PostMessage(GetParent(button),0x111,(IntPtr)GetDlgCtrlID(button),button);
     }
     static void Capture(IntPtr window,string folder,string name,Action<bool,string> check)
     {
+        SetForegroundWindow(window);
         Thread.Sleep(250); GetWindowRect(window,out var bounds); GetClientRect(window,out var client);
         float scale=GetDpiForWindow(window)/96f;
         check(Math.Abs(client.Right-640*scale)<=2&&Math.Abs(client.Bottom-480*scale)<=2,"custom Setup has a 640 by 480 client area at native DPI: "+name);
@@ -61,6 +67,11 @@ static class InstallerUiTests
         using var bitmap=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
         using(var graphics=Graphics.FromImage(bitmap)) { var dc=graphics.GetHdc(); try { check(PrintWindow(window,dc,0),"capture real installer window: "+name); } finally {graphics.ReleaseHdc(dc);} }
         bitmap.Save(Path.Combine(folder,name+".png"),ImageFormat.Png);
+        using(var screen=new Bitmap(bitmap.Width,bitmap.Height))
+        {
+            using(var graphics=Graphics.FromImage(screen)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,screen.Size);
+            screen.Save(Path.Combine(folder,name+"-screen.png"),ImageFormat.Png);
+        }
         var pixel=bitmap.GetPixel((int)(20*scale),(int)(100*scale));
         check(pixel.R==21&&pixel.G==23&&pixel.B==24,"custom Setup paints the app background: "+name);
         if(name is "setup-welcome" or "setup-finish" or "setup-uninstall")
