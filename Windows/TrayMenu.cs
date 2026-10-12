@@ -37,12 +37,12 @@ public sealed class TrayMenu : ContextMenuStrip
     }
     ToolStripMenuItem Label(string text, string tag)
     {
-        var item = new ToolStripMenuItem(text) { Enabled = false, Tag = tag, AutoSize = false };
+        var item = new MenuItem(text) { Enabled = false, Tag = tag, AutoSize = false };
         Items.Add(item); return item;
     }
     ToolStripMenuItem Add(string text, string tag, Action action)
     {
-        var item = new ToolStripMenuItem(text) { Tag = tag, AutoSize = false };
+        var item = new MenuItem(text) { Tag = tag, AutoSize = false };
         item.Click += (_, _) => action(); Items.Add(item); return item;
     }
     async Task Run(Func<Task> action)
@@ -72,6 +72,8 @@ public sealed class TrayMenu : ContextMenuStrip
         LayoutMenu();
         Invalidate();
     }
+    // WinForms recalculates menu padding when its font and text metrics change.
+    protected override Padding DefaultPadding => new((int)Math.Round(16 * DeviceDpi / 96f));
     void LayoutMenu()
     {
         float scale = DeviceDpi / 96f;
@@ -106,6 +108,19 @@ public sealed class TrayMenu : ContextMenuStrip
     {
         base.Dispose(disposing);
         if (disposing) { regular.Dispose(); bold.Dispose(); fonts.Dispose(); }
+    }
+    sealed class MenuItem(string text) : ToolStripMenuItem(text)
+    {
+        protected override void SetBounds(Rectangle bounds)
+        {
+            if (Owner is TrayMenu menu)
+            {
+                // The built-in menu item subtracts the left padding from its flow position.
+                bounds.X = menu.Padding.Left * 2;
+                bounds.Width = Math.Max(0, menu.ClientSize.Width - menu.Padding.Horizontal);
+            }
+            base.SetBounds(bounds);
+        }
     }
     sealed class MenuRenderer(TrayMenu menu) : ToolStripRenderer
     {
@@ -147,7 +162,11 @@ public sealed class TrayMenu : ContextMenuStrip
         }
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
-            using var pen = new Pen(menu.line); int inset = (int)(12 * menu.DeviceDpi / 96f); e.Graphics.DrawLine(pen, inset, e.Item.Height / 2, e.Item.Width - inset, e.Item.Height / 2);
+            // Native separators span the window; align the visible line with the row icons.
+            using var pen = new Pen(menu.line); int inset = (int)(12 * menu.DeviceDpi / 96f);
+            int left = menu.Padding.Left + inset - e.Item.Bounds.Left;
+            int right = menu.ClientSize.Width - menu.Padding.Right - inset - e.Item.Bounds.Left;
+            e.Graphics.DrawLine(pen, left, e.Item.Height / 2, right, e.Item.Height / 2);
         }
         protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { }
     }
