@@ -21,7 +21,12 @@ public static class ShellIdentity
         foreach (string path in new[] {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "kot.", "kot..lnk"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "kot..lnk") })
-            if (File.Exists(path)) SetShortcutId(path);
+            if (File.Exists(path))
+            {
+                if (Environment.ProcessPath is { } target)
+                    SetShortcutIcon(path, target, Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+                SetShortcutId(path);
+            }
     }
     public static void RefreshPinnedIcon(string iconPath)
     {

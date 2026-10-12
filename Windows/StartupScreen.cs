@@ -42,7 +42,21 @@ public sealed class StartupScreen : UserControl
         var content = new StartupArtwork(image, spin) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
-        var version = new Label { Text = "kot.  " + ClientIdentity.Version, Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0) };
+        var version = new Label { Text = "", Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0), AccessibleName = "kot. " + ClientIdentity.Version };
+        version.Paint += (_, e) =>
+        {
+            // A separate square follows the word's visual centre, not the font baseline.
+            float dpi = DeviceDpi / 96f;
+            var flags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
+            Size word = TextRenderer.MeasureText(e.Graphics, "kot", small, Size.Empty, flags);
+            int x = (int)Math.Round(16 * dpi), y = (version.Height - word.Height) / 2;
+            TextRenderer.DrawText(e.Graphics, "kot", small, new Point(x, y), muted, flags);
+            int dot = Math.Max(2, (int)Math.Round(2 * dpi));
+            using var brush = new SolidBrush(muted);
+            e.Graphics.FillRectangle(brush, x + word.Width + (int)Math.Round(2 * dpi), (version.Height - dot) / 2, dot, dot);
+            TextRenderer.DrawText(e.Graphics, ClientIdentity.Version, small,
+                new Point(x + word.Width + dot + (int)Math.Round(12 * dpi), y), muted, flags);
+        };
         title.Controls.Add(version);
         void Drag(object? sender, MouseEventArgs e) { if (e.Button == MouseButtons.Left) drag(); }
         title.MouseDown += Drag; version.MouseDown += Drag;

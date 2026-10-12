@@ -108,6 +108,8 @@ with sync_playwright() as p:
     page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto((root/'Windows/ui/index.html').as_uri());expect(page.locator('#powerButton')).to_be_disabled()
     expect(page.locator('#selectedName')).to_have_text('Добавить подписку')
+    word=page.locator('.title-brand .wordmark').bounding_box();dot=page.locator('.title-brand .brand-dot').bounding_box()
+    assert abs(dot['y']+dot['height']/2-word['y']-word['height']/2)<.6, 'title point must sit on the word centre'
     # Only the large wordmark counts; sound occurs exactly at each 443rd activation.
     page.locator('.title-brand .wordmark').evaluate('(e)=>{for(let i=0;i<443;i++)e.click();}')
     page.locator('#brandButton').evaluate('(e)=>{for(let i=0;i<442;i++)e.click();}')

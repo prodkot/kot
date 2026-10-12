@@ -101,6 +101,7 @@ internal static class Program
     [STAThread] static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
         if (args.Length == 3 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.XhttpChecks.Run(core, Path.Combine(Path.GetDirectoryName(core)!, "xray.exe"), Check).GetAwaiter().GetResult(); return 0; }

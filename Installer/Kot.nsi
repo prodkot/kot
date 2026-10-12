@@ -1,5 +1,5 @@
 Unicode true
-!include "MUI2.nsh"
+!include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
@@ -29,19 +29,14 @@ VIAddVersionKey /LANG=1033 "FileDescription" "kot. Windows x64 installer"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Kot contributors"
-!define MUI_ICON "${PAYLOAD}/kot.ico"
-!define MUI_UNICON "${PAYLOAD}/kot.ico"
-!define MUI_ABORTWARNING
-!insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "${PAYLOAD}/licenses/kot-LICENSE.txt"
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\Kot.exe"
-!insertmacro MUI_PAGE_FINISH
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "Russian"
-!insertmacro MUI_LANGUAGE "English"
+Icon "${PAYLOAD}/kot.ico"
+UninstallIcon "${PAYLOAD}/kot.ico"
+BrandingText " "
+ShowInstDetails show
+ShowUninstDetails show
+InstallColors f2f4ed 151718
+LoadLanguageFile "${NSISDIR}/Contrib/Language files/Russian.nlf"
+!include "UI/pages.nsh"
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "kot. требует Windows x64."
@@ -49,6 +44,7 @@ Function .onInit
   ${EndIf}
   SetRegView 64
   SetShellVarContext all
+  StrCpy $DesktopShortcut ${BST_CHECKED}
 FunctionEnd
 Section "kot." SEC_MAIN
   ; File no longer accounts for the application files, which live in the ZIP.
@@ -93,9 +89,13 @@ Section "kot." SEC_MAIN
   !include "install-cleanup.nsh"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\kot."
-  CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe"
+  CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe" "" "$INSTDIR\kot.ico" 0
   CreateShortcut "$SMPROGRAMS\kot.\Удалить kot..lnk" "$INSTDIR\Uninstall.exe"
-  CreateShortcut "$DESKTOP\kot..lnk" "$INSTDIR\Kot.exe"
+  ${If} $DesktopShortcut == ${BST_CHECKED}
+    CreateShortcut "$DESKTOP\kot..lnk" "$INSTDIR\Kot.exe" "" "$INSTDIR\kot.ico" 0
+  ${Else}
+    Delete "$DESKTOP\kot..lnk"
+  ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --register-shortcuts' $0
   ${If} $0 != 0
     IfSilent +2
@@ -106,7 +106,7 @@ Section "kot." SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayName" "kot."
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayIcon" "$INSTDIR\Kot.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayIcon" "$INSTDIR\kot.ico"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoRepair" 1
