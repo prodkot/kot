@@ -28,7 +28,7 @@ public sealed class UpdateTransaction
     void Journal()
     {
         string path = Path.Combine(work, "journal.json"), temp = path + ".new";
-        File.WriteAllText(temp, JsonSerializer.Serialize(changes)); File.Move(temp, path, true);
+        File.WriteAllText(temp, JsonSerializer.Serialize(changes, PackageJsonContext.Default.ListChange)); File.Move(temp, path, true);
     }
     public ReleaseManifest Apply(ZipArchive archive, Version current, string? expected = null, string? publicKey = null, Action<int>? afterWrite = null)
     {
@@ -57,7 +57,7 @@ public sealed class UpdateTransaction
     public void Rollback()
     {
         if (changes.Count == 0 && File.Exists(Path.Combine(work, "journal.json")))
-            changes.AddRange(JsonSerializer.Deserialize<List<Change>>(File.ReadAllText(Path.Combine(work, "journal.json"))) ?? []);
+            changes.AddRange(JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(work, "journal.json")), PackageJsonContext.Default.ListChange) ?? []);
         foreach (var change in changes.AsEnumerable().Reverse())
         {
             string target = Target(change.Name), backup = Path.Combine(work, "backup", change.Name.Replace('/', Path.DirectorySeparatorChar));

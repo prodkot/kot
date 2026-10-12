@@ -299,6 +299,7 @@ using (var rsa = System.Security.Cryptography.RSA.Create(2048))
 await Kot.Tests.ServicesTests.Run(Check, fixtureFolder);
 await Kot.Tests.BodyTests.Run(Check);
 Kot.Tests.SetupTests.Run(Check);
+Kot.Tests.InstallerTests.Run(Check, fixtureFolder);
 Kot.Tests.InstallationTests.Run(Check, fixtureFolder);
 await SecurityTests.Run(Check, vless, uuid);
 await Kot.Tests.UpdateTests.Run(Check, fixtureFolder);

@@ -17,11 +17,17 @@ dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $arch
 if ($LASTEXITCODE -ne 0) { throw 'The client rejected the generated update package.' }
 python Release/installer-files.py $publish Installer/uninstall-files.nsh
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller file list generation failed.' }
+$extractorFolder=Join-Path $PWD ('.build-cache/setup-' + [Guid]::NewGuid().ToString('N'))
+dotnet publish Installer/Extract/Kot.Setup.csproj -c Release -r win-x64 -o $extractorFolder
+if ($LASTEXITCODE -ne 0) { throw 'Native installer helper build failed. Install the Visual Studio Desktop development with C++ workload.' }
+$extractor=Join-Path $extractorFolder 'Kot.Setup.Extract.exe'
+if (!(Test-Path $extractor) -or (Get-Item $extractor).Length -gt 16MB) { throw 'Missing or unexpectedly large native installer helper.' }
 $setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"
-& $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DOUTPUT=$setup" Installer/Kot.nsi
+& $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DEXTRACTOR=$extractor" "/DOUTPUT=$setup" Installer/Kot.nsi
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 ./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version
 if ($LASTEXITCODE -ne 0) { throw 'The client rejected the signed Setup.' }
+./Release/setup-checks.ps1 -Setup $setup -Extractor $extractor -Publish $publish -Version $version -LegacyUpdate:($env:CI -eq 'true')
 Remove-Item $archive -Force
 Write-Host "Release ready: $setup"

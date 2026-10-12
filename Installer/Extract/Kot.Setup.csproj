@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>Kot.Setup.Extract</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Core/SetupPackage.cs" Link="Core/SetupPackage.cs" />
+    <Compile Include="../../Core/ReleasePackage.cs" Link="Core/ReleasePackage.cs" />
+    <Compile Include="../../Core/ReleaseKey.cs" Link="Core/ReleaseKey.cs" />
+    <Compile Include="../../Core/UpdateTransaction.cs" Link="Core/UpdateTransaction.cs" />
+    <Compile Include="../../Core/PackageJsonContext.cs" Link="Core/PackageJsonContext.cs" />
+    <Compile Include="../../Core/PackageLimits.cs" Link="Core/PackageLimits.cs" />
+    <Compile Include="../../Core/UserError.cs" Link="Core/UserError.cs" />
+  </ItemGroup>
+</Project>

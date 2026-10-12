@@ -8,6 +8,9 @@ Unicode true
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
 !endif
+!ifndef EXTRACTOR
+!error "Pass /DEXTRACTOR=native-extraction-helper"
+!endif
 !ifndef OUTPUT
 !define OUTPUT "Kot-Setup-${VERSION}-Windows-x64.exe"
 !endif
@@ -56,12 +59,32 @@ Section "kot." SEC_MAIN
       Abort
     ${EndIf}
   ${EndIf}
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  ; Only this small native helper is embedded here. The signed ZIP appended to
+  ; EXEPATH is the sole application payload, shared with automatic updates.
+  File /oname=Kot.Setup.Extract.exe "${EXTRACTOR}"
+  DetailPrint "Проверка подписи и установка файлов kot."
+  ClearErrors
+  StrCpy $0 -1
+  ExecWait '$\"$PLUGINSDIR\Kot.Setup.Extract.exe$\" --extract $\"$EXEPATH$\" $\"$INSTDIR$\" $\"${VERSION}$\" $\"$PLUGINSDIR\extract-error.txt$\"' $0
+  ${If} ${Errors}
+    StrCpy $0 1
+  ${EndIf}
+  ${If} $0 != 0
+    StrCpy $2 "Не удалось проверить или установить пакет kot. Прежние файлы восстановлены, если началась их замена."
+    ClearErrors
+    FileOpen $1 "$PLUGINSDIR\extract-error.txt" r
+    ${IfNot} ${Errors}
+      FileReadUTF16 $1 $2
+      FileClose $1
+    ${EndIf}
+    IfSilent +2
+    MessageBox MB_ICONSTOP "$2"
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   SetOutPath "$INSTDIR"
-  !ifdef NSIS_WIN32_MAKENSIS
-    File /r "${PAYLOAD}\*"
-  !else
-    File /r "${PAYLOAD}/*"
-  !endif
   !include "install-cleanup.nsh"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\kot."

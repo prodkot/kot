@@ -7,7 +7,6 @@ using System.Text.Json.Nodes;
 namespace Kot.Core;
 public sealed record Node(string Id, string Name, string Protocol, JsonObject Outbound);
 public sealed record SubscriptionResult(List<Node> Nodes, List<string> Warnings, SubscriptionUsage? Usage = null);
-public sealed class UserError(string message) : Exception(message);
 
 public static class Subscriptions
 {

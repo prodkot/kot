@@ -5,7 +5,7 @@ public sealed record UpdateRelease(string Version, string Url, long Size);
 public static class RemoteUpdates
 {
     const string LatestRelease = "https://api.github.com/repos/prodkot/kot/releases/latest";
-    public const long MaximumArchive = 600L * 1024 * 1024;
+    public const long MaximumArchive = PackageLimits.MaximumArchive;
     public static Uri Https(string value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0) throw new UserError("Для обновления нужна HTTPS-ссылка без логина и пароля.");

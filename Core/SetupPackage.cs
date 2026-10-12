@@ -13,7 +13,7 @@ public static class SetupPackage
     public sealed record Manifest(string Version, long InstallerLength, long ArchiveLength, string InstallerHash, string ArchiveHash);
     public static ZipArchive Open(Stream file, Version? current = null, string? expected = null, string? publicKey = null)
     {
-        if (!file.CanSeek || file.Length < 24 || file.Length > RemoteUpdates.MaximumArchive) throw new UserError("Некорректный установщик обновления.");
+        if (!file.CanSeek || file.Length < 24 || file.Length > PackageLimits.MaximumArchive) throw new UserError("Некорректный установщик обновления.");
         file.Position = file.Length - 24; byte[] footer = new byte[24]; file.ReadExactly(footer);
         int manifestLength = BinaryPrimitives.ReadInt32LittleEndian(footer), signatureLength = BinaryPrimitives.ReadInt32LittleEndian(footer.AsSpan(4));
         if (Encoding.ASCII.GetString(footer, 8, 16) != Magic || manifestLength is < 1 or > 4096 || signatureLength is < 128 or > 1024 || (long)manifestLength + signatureLength + 24 >= file.Length) throw new UserError("Установщик не содержит подписанного обновления kot.");
@@ -21,7 +21,7 @@ public static class SetupPackage
         file.Position = metadata; byte[] json = new byte[manifestLength], signature = new byte[signatureLength]; file.ReadExactly(json); file.ReadExactly(signature);
         using var rsa = RSA.Create(); rsa.ImportFromPem(publicKey ?? ReleaseKey.Public);
         if (!rsa.VerifyData(json, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new UserError("Подпись установщика не прошла проверку.");
-        var manifest = JsonSerializer.Deserialize<Manifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new UserError("Пустой манифест установщика.");
+        var manifest = JsonSerializer.Deserialize(json, PackageJsonContext.Default.Manifest) ?? throw new UserError("Пустой манифест установщика.");
         if (!Version.TryParse(manifest.Version, out var version) || current != null && version <= current || expected != null && expected != manifest.Version || manifest.InstallerLength < 2 || manifest.ArchiveLength < 22 || manifest.InstallerLength > metadata || manifest.ArchiveLength != metadata - manifest.InstallerLength) throw new UserError("Версия или размер установщика не совпадает с обновлением.");
         file.Position = 0; if (file.ReadByte() != 'M' || file.ReadByte() != 'Z') throw new UserError("Это не установщик Windows.");
         foreach (var part in new[] { (Offset: 0L, Length: manifest.InstallerLength, Hash: manifest.InstallerHash), (Offset: manifest.InstallerLength, Length: manifest.ArchiveLength, Hash: manifest.ArchiveHash) })
