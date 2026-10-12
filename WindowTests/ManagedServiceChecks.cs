@@ -80,7 +80,15 @@ internal static class ManagedServiceChecks
             await Action("telegram", "start");
             using (var process = System.Diagnostics.Process.GetProcessById(manager.ProcessId("telegram")!.Value))
             { process.Kill(); await process.WaitForExitAsync(limit.Token); }
-            await manager.Tick();
+            // Process wrappers can report exit before NativeCore's original handle is signaled.
+            // Keep checking the real service state until cleanup finishes, with a fixed deadline.
+            var exitWait = System.Diagnostics.Stopwatch.StartNew();
+            do
+            {
+                await manager.Tick();
+                if (manager.ProcessId("telegram") == null) break;
+                await Task.Delay(25, limit.Token);
+            } while (exitWait.Elapsed < TimeSpan.FromSeconds(5));
             check(!manager.IsRunning("telegram") && Item(manager,"telegram").GetProperty("error").GetString()!.Contains("завершился"), "unexpected Telegram exit is reflected in the service state");
             await Action("telegram", "start");
             await manager.StopAll(true);
