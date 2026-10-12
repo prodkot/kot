@@ -36,18 +36,9 @@ static void DrawTextIn(HDC dc, const wchar_t* value, RECT bounds, HFONT font, CO
     DrawTextW(dc, value, -1, &bounds, format | DT_NOPREFIX); SelectObject(dc, previous);
 }
 static void Logo(HDC dc, int x, int y, int size) {
-    RECT tile = {x,y,x+size,y+size}; Box(dc, tile, RGB(17,21,21), RGB(17,21,21), 14);
-    HPEN pen = CreatePen(PS_SOLID, std::max(2, size*7/64), text); auto previous = SelectObject(dc,pen);
-    // Same opposing open corners as Brand/kot-abstract-dark.svg.
-    MoveToEx(dc,x+size*35/64,y+size*16/64,nullptr); LineTo(dc,x+size*24/64,y+size*16/64);
-    Arc(dc,x+size*16/64,y+size*16/64,x+size*32/64,y+size*32/64,x+size*24/64,y+size*16/64,x+size*16/64,y+size*24/64);
-    MoveToEx(dc,x+size*16/64,y+size*24/64,nullptr); LineTo(dc,x+size*16/64,y+size*35/64);
-    MoveToEx(dc,x+size*29/64,y+size*48/64,nullptr); LineTo(dc,x+size*40/64,y+size*48/64);
-    Arc(dc,x+size*32/64,y+size*32/64,x+size*48/64,y+size*48/64,x+size*40/64,y+size*48/64,x+size*48/64,y+size*40/64);
-    MoveToEx(dc,x+size*48/64,y+size*40/64,nullptr); LineTo(dc,x+size*48/64,y+size*29/64);
-    SelectObject(dc,previous); DeleteObject(pen);
-    RECT point = {x+size*28/64,y+size*28/64,x+size*36/64,y+size*36/64};
-    HBRUSH brush = CreateSolidBrush(accent); FillRect(dc,&point,brush); DeleteObject(brush);
+    // Draw the actual embedded application icon, including its transparent corners.
+    HICON icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(103),IMAGE_ICON,size,size,LR_SHARED));
+    if(icon) DrawIconEx(dc,x,y,icon,size,size,0,nullptr,DI_NORMAL);
 }
 static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
     wchar_t name[64]{}; GetClassNameW(window,name,64);

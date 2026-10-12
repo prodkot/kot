@@ -37,13 +37,13 @@ if ($env:CI -eq 'true') {
   $fixture=Join-Path $PWD 'artifacts/window-tests/Kot.WindowTests.exe'
   if (!(Test-Path $fixture)) { throw 'Build the native window fixture before CI packaging.' }
   & $fixture --setup-ui-test $setup artifacts/setup-ui
-  if ($LASTEXITCODE -ne 0) { throw 'Custom installer pages or desktop shortcut checks failed.' }
-  # Existing artifact permissions only cover Setup. Keep small visual evidence
-  # in CI logs too, so it can be inspected without changing workflow permissions.
+  $uiExit=$LASTEXITCODE
+  # Include small, machine-readable screenshots as visual CI evidence.
   foreach ($image in Get-ChildItem artifacts/setup-ui -Filter 'setup-*.png') {
     if ($image.Length -gt 250KB) { throw 'Unexpectedly large installer preview.' }
     Write-Host ('KOT_SETUP_PREVIEW '+$image.Name+' '+[Convert]::ToBase64String([IO.File]::ReadAllBytes($image.FullName)))
   }
+  if ($uiExit -ne 0) { throw 'Custom installer pages or desktop shortcut checks failed.' }
 }
 Remove-Item $archive -Force
 Write-Host "Release ready: $setup"
