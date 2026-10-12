@@ -18,6 +18,7 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window, int index);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder name, int count);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] static extern IntPtr SendTextMessage(IntPtr window, int message, IntPtr size, StringBuilder text, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr parent, int id);
     [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr window);
@@ -26,6 +27,7 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, int flags);
+    static bool Button(IntPtr window) { var name=new StringBuilder(64); GetClassName(window,name,name.Capacity); return name.ToString()=="Button"; }
     static string Text(IntPtr window)
     {
         // Edit text belongs to the installer process, so GetWindowText is not
@@ -56,6 +58,95 @@ static class InstallerUiTests
         // worker switches pages. Deliver the same BN_CLICKED notification
         // a native button sends, asynchronously so progress can be captured.
         PostMessage(GetParent(button),0x111,(IntPtr)GetDlgCtrlID(button),button);
+    }
+    static void MouseClick(IntPtr button)
+    {
+        if(button==IntPtr.Zero||!IsWindowEnabled(button)) throw new Exception("Installer button missing or disabled");
+        GetClientRect(button,out var bounds);
+        var center=(IntPtr)((bounds.Bottom/2<<16)|(bounds.Right/2&0xFFFF));
+        SendMessage(button,0x201,(IntPtr)1,center);
+        PostMessage(button,0x202,IntPtr.Zero,center);
+    }
+    static void ButtonStates(IntPtr window,string folder,string stage,Action<bool,string> check)
+    {
+        SetForegroundWindow(window); Thread.Sleep(200);
+        var buttons=Children(window).Where(child=>IsWindowVisible(child)&&IsWindowEnabled(child)&&Button(child)).ToArray();
+        void Palette(IntPtr button,string state)
+        {
+            // Capture the desktop first. PrintWindow would repaint the button
+            // and hide a stock Windows fill left behind by input/focus changes.
+            GetWindowRect(button,out var bounds);
+            using var pixels=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
+            using(var graphics=Graphics.FromImage(pixels)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,pixels.Size);
+            bool checkbox=(GetWindowLong(button,-16)&15) is 2 or 3;
+            int white=0;
+            for(int y=0;y<pixels.Height;y++) for(int x=0;x<pixels.Width;x++)
+            { var color=pixels.GetPixel(x,y); if(color.R>200&&color.G>200&&color.B>200) white++; }
+            check(white<pixels.Width*pixels.Height/4,$"installer button keeps its palette {state}: {stage}, {Text(button)}");
+            if(checkbox)
+            {
+                int x=Math.Clamp((int)(3*GetDpiForWindow(window)/96f),1,pixels.Width-1);
+                var tick=pixels.GetPixel(x,pixels.Height/2);
+                check(tick.B<180,$"native checkbox keeps its dark/accent fill {state}: {stage}");
+            }
+        }
+        void Screen(string state)
+        {
+            GetWindowRect(window,out var bounds);
+            using var pixels=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
+            using(var graphics=Graphics.FromImage(pixels)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,pixels.Size);
+            pixels.Save(Path.Combine(folder,stage+"-"+state+".png"),ImageFormat.Png);
+        }
+        foreach(var button in buttons)
+        {
+            bool checkbox=(GetWindowLong(button,-16)&15) is 2 or 3;
+            int originalCheck=(int)SendMessage(button,0xF0,IntPtr.Zero,IntPtr.Zero);
+            SendMessage(GetParent(button),0x28,button,(IntPtr)1); // WM_NEXTDLGCTL, actual focus on the installer thread
+            check(((int)SendMessage(button,0xF2,IntPtr.Zero,IntPtr.Zero)&8)!=0,"installer button receives native keyboard focus: "+Text(button));
+            if(!checkbox)
+            {
+                SendMessage(button,0xF4,(IntPtr)1,(IntPtr)1); // BM_SETSTYLE, dialog default-button transition
+                Palette(button,"after becoming the default action");
+                SendMessage(button,0xF4,IntPtr.Zero,(IntPtr)1);
+                Palette(button,"after losing default-action status");
+            }
+            GetClientRect(button,out var bounds);
+            var center=(IntPtr)((bounds.Bottom/2<<16)|(bounds.Right/2&0xFFFF));
+            try
+            {
+                SendMessage(button,0x201,(IntPtr)1,center); // WM_LBUTTONDOWN with MK_LBUTTON
+                check(((int)SendMessage(button,0xF2,IntPtr.Zero,IntPtr.Zero)&4)!=0,"installer button enters native held-mouse state: "+Text(button));
+                Thread.Sleep(80); Palette(button,"while held with the mouse");
+                if(GetDlgCtrlID(button)==1) Screen("pressed");
+            }
+            finally
+            {
+                SendMessage(button,0x200,IntPtr.Zero,(IntPtr)(-1)); // move outside before releasing
+                SendMessage(button,0x202,IntPtr.Zero,(IntPtr)(-1));
+                SendMessage(button,0x2A3,IntPtr.Zero,IntPtr.Zero); // WM_MOUSELEAVE
+            }
+            Palette(button,"after mouse release");
+            check((int)SendMessage(button,0xF0,IntPtr.Zero,IntPtr.Zero)==originalCheck,"cancelled press preserves checkbox state: "+Text(button));
+            SendMessage(GetParent(button),0x28,button,(IntPtr)1);
+            try
+            {
+                SendMessage(button,0x100,(IntPtr)32,(IntPtr)1); // WM_KEYDOWN, hold Space
+                check(((int)SendMessage(button,0xF2,IntPtr.Zero,IntPtr.Zero)&4)!=0,"installer button enters native held-Space state: "+Text(button));
+                Thread.Sleep(80); Palette(button,"while held with Space");
+                if(GetDlgCtrlID(button)==1) Screen("keyboard");
+            }
+            finally
+            {
+                // Moving focus cancels the held key without activating Next,
+                // Cancel, Browse or the launch checkbox.
+                var other=buttons.First(child=>child!=button);
+                SendMessage(GetParent(other),0x28,other,(IntPtr)1);
+                SendMessage(button,0xF3,IntPtr.Zero,IntPtr.Zero); // BM_SETSTATE, clear a cancelled press
+                SendMessage(button,0x101,(IntPtr)32,(IntPtr)unchecked((int)0xC0000001));
+            }
+            Palette(button,"after keyboard focus moves");
+            check((int)SendMessage(button,0xF0,IntPtr.Zero,IntPtr.Zero)==originalCheck,"cancelled Space preserves checkbox state: "+Text(button));
+        }
     }
     static void Capture(IntPtr window,string folder,string name,Action<bool,string> check)
     {
@@ -119,24 +210,29 @@ static class InstallerUiTests
         try
         {
             var cancel=Start(setup,"/D="+target); processes.Add(cancel); var window=Window(cancel);
-            Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome"); Capture(window,folder,"setup-welcome",check);
+            Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
             Click(GetDlgItem(window,9009)); Close(cancel,false);
             check(!Directory.Exists(target),"cancelling custom Setup before installation creates no application files");
             var install=Start(setup,"/D="+target); processes.Add(install); window=Window(install);
             Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome again");
-            Click(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory");
+            MouseClick(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory");
             var edit=ById(window,1019); check(Text(edit)==target,"native directory page preserves the Unicode destination");
             var desktop=ById(window,1008); check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==(IntPtr)1,"desktop shortcut starts enabled");
-            SendMessage(desktop,0xF1,IntPtr.Zero,IntPtr.Zero); // BM_SETCHECK unchecked
-            Click(GetDlgItem(window,3)); Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"back to welcome");
-            Click(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory after back");
+            MouseClick(desktop); Wait(()=>SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"native checkbox mouse toggle");
+            check(true,"native checkbox click toggles the desktop option");
+            MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"back to welcome");
+            var next=GetDlgItem(window,1); SendMessage(window,0x28,next,(IntPtr)1);
+            SendMessage(next,0x100,(IntPtr)32,(IntPtr)1);
+            PostMessage(next,0x101,(IntPtr)32,(IntPtr)unchecked((int)0xC0000001));
+            Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory after native Space activation");
+            check(true,"native Space activates the custom Next button");
             desktop=ById(window,1008);
             check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"desktop option survives Back and Next");
-            SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); Capture(window,folder,"setup-options",check);
+            SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); ButtonStates(window,folder,"setup-options",check); Capture(window,folder,"setup-options",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"progress"); Capture(window,folder,"setup-progress",check);
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
             Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Готово. Можно подключаться.")!=IntPtr.Zero,"finish");
-            Capture(window,folder,"setup-finish",check);
+            ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
             var run=ByText(window,"Запустить kot."); check(run!=IntPtr.Zero,"finish offers application launch"); SendMessage(run,0xF1,IntPtr.Zero,IntPtr.Zero);
             Click(GetDlgItem(window,1)); Close(install,true);
             check(File.Exists(Path.Combine(target,"Kot.exe"))&&File.Exists(Path.Combine(target,"Uninstall.exe")),"custom pages install the verified client in a Unicode path");
@@ -153,7 +249,7 @@ static class InstallerUiTests
             }
             File.WriteAllText(Path.Combine(target,"user-note.txt"),"preserve");
             var uninstall=Start(Path.Combine(target,"Uninstall.exe"),"_?="+target); processes.Add(uninstall); window=Window(uninstall);
-            Wait(()=>ByText(window,"Удалить kot.?")!=IntPtr.Zero,"uninstall confirmation"); Capture(window,folder,"setup-uninstall",check);
+            Wait(()=>ByText(window,"Удалить kot.?")!=IntPtr.Zero,"uninstall confirmation"); ButtonStates(window,folder,"setup-uninstall",check); Capture(window,folder,"setup-uninstall",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"uninstall progress");
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"uninstall completion",120); Click(GetDlgItem(window,1)); Close(uninstall,true);
             check(!File.Exists(Path.Combine(target,"Kot.exe"))&&File.ReadAllText(Path.Combine(target,"user-note.txt"))=="preserve","custom uninstaller removes its files and preserves unrelated user data");

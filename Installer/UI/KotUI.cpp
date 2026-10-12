@@ -41,12 +41,75 @@ static void Logo(HDC dc, int x, int y, int size) {
     HICON icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(103),IMAGE_ICON,size,size,LR_SHARED));
     if(icon) DrawIconEx(dc,x,y,icon,size,size,0,nullptr,DI_NORMAL);
 }
+static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
+    int saved=SaveDC(dc);
+    FillRect(dc,&bounds,backgroundBrush);
+    wchar_t buffer[1024]{}; GetWindowTextW(window,buffer,1024);
+    std::wstring caption(buffer);
+    caption.erase(std::remove(caption.begin(),caption.end(),L'&'),caption.end());
+    int id=GetDlgCtrlID(window);
+    if(id==IDOK||id==3) {
+        if(caption.compare(0,2,L"< ")==0) caption.erase(0,2);
+        if(caption.size()>=2 && caption.compare(caption.size()-2,2,L" >")==0) caption.resize(caption.size()-2);
+    }
+    auto kind=GetWindowLongW(window,GWL_STYLE)&BS_TYPEMASK;
+    bool checkbox=kind==BS_AUTOCHECKBOX||kind==BS_CHECKBOX;
+    bool primary=id==IDOK;
+    bool enabled=(state&ODS_DISABLED)==0;
+    bool pressed=enabled&&(state&ODS_SELECTED)!=0;
+    bool hover=enabled&&GetPropW(window,L"kot.hover")!=nullptr;
+    if(checkbox) {
+        RECT tick{Scale(1),(bounds.bottom-Scale(16))/2,Scale(17),(bounds.bottom+Scale(16))/2};
+        bool checked=SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED;
+        Box(dc,tick,checked?(pressed?RGB(190,224,119):accent):(pressed?RGB(26,30,31):surface),checked?accent:line,4);
+        if(checked) {
+            HPEN pen=CreatePen(PS_SOLID,Scale(2),ink); auto previous=SelectObject(dc,pen);
+            MoveToEx(dc,tick.left+Scale(4),tick.top+Scale(8),nullptr); LineTo(dc,tick.left+Scale(7),tick.top+Scale(11)); LineTo(dc,tick.left+Scale(12),tick.top+Scale(5));
+            SelectObject(dc,previous); DeleteObject(pen);
+        }
+        bounds.left=Scale(28); DrawTextIn(dc,caption.c_str(),bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+    } else {
+        COLORREF fill=enabled&&primary ? (pressed?RGB(190,224,119):hover?RGB(224,255,163):accent) : pressed?RGB(26,30,31):hover?RGB(40,45,46):surface;
+        if(id==9009) fill=pressed?RGB(95,32,32):hover?RGB(120,44,44):background;
+        Box(dc,bounds,fill,primary&&enabled?accent:line,10);
+        DrawTextIn(dc,caption.c_str(),bounds,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    }
+    if(enabled&&(state&ODS_FOCUS)!=0) {
+        RECT focus=bounds; InflateRect(&focus,-Scale(4),-Scale(4));
+        HPEN pen=CreatePen(PS_SOLID,1,primary?ink:accent); auto previous=SelectObject(dc,pen);
+        auto brush=SelectObject(dc,GetStockObject(NULL_BRUSH));
+        RoundRect(dc,focus.left,focus.top,focus.right,focus.bottom,Scale(6),Scale(6));
+        SelectObject(dc,brush); SelectObject(dc,previous); DeleteObject(pen);
+    }
+    RestoreDC(dc,saved);
+}
+static UINT ButtonState(HWND window) {
+    auto native=SendMessageW(window,BM_GETSTATE,0,0);
+    return (IsWindowEnabled(window)?0u:ODS_DISABLED)|((native&BST_PUSHED)?ODS_SELECTED:0u)|((native&BST_FOCUS)?ODS_FOCUS:0u);
+}
+static bool DrawButton(LPARAM parameter) {
+    auto item=reinterpret_cast<DRAWITEMSTRUCT*>(parameter);
+    if(!item||item->CtlType!=ODT_BUTTON||!GetPropW(item->hwndItem,L"kot.owner-button")) return false;
+    PaintButton(item->hwndItem,item->hDC,item->rcItem,item->itemState); return true;
+}
 static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
     wchar_t name[64]{}; GetClassNameW(window,name,64);
     bool button = _wcsicmp(name,L"Button")==0;
     bool progress = _wcsicmp(name,PROGRESS_CLASSW)==0;
     bool label = _wcsicmp(name,L"Static")==0;
     bool hero = GetPropW(window,L"kot.hero")!=nullptr;
+    bool ownerButton=GetPropW(window,L"kot.owner-button")!=nullptr;
+    if(ownerButton&&message==BM_SETSTYLE) {
+        // Dialog focus changes switch the default button style. Keep those
+        // semantics without letting Windows restore its stock renderer.
+        if((w&BS_TYPEMASK)==BS_DEFPUSHBUTTON) SetPropW(window,L"kot.default-button",reinterpret_cast<HANDLE>(1));
+        else if((w&BS_TYPEMASK)==BS_PUSHBUTTON) RemovePropW(window,L"kot.default-button");
+        w=(w&~static_cast<WPARAM>(BS_TYPEMASK))|BS_OWNERDRAW;
+    }
+    if(ownerButton&&message==WM_GETDLGCODE) {
+        auto code=DefSubclassProc(window,message,w,l)&~(DLGC_DEFPUSHBUTTON|DLGC_UNDEFPUSHBUTTON);
+        return code|(GetPropW(window,L"kot.default-button")?DLGC_DEFPUSHBUTTON:DLGC_UNDEFPUSHBUTTON);
+    }
     if(message==WM_SETTEXT && GetPropW(window,L"kot.progress-status")) l=reinterpret_cast<LPARAM>(uninstalling?L"Удаляем kot.":L"Устанавливаем kot.");
     if (message==WM_NCDESTROY) { RemoveWindowSubclass(window,ControlProc,1); return DefSubclassProc(window,message,w,l); }
     if (button && message==WM_MOUSEMOVE && !GetPropW(window,L"kot.hover")) {
@@ -68,45 +131,20 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
             wchar_t caption[2048]{}; GetWindowTextW(window,caption,2048);
             auto font=reinterpret_cast<HFONT>(SendMessageW(window,WM_GETFONT,0,0));
             DrawTextIn(dc,caption,bounds,font?font:regular,GetPropW(window,L"kot.primary")?text:muted,DT_LEFT|DT_WORDBREAK);
-        } else {
-            wchar_t buffer[1024]{}; GetWindowTextW(window,buffer,1024);
-            std::wstring caption(buffer);
-            caption.erase(std::remove(caption.begin(),caption.end(),L'&'),caption.end());
-            if(GetDlgCtrlID(window)==IDOK||GetDlgCtrlID(window)==3) {
-                if(caption.compare(0,2,L"< ")==0) caption.erase(0,2);
-                if(caption.size()>=2 && caption.compare(caption.size()-2,2,L" >")==0) caption.resize(caption.size()-2);
-            }
-            auto kind=GetWindowLongW(window,GWL_STYLE)&BS_TYPEMASK;
-            bool checkbox=kind==BS_AUTOCHECKBOX||kind==BS_CHECKBOX;
-            bool primary=GetDlgCtrlID(window)==IDOK;
-            bool enabled=IsWindowEnabled(window)!=FALSE;
-            bool hover=GetPropW(window,L"kot.hover")!=nullptr;
-            if(checkbox) {
-                RECT tick{Scale(1),(bounds.bottom-Scale(16))/2,Scale(17),(bounds.bottom+Scale(16))/2};
-                bool checked=SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED;
-                Box(dc,tick,checked?accent:surface,checked?accent:line,4);
-                if(checked) {
-                    HPEN pen=CreatePen(PS_SOLID,Scale(2),ink); auto previous=SelectObject(dc,pen);
-                    MoveToEx(dc,tick.left+Scale(4),tick.top+Scale(8),nullptr); LineTo(dc,tick.left+Scale(7),tick.top+Scale(11)); LineTo(dc,tick.left+Scale(12),tick.top+Scale(5));
-                    SelectObject(dc,previous); DeleteObject(pen);
-                }
-                bounds.left=Scale(28); DrawTextIn(dc,caption.c_str(),bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
-            } else {
-                COLORREF fill=enabled&&primary ? accent : hover ? RGB(40,45,46) : surface;
-                if(GetDlgCtrlID(window)==9009) fill=hover?RGB(120,44,44):background;
-                Box(dc,bounds,fill,primary&&enabled?accent:line,10);
-                DrawTextIn(dc,caption.c_str(),bounds,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            }
-            if(GetFocus()==window) { RECT focus=bounds; InflateRect(&focus,-Scale(4),-Scale(4)); DrawFocusRect(dc,&focus); }
-        }
+        } else PaintButton(window,dc,bounds,ButtonState(window));
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
     auto result=DefSubclassProc(window,message,w,l);
-    if(button&&(message==BM_SETCHECK||message==WM_ENABLE||message==WM_SETTEXT||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_LBUTTONDOWN||message==WM_LBUTTONUP)) InvalidateRect(window,nullptr,FALSE);
+    if(button&&(message==BM_SETCHECK||message==BM_SETSTATE||message==BM_SETSTYLE||message==WM_ENABLE||message==WM_SETTEXT||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_LBUTTONDOWN||message==WM_LBUTTONUP||message==WM_KEYDOWN||message==WM_KEYUP)) {
+        // Checkboxes retain native check-state and accessibility semantics.
+        // Their immediate state painting must also finish in our palette.
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+    }
     if(progress&&(message==PBM_SETPOS||message==PBM_STEPIT||message==PBM_SETRANGE32)) InvalidateRect(window,nullptr,FALSE);
     return result;
 }
 static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
+    if(message==WM_DRAWITEM&&DrawButton(l)) return TRUE;
     if(message==WM_COMMAND && LOWORD(w)==1027) ShowWindow(GetDlgItem(window,9063),SW_HIDE);
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) {
         HWND child=reinterpret_cast<HWND>(l); HDC dc=reinterpret_cast<HDC>(w);
@@ -124,6 +162,14 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
     SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(regular),TRUE);
     SetWindowTheme(window,L"",L""); SetWindowSubclass(window,ControlProc,1,0);
     wchar_t name[64]{}; GetClassNameW(window,name,64);
+    if(_wcsicmp(name,L"Button")==0) {
+        auto style=GetWindowLongW(window,GWL_STYLE); auto kind=style&BS_TYPEMASK;
+        if(kind==BS_PUSHBUTTON||kind==BS_DEFPUSHBUTTON) {
+            SetPropW(window,L"kot.owner-button",reinterpret_cast<HANDLE>(1));
+            if(kind==BS_DEFPUSHBUTTON) SetPropW(window,L"kot.default-button",reinterpret_cast<HANDLE>(1));
+            SetWindowLongW(window,GWL_STYLE,(style&~BS_TYPEMASK)|BS_OWNERDRAW);
+        }
+    }
     if(_wcsicmp(name,WC_LISTVIEWW)==0) {
         ListView_SetBkColor(window,background); ListView_SetTextBkColor(window,background); ListView_SetTextColor(window,muted);
         SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE);
@@ -132,6 +178,7 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
 }
 static void Place(HWND window,int x,int y,int width,int height) { MoveWindow(window,Scale(x),Scale(y),Scale(width),Scale(height),TRUE); }
 static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR) {
+    if(message==WM_DRAWITEM&&DrawButton(l)) return TRUE;
     if(message==refreshPage) {
         // Native pages become visible after their show callback returns.
         // Repaint the shared header once NSIS has completed that switch.
