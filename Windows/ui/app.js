@@ -56,7 +56,7 @@
     motion.finished.then(()=>{if(motions.get(el)===motion)motions.delete(el);}).catch(()=>{}); return motion;
   }
   reduce.addEventListener('change',()=>{if(reduce.matches){motions.forEach(a=>a.cancel());motions.clear();}});
-  let model={nodes:[],selected:'',state:'idle',settings:{theme:'dark',mode:'tun'}}, current='home', toastTimer, sequence=0, importBusy=false, refreshBusy=false, updateCheckBusy=false, renderedServers='';
+  let model={nodes:[],selected:'',state:'idle',settings:{theme:'dark',mode:'tun'}}, current='home', toastTimer, sequence=0, importBusy=false, refreshBusy=false, updateCheckBusy=false, renderedServers='', initialSnapshot=false;
   const pending=new Map(), host=window.chrome?.webview,openDialogs=[];
   function rpc(action,data={}) {
     if(!host) return Promise.reject(new Error('Откройте интерфейс через Kot.exe.'));
@@ -81,8 +81,8 @@
     const previous=$('page-'+current);for(const el of motions.keys())if(el===previous||previous.contains(el))cancelMotion(el);current=name;
     closeSubscriptions();
     document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='page-'+name);
-    document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===(el.classList.contains('nav-button')&&name==='statistics'?'settings':name))el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
-    document.querySelector('.main').scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers(); if(name==='statistics')renderStatistics();clientTools.render();serviceTools.render();
+    document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===(el.classList.contains('nav-button')&&['statistics','diagnostics','logs'].includes(name)?'settings':name))el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
+    const main=document.querySelector('.main');main.dataset.view=name;main.scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(); if(name==='servers')renderServers(); if(name==='statistics'||name==='home')renderStatistics();clientTools.render();serviceTools.render();
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
@@ -93,6 +93,7 @@
     $('powerButton').disabled=(!model.nodes.length && state==='idle')||state==='disconnecting';
     const blocked=model.settings?.killSwitchActive&&state==='idle';
     $('connectionError').textContent=model.error||(blocked?'Kill switch блокирует интернет. Подключитесь или отключите защиту в настройках.':'');$('connectionError').hidden=!model.error&&!blocked;$('copyErrorLog').hidden=!model.error;
+    $('connectionError').title=$('connectionError').textContent;
     if(state!==previous){cancelMotion($('powerIcon'));if(current==='home'){animate($('stateLabel'),[{opacity:0,transform:'translateY(3px)'},{opacity:1,transform:'translateY(0)'}],{duration:220});animate($('powerLabel'),[{opacity:0},{opacity:1}],{duration:200});if(state==='connected')animate($('powerIcon'),[{transform:'scale(.82)'},{transform:'scale(1.12)',offset:.6},{transform:'scale(1)'}],{duration:440});}}
   }
   function apply(data){
@@ -120,6 +121,7 @@
     $('pingError').hidden=!ping.error;$('pingError').textContent=ping.error||'';
     clientTools.render();serviceTools.render();renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
     setState(data.state,old);const renderKey=JSON.stringify([data.nodes,data.selected,data.favorites,data.ping?.settings?.sort,data.ping?.busy]);if(renderKey!==renderedServers){renderedServers=renderKey;renderServers();}
+    if(!initialSnapshot){initialSnapshot=true;document.fonts.ready.then(()=>requestAnimationFrame(()=>{getComputedStyle(document.body).backgroundColor;$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;document.body.classList.remove('booting');request('uiReady');}));}
   }
   function renderServers(){
     const query=$('serverSearch').value.trim().toLocaleLowerCase('ru'),visible=model.nodes.filter(n=>(n.name+' '+n.protocol).toLocaleLowerCase('ru').includes(query));
@@ -158,15 +160,21 @@
     const value=Math.floor(seconds),days=Math.floor(value/86400),pad=n=>String(n).padStart(2,'0');
     return (days?days+' д ':'')+pad(Math.floor(value/3600)%24)+':'+pad(Math.floor(value/60)%60)+':'+pad(value%60);
   }
-  function renderStatistics(snapshot=false){
-    const s=model.statistics,t=s?.[statisticsPeriod],running=!!s?.running&&model.state==='connected';
+  function renderSessionClock(snapshot=false){
+    const s=model.statistics,running=!!s?.running&&model.state==='connected';
     if(snapshot){statisticsAnchor=performance.now();statisticsElapsed=Number.isFinite(s?.elapsedSeconds)?Math.max(0,s.elapsedSeconds):0;}
     // Only a confirmed host connection runs the clock. Stop extrapolating if the bridge stalls.
     const extra=running?Math.min(5,Math.max(0,(performance.now()-statisticsAnchor)/1000)):0;
     $('connectionTime').hidden=!s?.started;
-    $('connectionTime').textContent=duration(statisticsElapsed+extra);
+    const elapsed=duration(statisticsElapsed+extra);
+    $('connectionTime').textContent=elapsed;
+    $('homeSessionTime').textContent=elapsed;$('homeSession').dataset.running=String(running&&!!s?.started);
     $('connectionTime').title=running?'Время текущего подключения':'Длительность последнего сеанса';
     $('connectionTime').setAttribute('aria-label',$('connectionTime').title);
+    return {s,running,extra};
+  }
+  function renderStatistics(snapshot=false){
+    const {s,running,extra}=renderSessionClock(snapshot),t=s?.[statisticsPeriod];
     $('statisticsSession').dataset.running=String(running);
     $('statisticsConnectionLabel').textContent=running?'Текущее подключение':s?.started?'Последний сеанс':'Ещё не подключались';
     const sessionDate=s?.started?new Date(s.started).toLocaleString('ru-RU'):'';
@@ -190,7 +198,7 @@
       statisticsButtons[next].focus();statisticsButtons[next].click();
     });
   });
-  setInterval(()=>{if(current==='statistics')renderStatistics();},250);
+  setInterval(()=>{if(current==='statistics')renderStatistics();else if(current==='home')renderSessionClock();},250);
   function renderLogs(){
     const snap=logSnapshot||{telemetry:model.telemetry,journal:model.journal,state:model.state},t=snap.telemetry||{},query=$('logSearch').value.trim().toLocaleLowerCase('ru');
     $('logLevel').hidden=logTab!=='journal';$('journalText').hidden=logTab!=='journal';$('connectionList').hidden=logTab!=='connections';
@@ -331,7 +339,7 @@
   }
   function openDialog(dialog){if(dialog.open)return;dialogFocus.set(dialog,rememberFocus());dialog.showModal();openDialogs.push(dialog);raiseToast();animate(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:280});}
   function closeDialog(dialog){
-    if(!dialog.open||dialog.dataset.closing)return;dialog.dataset.closing='true';if(dialog===$('deviceDialog'))clearHwid();if(dialog===$('addDialog')){if(importBusy)request('cancelImport');clearLink();}
+    if(!dialog.open||dialog.dataset.closing)return;dialog.dataset.closing='true';if(dialog===$('advancedDialog'))clearHwid();if(dialog===$('addDialog')){if(importBusy)request('cancelImport');clearLink();}
     const style=getComputedStyle(dialog),motion=animate(dialog,[{opacity:style.opacity,transform:style.transform},{opacity:0,transform:'translateY(6px) scale(.985)'}],{duration:130});
     const finish=()=>{dialog.close();openDialogs.splice(openDialogs.indexOf(dialog),1);delete dialog.dataset.closing;if(!document.querySelector('dialog:modal'))dialogFocus.get(dialog)?.()?.focus({preventScroll:true});dialogFocus.delete(dialog);raiseToast();};if(motion)motion.finished.then(finish).catch(finish);else finish();
   }
@@ -350,18 +358,19 @@
   $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{await rpc('refresh');toast(model.warnings?.length?'Обновлено. Пропущено: '+model.warnings.length:'Подписка обновлена');}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
   let deviceAttempt=0;
   function clearHwid(){deviceAttempt++;$('hwidValue').value='';$('deviceName').value='';$('copyHwid').disabled=true;}
+  function closeDevice(){clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';$('advancedDialog').scrollTop=0;$('hwidButton').focus({preventScroll:true});}
   $('hwidButton').addEventListener('click',async()=>{
-    const dialog=$('deviceDialog');if(dialog.open)return;
-    clearHwid();const attempt=deviceAttempt;$('hwidError').textContent='';openDialog(dialog);
-    try{const device=await rpc('readHwid');if(attempt!==deviceAttempt||!dialog.open||dialog.dataset.closing)return;
+    const panel=$('deviceDialog'),dialog=$('advancedDialog');if(!dialog.open||dialog.dataset.closing||!panel.hidden)return;
+    clearHwid();const attempt=deviceAttempt;$('hwidError').textContent='';$('advancedContent').hidden=true;panel.hidden=false;$('advancedTitle').textContent='HWID';dialog.scrollTop=0;$('closeDevice').focus({preventScroll:true});
+    try{const device=await rpc('readHwid');if(attempt!==deviceAttempt||panel.hidden||!dialog.open||dialog.dataset.closing)return;
       $('hwidValue').value=device.hwid;$('deviceName').value=device.name;$('copyHwid').disabled=false;
-    }catch(e){if(attempt===deviceAttempt&&dialog.open)$('hwidError').textContent=e.message;}
+    }catch(e){if(attempt===deviceAttempt&&!panel.hidden&&dialog.open&&!dialog.dataset.closing)$('hwidError').textContent=e.message;}
   });
-  $('closeDevice').addEventListener('click',()=>closeDialog($('deviceDialog')));$('deviceDialog').addEventListener('close',clearHwid);
+  $('closeDevice').addEventListener('click',closeDevice);$('advancedDialog').addEventListener('close',()=>{clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';});
   $('copyHwid').addEventListener('click',async()=>{
     const b=$('copyHwid'),attempt=deviceAttempt;b.disabled=true;$('hwidError').textContent='';
     try{await rpc('copyHwid');toast('HWID скопирован');}catch(e){if(attempt===deviceAttempt)$('hwidError').textContent=e.message;}
-    finally{if(attempt===deviceAttempt&&$('deviceDialog').open&&!$('deviceDialog').dataset.closing)b.disabled=false;}
+    finally{if(attempt===deviceAttempt&&!$('deviceDialog').hidden&&$('advancedDialog').open&&!$('advancedDialog').dataset.closing)b.disabled=false;}
   });
   $('advancedButton').addEventListener('click',()=>{$('bypassDomains').value=model.settings.bypass||'';$('advancedError').textContent='';openDialog($('advancedDialog'));});$('closeAdvanced').addEventListener('click',()=>closeDialog($('advancedDialog')));
   let routingDraftId=null,routingBusy=false,routingDirty=false,routingRemovingId='';
@@ -513,13 +522,14 @@
   $('backupButton').addEventListener('click',()=>{closeDialog($('advancedDialog'));$('backupPassword').value='';$('backupError').textContent='';openDialog($('backupDialog'));});
   $('closeBackup').addEventListener('click',()=>closeDialog($('backupDialog')));$('backupDialog').addEventListener('close',()=>{$('backupPassword').value='';});
   for(const [id,action] of [['exportBackup','backupExport'],['restoreBackup','backupImport']])$(id).addEventListener('click',async()=>{const password=$('backupPassword').value;if(password.length<8){$('backupError').textContent='Пароль от 8 символов.';return;}for(const id of ['exportBackup','restoreBackup'])$(id).disabled=true;try{await rpc(action,{password});closeDialog($('backupDialog'));}catch(e){$('backupError').textContent=e.message;}finally{for(const id of ['exportBackup','restoreBackup'])$(id).disabled=false;}});
-  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog(dialog);});dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog(dialog);});});
+  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('cancel',event=>{event.preventDefault();if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();else closeDialog(dialog);});dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog(dialog);});});
   document.querySelectorAll('[data-window]').forEach(b=>b.addEventListener('click',()=>request(b.dataset.window)));
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
-  $('statisticsBack').addEventListener('click',()=>page('settings'));
+  $('statisticsBack').addEventListener('click',()=>{page('settings');$('statisticsButton').focus({preventScroll:true});});
+  document.querySelectorAll('[data-back-settings]').forEach(button=>button.addEventListener('click',()=>{const from=current;page('settings');document.querySelector('.settings-tools [data-page='+from+']').focus({preventScroll:true});}));
   const serviceTools=window.KotServices({getModel:()=>model,getPage:()=>current,rpc,toast,openDialog,closeDialog});
   const clientTools=window.KotClientTools({getModel:()=>model,getPage:()=>current,getPeriod:()=>statisticsPeriod,rpc,toast,openDialog,closeDialog,page});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','statistics','diagnostics','logs','services','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else toast('Откройте интерфейс через Kot.exe.');
+  if(host){host.addEventListener('message',({data})=>{if(data.kind==='navigate'&&['home','servers','statistics','diagnostics','logs','services','settings'].includes(data.page))page(data.page);else if(data.kind==='snapshot')apply(data.data);else if(data.kind==='reply'){const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.ok?p.resolve(data.data):p.reject(new Error(data.error));}}});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
 })();

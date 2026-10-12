@@ -23,10 +23,13 @@ static class WebViewTests
         string folder = Path.Combine(Path.GetTempPath(), "kot-webview-" + Guid.NewGuid().ToString("N"));
         using var form = new Form { ClientSize = new Size(960, 640), ShowInTaskbar = false };
         using var web = new WebView2 { Dock = DockStyle.Fill };
+        using var icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+        using var loading = new StartupScreen("dark", icon, () => { }, () => { }, () => { }, () => { });
         Process? browser = null;
         try
         {
-            form.Controls.Add(web); form.Show();
+            form.Controls.Add(web); form.Controls.Add(loading); loading.BringToFront(); form.Show();
+            check(loading.Visible, "native loading screen is visible before WebView2 initialization");
             var env = Complete(WebViewHost.CreateEnvironment(folder));
             Complete(web.EnsureCoreWebView2Async(env));
             var core = web.CoreWebView2;
@@ -42,6 +45,7 @@ static class WebViewTests
                 string? action = root.GetProperty("action").GetString();
                 try
                 {
+                    if (action == "uiReady") loading.Hide();
                     if (action == "readHwid")
                     {
                         core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "reply", id = root.GetProperty("id").GetInt32(), ok = true, data = new { hwid = new string('A', 64), name = "kot fixture" } }));
@@ -64,13 +68,15 @@ static class WebViewTests
             (async()=>{
               const $=id=>document.getElementById(id),pause=ms=>new Promise(r=>setTimeout(r,ms));
               await pause(100);await document.fonts.ready;
+              if(!$('startupScreen').hidden||document.querySelector('.main').inert||document.querySelector('.sidebar').inert)throw Error('startup overlay');
               if($('selectedName').textContent!=='Добавить подписку'||!document.fonts.check('600 14px Manrope','Соединение'))throw Error('UI/font');
               document.querySelector('[data-page=settings]').click();$('advancedButton').click();
               await pause(35);const before=Number(getComputedStyle($('advancedDialog')).opacity);
               $('closeAdvanced').click();const motion=$('advancedDialog').getAnimations()[0];
               if(motion&&Math.abs(Number(motion.effect.getKeyframes()[0].opacity)-before)>.03)throw Error('interrupted animation');
               await pause(300);if($('advancedDialog').open)throw Error('dialog stuck');
-              $('hwidButton').click();
+              $('advancedButton').click();$('hwidButton').click();
+              if($('deviceDialog').closest('dialog')!==$('advancedDialog')||!$('advancedDialog').open||!$('advancedContent').hidden)throw Error('nested HWID');
               for(let i=0;i<100&&!$('hwidValue').value;i++)await pause(20);
               if($('hwidValue').value!=='A'.repeat(64))throw Error('HWID bridge');
               $('copyHwid').click();$('hwidValue').focus();await pause(300);
@@ -78,11 +84,14 @@ static class WebViewTests
               const r=$('toast').getBoundingClientRect();
               if(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('#toast')!==$('toast'))throw Error('popover layer');
               $('closeDevice').click();
+              if(!$('deviceDialog').hidden||$('advancedContent').hidden||!$('advancedDialog').open)throw Error('HWID back');
+              $('closeAdvanced').click();
               await pause(300);return 'ok';
             })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
             """));
             PumpUntil(() => result != null, "native UI regression did not complete");
             check(result == "ok", "production page, modal popover, font and interrupted animation work in Windows WebView2: " + result);
+            check(!loading.Visible, "first rendered profile snapshot dismisses the native loading screen");
         }
         finally
         {

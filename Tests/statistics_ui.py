@@ -40,11 +40,12 @@ with sync_playwright() as p:
         expect(page.locator('#stateLabel')).to_have_text('Подключено')
         page.clock.pause_at(datetime(2026, 10, 11, 15, 0, 5, tzinfo=timezone.utc))
         page.evaluate('fixtureStatistics()')
-        # The home page retains its original connection controls and contains no history or timer.
+        # Home shares the confirmed session clock, while history stays on Statistics.
         expect(page.locator('#page-home')).to_be_visible()
         expect(page.locator('#statistics')).not_to_be_visible()
         expect(page.locator('#connectionTime')).not_to_be_visible()
         assert page.locator('#page-home #statistics, #page-home #connectionTime').count() == 0
+        expect(page.locator('#homeSessionTime')).to_have_text('00:19:34')
         assert page.locator('#page-home .power-zone').bounding_box()['width'] == 208
         page.locator('.nav-button[data-page=settings]').click()
         page.locator('#statisticsButton').click()
@@ -79,6 +80,7 @@ with sync_playwright() as p:
         page.clock.run_for(20)
         page.evaluate("const s=fixtureStatisticsData();s.elapsedSeconds=1180;fixtureStatistics({statistics:s})")
         page.clock.run_for(1500)
+        expect(page.locator('#homeSessionTime')).to_have_text('00:19:41')
         expect(page.locator('#connectionTime')).not_to_be_visible()
         page.evaluate("fixtureNavigate('statistics')")
         expect(page.locator('#connectionTime')).to_have_text('00:19:41')
@@ -125,7 +127,7 @@ with sync_playwright() as p:
                     assert box['y'] >= 38 and box['y'] + box['height'] <= height, (theme, width, height, selector, box)
                 back = page.locator('#statisticsBack').bounding_box()
                 title = page.locator('#page-statistics h1').bounding_box()
-                assert back['x'] + back['width'] < title['x'], (back, title)
+                assert title['x'] + title['width'] < back['x'], (back, title)
                 assert abs(back['y'] + back['height']/2 - title['y'] - title['height']/2) < 1, (back, title)
                 summary = page.locator('#statistics').bounding_box()
                 details = page.locator('#statisticsDetails').bounding_box()

@@ -8,6 +8,7 @@ tree = ast.parse((ROOT / 'Tests/ui.py').read_text())
 MOCK = next(ast.literal_eval(node.value) for node in tree.body
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'mock' for t in node.targets))
 MOCK = MOCK.replace("case 'readHwid':", "case 'readNodeQr':reply(true,'',{name:'Frankfurt',link:'vless://fixture@example.com:443',image:''});return;case 'readHwid':")
+MOCK = MOCK.replace("msg.action==='downloadUpdate'?", "msg.action==='ready'?(window.fixtureReadyDelay||10):msg.action==='downloadUpdate'?")
 NODES = [{'id': 'a', 'name': 'Frankfurt', 'protocol': 'vless', 'code': 'VL'},
          {'id': 'b', 'name': 'Amsterdam', 'protocol': 'trojan', 'code': 'TR'}]
 
@@ -47,6 +48,7 @@ def connections(page):
 
 def toast_layer(page):
     page.evaluate("fixtureNavigate('settings')")
+    page.locator('#advancedButton').click()
     page.locator('#hwidButton').click()
     expect(page.locator('#hwidValue')).to_have_value('A' * 64)
     # Copy disables its own button while the RPC runs. Keep a different,
@@ -130,11 +132,71 @@ def layouts(page):
     assert not page.evaluate('document.getAnimations().some(a=>a.playState==="running")')
 
 
+def home_stability(page):
+    for width, height in [(800, 600), (960, 640), (1280, 800)]:
+        page.set_viewport_size({'width': width, 'height': height})
+        for theme in ['dark', 'light']:
+            page.evaluate('theme=>fixtureSnapshot({nodes:[{id:"a",name:"Frankfurt",protocol:"vless"}],selected:"a",state:"idle",error:"",settings:{theme,mode:"tun",tray:true}})', theme)
+            page.wait_for_timeout(400)
+            selectors = ['#powerButton', '#homeServer', '#page-home .mode', '#traffic', '#homeSession']
+            before = [page.locator(s).bounding_box() for s in selectors]
+            page.evaluate('fixtureSnapshot({error:"Не удалось подключиться. " + "Подробности ошибки. ".repeat(100)})')
+            for selector, original in zip(selectors, before):
+                assert page.locator(selector).bounding_box() == original, (theme, width, selector)
+            for selector in selectors[:-1]:
+                box = page.locator(selector).bounding_box()
+                assert box['y'] >= 38 and box['y'] + box['height'] <= height, (width, selector, box)
+            page.mouse.move(width - 30, height - 40)
+            page.mouse.wheel(0, 1500)
+            page.wait_for_timeout(80)
+            assert page.locator('.main').evaluate('e=>e.scrollTop===0&&e.scrollHeight===e.clientHeight'), (width, theme)
+            assert page.evaluate('document.documentElement.scrollHeight===innerHeight')
+            page.evaluate('fixtureSnapshot({error:""})')
+            assert page.locator('#homeServer').bounding_box() == before[1]
+
+
+def settings_navigation(page):
+    page.set_viewport_size({'width': 800, 'height': 600})
+    page.locator('[data-page=settings]').click()
+    assert page.locator('.nav-button[data-page=diagnostics], .nav-button[data-page=logs]').count() == 0
+    expect(page.locator('.nav-button[data-page=services]')).to_be_visible()
+    assert page.locator('.setting-card').evaluate('e=>e.firstElementChild.id==="onlineUpdateButton"')
+    assert abs(page.locator('#onlineUpdateButton').bounding_box()['height'] - page.locator('#statisticsButton').bounding_box()['height']) < 1
+    for target in ['diagnostics', 'logs']:
+        for key in ['Enter', 'Space']:
+            link = page.locator(f'.settings-tools [data-page={target}]')
+            link.focus(); link.press(key)
+            expect(page.locator(f'#page-{target}')).to_be_visible()
+            expect(page.locator('.nav-button[data-page=settings]')).to_have_attribute('aria-current', 'page')
+            back = page.locator(f'#page-{target} [data-back-settings]')
+            title = page.locator(f'#page-{target} h1').bounding_box()
+            assert back.bounding_box()['x'] > title['x'] + title['width']
+            back.focus(); back.press(key)
+            expect(page.locator('#page-settings')).to_be_visible()
+    for key in ['Enter', 'Space']:
+        page.locator('#onlineUpdateButton').focus(); page.locator('#onlineUpdateButton').press(key)
+        expect(page.locator('#onlineUpdateDialog')).to_be_visible()
+        page.locator('#closeOnlineUpdate').click()
+        expect(page.locator('#onlineUpdateDialog')).not_to_be_visible()
+    assert page.locator('#hwidButton').evaluate('e=>e.closest("dialog").id==="advancedDialog"')
+
+
+def startup_loading(page):
+    page.add_init_script('window.fixtureReadyDelay=500;')
+    page.reload(wait_until='domcontentloaded')
+    expect(page.locator('#startupScreen')).to_be_visible()
+    assert page.locator('.main').evaluate('e=>e.inert')
+    assert page.locator('.sidebar').evaluate('e=>e.inert')
+    expect(page.locator('#startupScreen')).not_to_be_visible()
+    assert not page.locator('.main').evaluate('e=>e.inert')
+    assert not page.locator('.sidebar').evaluate('e=>e.inert')
+
+
 failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, connections, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts]:
+        for test in [servers, connections, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, settings_navigation, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))

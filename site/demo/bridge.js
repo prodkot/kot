@@ -109,6 +109,7 @@
   async function action(name, data) {
     switch (name) {
       case 'ready': notify({ ready: true, page: 'home' }); break;
+      case 'uiReady': break;
       case 'view': notify({ page: data.page }); break;
       case 'toggle':
         stop('connect'); model.error = '';

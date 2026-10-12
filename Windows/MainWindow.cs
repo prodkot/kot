@@ -11,6 +11,7 @@ public sealed partial class MainWindow : WindowChrome
     readonly NotifyIcon tray;
     readonly Icon trayIcon;
     readonly TrayMenu trayMenu;
+    readonly StartupScreen loading;
     string? pendingTrayPage;
     readonly Tunnel tunnel = new();
     readonly PingService ping = new();
@@ -36,6 +37,8 @@ public sealed partial class MainWindow : WindowChrome
         Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
         Controls.Add(web);
+        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); });
+        Controls.Add(loading); loading.BringToFront();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
         trayIcon = new Icon(Icon, SystemInformation.SmallIconSize);
@@ -91,6 +94,7 @@ public sealed partial class MainWindow : WindowChrome
             try
             {
                 bool enabled = await Startup.IsEnabled();
+                if (exiting || IsDisposed) return;
                 if (profile.Startup != enabled) { profile.Startup = enabled; Store.Save(profile); }
             }
             catch (Exception ex) { AppLog.Error("startup state", ex); }
@@ -104,9 +108,12 @@ public sealed partial class MainWindow : WindowChrome
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
                 var installInfo = new ProcessStartInfo(installer) { UseShellExecute = true }; installInfo.ArgumentList.Add("/install");
                 using var install = Process.Start(installInfo); if (install != null) await install.WaitForExitAsync();
+                if (exiting || IsDisposed) return;
                 env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView"));
             }
+            if (exiting || IsDisposed) return;
             await web.EnsureCoreWebView2Async(env);
+            if (exiting || IsDisposed) return;
             var c = web.CoreWebView2;
             c.Settings.AreDefaultContextMenusEnabled = false; c.Settings.AreDevToolsEnabled = false; c.Settings.IsStatusBarEnabled = false; c.Settings.IsZoomControlEnabled = false;
             c.Settings.IsGeneralAutofillEnabled = false; c.Settings.IsPasswordAutosaveEnabled = false;
@@ -160,6 +167,7 @@ public sealed partial class MainWindow : WindowChrome
             if (!bridgeReady) return;
             switch (action)
             {
+                case "uiReady": loading.Hide(); break;
                 case "drag": if (data.GetProperty("double").GetBoolean()) ToggleMaximize(); else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
                 case "resize":
                     var hit = data.GetProperty("edge").GetString() switch { "w" => 10, "e" => 11, "n" => 12, "nw" => 13, "ne" => 14, "s" => 15, "sw" => 16, "se" => 17, _ => 0 };

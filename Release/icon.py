@@ -5,7 +5,9 @@ import struct
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-source = 'data:image/svg+xml;base64,' + base64.b64encode((ROOT / 'site/assets/favicon.svg').read_bytes()).decode()
+svg = (ROOT / 'site/assets/favicon.svg').read_bytes()
+(ROOT / 'Windows/ui/brand-icon.svg').write_bytes(svg)
+source = 'data:image/svg+xml;base64,' + base64.b64encode(svg).decode()
 frames = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
