@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference='Stop'
 $Setup=[IO.Path]::GetFullPath($Setup); $Extractor=[IO.Path]::GetFullPath($Extractor); $Publish=[IO.Path]::GetFullPath($Publish)
 $scratch=Join-Path ([IO.Path]::GetTempPath()) ('kot setup проверка ' + [Guid]::NewGuid().ToString('N'))
+$backup=$null
 New-Item -ItemType Directory $scratch | Out-Null
 
 function Run-Checked([string]$Exe, [string[]]$Arguments, [string]$Directory, [int]$Timeout=60000, [switch]$AllowFailure) {
@@ -37,6 +38,18 @@ function Verify-Files([string]$Target) {
   foreach ($file in Get-ChildItem $Publish -File -Recurse) {
     $installed=Join-Path $Target ([IO.Path]::GetRelativePath($Publish,$file.FullName))
     if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed file mismatch: $installed" }
+  }
+}
+function Remove-TestDirectory([string]$Directory) {
+  # WebView2 can release its cache shortly after the app exits. Wait only for
+  # this fixture's files, with a strict deadline instead of killing all browsers.
+  $timer=[Diagnostics.Stopwatch]::StartNew()
+  while (Test-Path -LiteralPath $Directory) {
+    try { Remove-Item -LiteralPath $Directory -Recurse -Force; return }
+    catch [IO.IOException], [UnauthorizedAccessException] {
+      if ($timer.Elapsed.TotalSeconds -ge 30) { throw }
+      Start-Sleep -Milliseconds 250
+    }
   }
 }
 try {
@@ -128,10 +141,14 @@ try {
           foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot')) {
             try { if ($app.MainModule.FileName -eq (Join-Path $legacy 'Kot.exe') -and !$app.HasExited) { $app.Kill($true); $app.WaitForExit(10000) | Out-Null } } finally { $app.Dispose() }
           }
-          Remove-Item $profile -Recurse -Force
+          Remove-TestDirectory $profile
           if (Test-Path $backup) { Move-Item $backup $profile }
         }
       }
     }
   }
-} finally { Remove-Item $scratch -Recurse -Force }
+} finally {
+  if ($backup -and (Test-Path -LiteralPath $backup)) {
+    Write-Warning "The original test-account folder is preserved at $backup."
+  } else { Remove-TestDirectory $scratch }
+}
