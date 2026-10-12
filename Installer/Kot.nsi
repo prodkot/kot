@@ -11,6 +11,9 @@ Unicode true
 !ifndef EXTRACTOR
 !error "Pass /DEXTRACTOR=native-extraction-helper"
 !endif
+!ifndef PAYLOAD_KB
+!error "Pass /DPAYLOAD_KB=installed-payload-size-in-KB"
+!endif
 !ifndef OUTPUT
 !define OUTPUT "Kot-Setup-${VERSION}-Windows-x64.exe"
 !endif
@@ -48,6 +51,8 @@ Function .onInit
   SetShellVarContext all
 FunctionEnd
 Section "kot." SEC_MAIN
+  ; File no longer accounts for the application files, which live in the ZIP.
+  AddSize ${PAYLOAD_KB}
   SetRegView 64
   SetShellVarContext all
   ${If} ${FileExists} "$INSTDIR\Kot.exe"
@@ -76,7 +81,7 @@ Section "kot." SEC_MAIN
     ClearErrors
     FileOpen $1 "$PLUGINSDIR\extract-error.txt" r
     ${IfNot} ${Errors}
-      FileReadUTF16 $1 $2
+      FileReadUTF16LE $1 $2
       FileClose $1
     ${EndIf}
     IfSilent +2

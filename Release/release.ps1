@@ -23,7 +23,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Native installer helper build failed. Install 
 $extractor=Join-Path $extractorFolder 'Kot.Setup.Extract.exe'
 if (!(Test-Path $extractor) -or (Get-Item $extractor).Length -gt 16MB) { throw 'Missing or unexpectedly large native installer helper.' }
 $setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"
-& $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DEXTRACTOR=$extractor" "/DOUTPUT=$setup" Installer/Kot.nsi
+$payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
+& $Nsis "/WX" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DOUTPUT=$setup" Installer/Kot.nsi
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 ./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version
