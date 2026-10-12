@@ -42,7 +42,7 @@ public static class XhttpChecks
         using var handler = new HttpClientHandler { Proxy = new WebProxy($"socks5://127.0.0.1:{bridge.Port}") { Credentials = new NetworkCredential(bridge.Username, bridge.Password) }, UseProxy = true };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
         try { using var response = await client.GetAsync($"http://127.0.0.1:{webPort}/", ct); }
-        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException && !ct.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException && !ct.IsCancellationRequested) { Console.WriteLine("QUIC fixture request: " + ex.GetType().Name + ": " + ex.Message); }
     }
     static async Task QuicRouting(string xray, Node h3, XraySession session, int webPort, ConcurrentQueue<string> lines, CancellationToken ct, Action<bool, string> check)
     {
@@ -62,12 +62,19 @@ public static class XhttpChecks
             // IPv4 packets cannot find Xray in the IPv4 owner table on Windows.
             bool loop = lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target));
             Console.WriteLine("LEGACY QUIC process bypass enters proxy: " + loop);
+            if (!loop) Console.WriteLine("Legacy Xray routing output:\n" + CoreDiagnostics.Redact(await legacy.ReadRecentOutput(false), null));
             await legacy.Stop();
         }
         finally { File.Delete(legacyFile); }
         lines.Clear();
         await RequestBridge(session.Bridges[h3.Id], webPort, ct);
-        check(lines.Any(line => line.Contains("inbound/socks[xray-direct-in]: inbound packet connection to " + target)) && lines.Any(line => line.Contains("outbound/direct[direct]: outbound packet connection to " + target)), "HTTP/3 transport reaches the physical direct dialer with Windows TUN and WFP active");
+        bool direct = lines.Any(line => line.Contains("inbound/socks[xray-direct-in]: inbound packet connection to " + target)) && lines.Any(line => line.Contains("outbound/direct[direct]: outbound packet connection to " + target));
+        if (!direct)
+        {
+            Console.WriteLine("Xray HTTP/3 routing output:\n" + await session.RecentOutput());
+            Console.WriteLine("sing-box HTTP/3 routing output:\n" + string.Join('\n', lines));
+        }
+        check(direct, "HTTP/3 transport reaches the physical direct dialer with Windows TUN and WFP active");
         check(!lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target)), "HTTP/3 transport never loops back into its own XHTTP outbound");
     }
     public static async Task Run(string singBox, string xray, Action<bool, string> check)
@@ -130,7 +137,7 @@ public static class XhttpChecks
             check(await Open("1.1.1.1", 443, ct), "XHTTP TUN baseline reaches a real TCP destination");
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, extraAllowed: xray);
             var lines = new ConcurrentQueue<string>();
-            tun = new NativeCore(singBox, tunFile, line => { lines.Enqueue(line); while (lines.Count > 300) lines.TryDequeue(out _); });
+            tun = new NativeCore(singBox, tunFile, line => { lines.Enqueue(CoreDiagnostics.Redact(line, null)); while (lines.Count > 300) lines.TryDequeue(out _); });
             ulong luid = 0;
             while (luid == 0) { if (tun.HasExited) throw new Exception(await tun.ReadRecentOutput(true)); try { luid = KillSwitch.TunnelInterface(); } catch (UserError) { await Task.Delay(100, ct); } }
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, luid, xray);
