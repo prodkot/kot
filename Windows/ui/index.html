@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
 <title>kot.</title>
+<script src="startup.js"></script>
 <style>
 @font-face{font-family:Manrope;src:url("fonts/Manrope.ttf") format("truetype");font-style:normal;font-weight:200 800;font-display:swap}
 :root{color-scheme:dark;--bg:#151718;--side:#191c1d;--surface:#202425;--raised:#282d2e;--line:#303536;--text:#f2f4ed;--muted:#969e9f;--accent:#d5f88c;--ink:#26331c;--detail:#d4f58a;--danger:#ffaba2;--back:#0e1011;--ease:cubic-bezier(.22,1,.36,1)}
@@ -91,9 +92,11 @@ body{padding:0;min-height:100vh;background:var(--bg)}.app{width:100%;max-width:n
 .setting-action:disabled{color:var(--muted);cursor:default}.setting-action:disabled svg{transform:none}.setting-action-copy{display:flex;align-items:center;gap:8px}.advanced-hwid{padding:12px 0;min-height:42px;border-bottom:1px solid var(--line);margin-bottom:14px}.advanced-hwid:focus-visible{outline-offset:2px}.device-dialog .setting-row{padding:0;min-height:36px;margin-bottom:12px}
 .startup-screen{position:fixed;inset:38px 0 0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);color:var(--muted);font-size:13px;pointer-events:none}
 .startup-screen img{display:block;width:72px;height:72px;animation:startup-mark-in 420ms cubic-bezier(.22,1,.36,1) both,startup-mark-breathe 2200ms ease-in-out 420ms infinite}
+.startup-spin .startup-screen img{animation:startup-mark-in 420ms cubic-bezier(.22,1,.36,1) both,startup-mark-breathe 2200ms ease-in-out 420ms infinite,startup-mark-spin 1600ms linear 420ms infinite}
 .startup-screen p{animation:startup-label-in 360ms cubic-bezier(.22,1,.36,1) 80ms both}
 @keyframes startup-mark-in{from{opacity:0;filter:blur(5px);transform:translateY(6px) scale(.88)}to{opacity:1;filter:blur(0);transform:translateY(0) scale(1)}}
 @keyframes startup-mark-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
+@keyframes startup-mark-spin{from{rotate:0deg}to{rotate:360deg}}
 @keyframes startup-label-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 body.booting,body.booting *{transition:none!important}
 body.booting .main,body.booting .main *,body.booting .sidebar,body.booting .sidebar *{animation:none!important}

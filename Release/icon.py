@@ -7,12 +7,21 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 svg = (ROOT / 'site/assets/favicon.svg').read_bytes()
 (ROOT / 'Windows/ui/brand-icon.svg').write_bytes(svg)
+light = svg.replace(b'#111515', b'#efefeb').replace(b'#f3f4ed', b'#252a23').replace(b'#d5f88c', b'#55752a')
+(ROOT / 'Windows/ui/brand-icon-light.svg').write_bytes(light)
 source = 'data:image/svg+xml;base64,' + base64.b64encode(svg).decode()
 frames = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
         page = browser.new_page()
+        rendered_light = page.evaluate('''async(source)=>{
+          const image=new Image();image.src=source;await image.decode();
+          const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+          canvas.getContext('2d').drawImage(image,0,0,256,256);
+          return canvas.toDataURL('image/png').split(',')[1];
+        }''', 'data:image/svg+xml;base64,' + base64.b64encode(light).decode())
+        (ROOT / 'Windows/ui/brand-icon-light.png').write_bytes(base64.b64decode(rendered_light))
         for size in [16, 24, 32, 48, 64, 128, 256]:
             rendered = page.evaluate('''async({source,size})=>{
               const image=new Image();image.src=source;await image.decode();

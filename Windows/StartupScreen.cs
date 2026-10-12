@@ -14,7 +14,7 @@ public sealed class StartupScreen : UserControl
     readonly Font regular, small;
     readonly Bitmap image;
 
-    public StartupScreen(string theme, Icon icon, Action minimize, Action maximize, Action close, Action drag)
+    public StartupScreen(string theme, Icon icon, Action minimize, Action maximize, Action close, Action drag, bool spin = false)
     {
         bool light = theme == "light";
         Color background = ColorTranslator.FromHtml(light ? "#f6f6f2" : "#151718");
@@ -29,9 +29,17 @@ public sealed class StartupScreen : UserControl
         Name = "startupScreen"; AccessibleName = "Загрузка kot."; Dock = DockStyle.Fill;
         AutoScaleMode = AutoScaleMode.Dpi; BackColor = background; ForeColor = muted; Font = regular;
         DoubleBuffered = true;
-        using var large = new Icon(icon, new Size(256, 256));
-        image = large.ToBitmap();
-        var content = new StartupArtwork(image) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
+        if (light)
+        {
+            using var source = new Bitmap(Path.Combine(AppContext.BaseDirectory, "ui", "brand-icon-light.png"));
+            image = new Bitmap(source);
+        }
+        else
+        {
+            using var large = new Icon(icon, new Size(256, 256));
+            image = large.ToBitmap();
+        }
+        var content = new StartupArtwork(image, spin) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
         var version = new Label { Text = "kot.  " + ClientIdentity.Version, Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0) };
@@ -73,6 +81,7 @@ public sealed class StartupScreen : UserControl
     sealed class StartupArtwork : Control
     {
         readonly Bitmap image;
+        readonly bool spin;
         readonly System.Windows.Forms.Timer timer = new() { Interval = 16 };
         readonly Stopwatch clock = new();
         bool reduced;
@@ -82,9 +91,9 @@ public sealed class StartupScreen : UserControl
         static extern bool SystemParametersInfoW(uint action, uint parameter,
             [MarshalAs(UnmanagedType.Bool)] out bool enabled, uint flags);
 
-        public StartupArtwork(Bitmap image)
+        public StartupArtwork(Bitmap image, bool spin)
         {
-            this.image = image;
+            this.image = image; this.spin = spin;
             DoubleBuffered = true; ResizeRedraw = true; TabStop = false;
             AccessibleName = "kot. Загрузка…"; AccessibleRole = AccessibleRole.StaticText;
             VisibleChanged += (_, _) => UpdateAnimation();
@@ -128,11 +137,15 @@ public sealed class StartupScreen : UserControl
             float breath = reduced ? 0 : .009f * (1 - MathF.Cos(Math.Max(0, seconds - .42f) * MathF.PI / 1.1f));
             float size = 72 * dpi * (.88f + .12f * entered + breath);
             float centerY = ClientSize.Height / 2f - 20 * dpi + 6 * dpi * (1 - entered);
-            var bounds = Rectangle.Round(new RectangleF((ClientSize.Width - size) / 2, centerY - size / 2, size, size));
             var g = e.Graphics; g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             using var attributes = new ImageAttributes();
             attributes.SetColorMatrix(new ColorMatrix { Matrix33 = entered });
+            var saved = g.Save();
+            g.TranslateTransform(ClientSize.Width / 2f, centerY);
+            if (spin && !reduced) g.RotateTransform(Math.Max(0, seconds - .42f) * 225 % 360);
+            var bounds = Rectangle.Round(new RectangleF(-size / 2, -size / 2, size, size));
             g.DrawImage(image, bounds, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            g.Restore(saved);
             float labelProgress = reduced ? 1 : Math.Clamp((seconds - .08f) / .36f, 0, 1);
             int Mix(int background, int foreground) => (int)Math.Round(background + (foreground - background) * labelProgress);
             Color textColor = Color.FromArgb(Mix(BackColor.R, ForeColor.R), Mix(BackColor.G, ForeColor.G), Mix(BackColor.B, ForeColor.B));

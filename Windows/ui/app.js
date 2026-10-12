@@ -1,6 +1,14 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  function startupTheme(theme){
+    const light=theme==='light';
+    document.documentElement.classList.toggle('theme-light',light);
+    document.body.classList.toggle('theme-light',light);
+    const mark=$('startupScreen').querySelector('img'),source=light?'brand-icon-light.svg':'brand-icon.svg';
+    if(mark.getAttribute('src')!==source)mark.src=source;
+  }
+  startupTheme(window.kotStartup?.theme);
   // Bundled flag-icons 7.3.2. Never build asset paths from subscription text.
   const flagCodes = new Set('ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cp cr cu cv cw cx cy cz de dg dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu ic id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pc pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um un us uy uz va vc ve vg vi vn vu wf ws xk xx ye yt za zm zw'.split(' '));
   const flagPattern = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
@@ -84,12 +92,13 @@
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       await rpc('uiReady');
       const markStyle=getComputedStyle(mark),captionStyle=getComputedStyle(caption);
-      const markFrom={opacity:markStyle.opacity,filter:markStyle.filter,transform:markStyle.transform};
+      const rotation=markStyle.rotate;
+      const markFrom={opacity:markStyle.opacity,filter:markStyle.filter,transform:markStyle.transform,rotate:rotation};
       const captionFrom={opacity:captionStyle.opacity,transform:captionStyle.transform};
       mark.style.animation='none';caption.style.animation='none';
       document.body.classList.remove('booting');document.body.classList.add('revealing');
       const run=(el,frames,options)=>{const motion=animate(el,frames,options);if(motion)started.push(motion);};
-      run(mark,[markFrom,{opacity:0,filter:'blur(7px)',transform:'translateY(-8px) scale(.9)'}],{duration:300,fill:'forwards'});
+      run(mark,[markFrom,{opacity:0,filter:'blur(7px)',transform:'translateY(-8px) scale(.9)',rotate:rotation}],{duration:300,fill:'forwards'});
       run(caption,[captionFrom,{opacity:0,transform:'translateY(-4px)'}],{duration:220,fill:'forwards'});
       run(screen,[{opacity:1},{opacity:0}],{duration:480,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'});
       for(const el of [main,sidebar])run(el,[{opacity:0,filter:'blur(10px)',transform:'translateY(5px)'},{opacity:1,filter:'blur(0)',transform:'translateY(0)'}],{duration:520});
@@ -101,6 +110,7 @@
       screen.hidden=true;screen.getAnimations({subtree:true}).forEach(motion=>motion.cancel());
       started.forEach(motion=>motion.cancel());
       document.body.classList.remove('booting','revealing');main.inert=false;sidebar.inert=false;
+      document.documentElement.classList.remove('startup-spin');
     }
   }
   function moveNav(){const active=document.querySelector('.nav-button[aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
@@ -127,7 +137,7 @@
   }
   function apply(data){
     const old=model.state;model=data;
-    document.body.classList.toggle('theme-light',data.settings.theme==='light');
+    startupTheme(data.settings.theme);
     document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===data.settings.theme));document.querySelector('.theme-control').dataset.selected=data.settings.theme==='dark'?'0':'1';
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='tun'?'0':'1';
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));

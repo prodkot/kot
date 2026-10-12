@@ -167,6 +167,9 @@ internal static class Program
             using var startupBitmap = new Bitmap(loading.Width, loading.Height);
             loading.DrawToBitmap(startupBitmap, new Rectangle(Point.Empty, startupBitmap.Size));
             startupBitmap.Save(Path.Combine(folder, "loading-" + theme + ".png"), ImageFormat.Png);
+            Check(startupBitmap.GetPixel(10, 100).ToArgb() == ColorTranslator.FromHtml(theme == "light" ? "#f6f6f2" : "#151718").ToArgb(), "native loading uses the saved theme " + theme);
+            var tile = startupBitmap.GetPixel(370, 299);
+            Check(theme == "light" ? tile.R > 200 && tile.G > 200 && tile.B > 200 : tile.R < 40 && tile.G < 40 && tile.B < 40, "native loading icon matches the saved theme " + theme);
             window.Controls.Remove(loading);
         }
         window.Hide(); Console.WriteLine("Windows menu and shell checks passed."); return 0;

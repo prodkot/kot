@@ -48,10 +48,10 @@ def open_hwid(page):
     page.locator('#hwidButton').click()
 
 def check_startup(browser):
-    for theme, reduced in [('dark',False),('light',False),('dark',True)]:
+    for theme, spin, reduced in [('dark',False,False),('light',False,False),('dark',True,False),('light',True,False),('light',True,True)]:
         page=browser.new_page(viewport={'width':800,'height':600},reduced_motion='reduce' if reduced else 'no-preference')
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.add_init_script(mock+'''(()=>{
+        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'spin':spin})+''';(()=>{
           const send=chrome.webview.postMessage;
           window.startupReadyCount=0;
           chrome.webview.postMessage=message=>{
@@ -61,13 +61,21 @@ def check_startup(browser):
                 inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
                 image:document.querySelector('#startupScreen img').complete};
             }
-            setTimeout(()=>send(message),message.action==='ready'?500:message.action==='uiReady'?180:0);
+            setTimeout(()=>send(message),message.action==='ready'?1000:message.action==='uiReady'?180:0);
           };
         })();''')
         page.goto((root/'Windows/ui/index.html').as_uri())
         page.wait_for_function('()=>typeof fixtureSnapshot==="function"')
-        if theme=='light':page.evaluate('fixtureSnapshot({settings:{theme:"light",mode:"tun",tray:true}})')
         expect(page.locator('#startupScreen')).to_be_visible()
+        # Before any profile snapshot, the saved theme already covers the first paint.
+        assert page.evaluate('document.documentElement.classList.contains("theme-light")')==(theme=='light')
+        assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen")).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
+        assert page.locator('#startupScreen img').get_attribute('src')==('brand-icon-light.svg' if theme=='light' else 'brand-icon.svg')
+        page.wait_for_timeout(520)
+        animations=page.evaluate('document.querySelector("#startupScreen img").getAnimations().map(a=>a.animationName)')
+        assert ('startup-mark-spin' in animations)==(spin and not reduced)
+        if spin and not reduced:
+            assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen img")).rotate') not in ['none','0deg']
         assert page.evaluate('document.querySelector(".main").inert&&document.querySelector(".sidebar").inert')
         page.wait_for_function('()=>window.startupHandoff')
         assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
@@ -80,6 +88,7 @@ def check_startup(browser):
         assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert||document.body.classList.contains("revealing")')
         assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')=='none'
         assert not page.evaluate('document.querySelector("#startupScreen").getAnimations({subtree:true}).length')
+        assert not page.evaluate('document.documentElement.classList.contains("startup-spin")')
         page.locator('[data-page=settings]').click();expect(page.locator('#page-settings')).to_be_visible()
         page.close()
     # Turning off motion during the reveal must not strand the app behind an inert overlay.

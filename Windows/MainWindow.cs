@@ -12,6 +12,7 @@ public sealed partial class MainWindow : WindowChrome
     readonly Icon trayIcon;
     readonly TrayMenu trayMenu;
     readonly StartupScreen loading;
+    readonly bool startupSpin = Random.Shared.Next(100) == 0;
     string? pendingTrayPage;
     readonly Tunnel tunnel = new();
     readonly PingService ping = new();
@@ -35,9 +36,11 @@ public sealed partial class MainWindow : WindowChrome
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
         Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+        BackColor = ColorTranslator.FromHtml(profile.Theme == "light" ? "#f6f6f2" : "#151718");
+        web.DefaultBackgroundColor = BackColor;
+        Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
         Controls.Add(web);
-        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); });
+        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSpin);
         Controls.Add(loading); loading.BringToFront();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
@@ -124,6 +127,9 @@ public sealed partial class MainWindow : WindowChrome
             c.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             c.DownloadStarting += (_, e) => e.Cancel = true;
             c.WebMessageReceived += async (_, e) => await Message(e);
+            // Bootstrap contains only appearance, available before the first HTML paint.
+            await c.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup=" + JsonSerializer.Serialize(new { theme = profile.Theme, spin = startupSpin }) + ";");
+            if (exiting || IsDisposed) return;
             c.Navigate("https://kot.local/index.html"); initialized = true;
             if (startup && profile.Tray) Hide();
         }

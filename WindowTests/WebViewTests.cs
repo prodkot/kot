@@ -24,7 +24,7 @@ static class WebViewTests
         using var form = new Form { ClientSize = new Size(960, 640), ShowInTaskbar = false };
         using var web = new WebView2 { Dock = DockStyle.Fill };
         using var icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
-        using var loading = new StartupScreen("dark", icon, () => { }, () => { }, () => { }, () => { });
+        using var loading = new StartupScreen("light", icon, () => { }, () => { }, () => { }, () => { }, spin: true);
         Process? browser = null;
         try
         {
@@ -37,7 +37,7 @@ static class WebViewTests
             check(ProcessParent.Id(browser.Handle) == Environment.ProcessId, "private WebView2 browser remains a child of the kot host");
             core.SetVirtualHostNameToFolderMapping("kot.local", Path.Combine(AppContext.BaseDirectory, "ui"), CoreWebView2HostResourceAccessKind.DenyCors);
             string? readyError = null, result = null; bool ready = false;
-            core.WebMessageReceived += (_, e) =>
+            core.WebMessageReceived += async (_, e) =>
             {
                 using var message = JsonDocument.Parse(e.WebMessageAsJson);
                 var root = message.RootElement;
@@ -53,13 +53,21 @@ static class WebViewTests
                     }
                     core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "reply", id = root.GetProperty("id").GetInt32(), ok = true }));
                     if (action != "ready") return;
+                    string firstPaint = await core.ExecuteScriptAsync("""
+                    (()=>document.documentElement.classList.contains('theme-light')&&
+                      getComputedStyle(document.getElementById('startupScreen')).backgroundColor==='rgb(246, 246, 242)'&&
+                      document.querySelector('#startupScreen img').getAttribute('src')==='brand-icon-light.svg'&&
+                      (matchMedia('(prefers-reduced-motion: reduce)').matches||document.querySelector('#startupScreen img').getAnimations().some(a=>a.animationName==='startup-mark-spin')))()
+                    """);
+                    check(firstPaint == "true", "saved light theme and shared spinning choice apply before the first snapshot in native WebView2");
                     core.PostWebMessageAsJson("""
-                    {"kind":"snapshot","data":{"nodes":[],"selected":"","state":"idle","hasSubscription":false,"settings":{"theme":"dark","accent":"lime","mode":"tun","tray":true},"version":"fixture"}}
+                    {"kind":"snapshot","data":{"nodes":[],"selected":"","state":"idle","hasSubscription":false,"settings":{"theme":"light","accent":"lime","mode":"tun","tray":true},"version":"fixture"}}
                     """);
                     ready = true;
                 }
                 catch (Exception error) { readyError = error.Message; ready = true; }
             };
+            Complete(core.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup={theme:'light',spin:true};"));
             core.Navigate("https://kot.local/index.html");
             PumpUntil(() => ready, "production UI did not establish its WebView2 bridge");
             check(readyError == null, "production bridge delivers a snapshot in native WebView2");
