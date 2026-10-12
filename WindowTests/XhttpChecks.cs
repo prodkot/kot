@@ -2,7 +2,9 @@ using Kot.Core;
 using Kot.Windows;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.Security;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
 using System.Text;
 namespace Kot.WindowTests;
 
@@ -16,6 +18,22 @@ public static class XhttpChecks
         using var socket = new TcpClient();
         try { await socket.ConnectAsync(host, port, ct).AsTask().WaitAsync(TimeSpan.FromSeconds(4), ct); return true; }
         catch (Exception ex) when (ex is SocketException or TimeoutException) { return false; }
+    }
+    static async Task<bool> Exchange(CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        using var socket = new TcpClient();
+        try
+        {
+            await socket.ConnectAsync("1.1.1.1", 443, timeout.Token);
+            using var tls = new SslStream(socket.GetStream());
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "one.one.one.one" }, timeout.Token);
+            await tls.WriteAsync("HEAD / HTTP/1.1\r\nHost: one.one.one.one\r\nConnection: close\r\n\r\n"u8.ToArray(), timeout.Token);
+            using var reader = new StreamReader(tls, Encoding.ASCII, false, 1024, true);
+            return (await reader.ReadLineAsync(timeout.Token))?.StartsWith("HTTP/1.", StringComparison.Ordinal) == true;
+        }
+        catch (Exception ex) when (ex is SocketException or IOException or AuthenticationException || ex is OperationCanceledException && !ct.IsCancellationRequested) { return false; }
     }
     public static async Task Run(string singBox, string xray, Action<bool, string> check)
     {
@@ -79,13 +97,15 @@ public static class XhttpChecks
             {
                 ct.ThrowIfCancellationRequested();
                 if (tun.HasExited) throw new Exception(await tun.ReadRecentOutput(true));
-                if (GetBestInterface(0x01010101, out var index) == 0 && ConvertInterfaceIndexToLuid(index, out var route) == 0 && route == luid && await Open("1.1.1.1", 443, ct)) break;
+                if (GetBestInterface(0x01010101, out var index) == 0 && ConvertInterfaceIndexToLuid(index, out var route) == 0 && route == luid && await Exchange(ct)) break;
                 await Task.Delay(200, ct);
             }
-            check(true, "real Windows TUN forwards TCP via XHTTP without looping Xray traffic");
+            check(true, "real Windows TUN exchanges HTTPS via XHTTP without looping Xray traffic");
             await session.DisposeAsync(); session = null;
             check(!await Open("127.0.0.1", bridgePort, ct), "disposing XHTTP stops its native job and closes the bridge");
-            check(KillSwitch.Detect() && !await Open("1.1.1.1", 443, ct), "XHTTP core termination preserves the guard and never falls back to direct");
+            // A live TUN stack can acknowledge TCP before its outbound connects.
+            // Require a real server response, rather than trusting that handshake.
+            check(KillSwitch.Detect() && !await Exchange(ct), "XHTTP core termination preserves the guard and cannot exchange data directly");
             await tun.Stop(); tun.Dispose(); tun = null; KillSwitch.Release();
             KillSwitch.ArmForTests(Environment.ProcessPath!, singBox, extraAllowed: Environment.ProcessPath!);
             check(await Open("1.1.1.1", 443, ct), "WFP permits the exact additional core executable");
