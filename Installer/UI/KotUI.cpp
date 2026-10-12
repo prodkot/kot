@@ -53,7 +53,7 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
     }
     if (message==WM_MOUSELEAVE) { RemovePropW(window,L"kot.hover"); InvalidateRect(window,nullptr,FALSE); }
     if ((button||progress||label) && message==WM_ERASEBKGND) return 1;
-    if ((button||progress||label) && (message==WM_PAINT||message==WM_PRINTCLIENT)) {
+    if ((button||progress||label) && (message==WM_PAINT||message==WM_PRINTCLIENT||message==WM_PRINT)) {
         PAINTSTRUCT paint{}; HDC dc = message==WM_PAINT ? BeginPaint(window,&paint) : reinterpret_cast<HDC>(w);
         RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,backgroundBrush);
         if (hero) Logo(dc,0,0,std::min(bounds.right,bounds.bottom));
@@ -117,6 +117,9 @@ static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, 
     return DefSubclassProc(window,message,w,l);
 }
 static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
+    // nsDialogs labels start transparent. Our skin paints their background,
+    // so remove deferred sibling painting, including during window capture.
+    SetWindowLongW(window,GWL_EXSTYLE,GetWindowLongW(window,GWL_EXSTYLE)&~WS_EX_TRANSPARENT);
     SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(regular),TRUE);
     SetWindowTheme(window,L"",L""); SetWindowSubclass(window,ControlProc,1,0);
     wchar_t name[64]{}; GetClassNameW(window,name,64);

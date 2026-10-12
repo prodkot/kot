@@ -72,6 +72,17 @@ static class InstallerUiTests
             for(int y=(int)(88*scale);y<(int)(164*scale);y++)
                 for(int x=(int)(36*scale);x<(int)(112*scale);x++)
                 { var color=bitmap.GetPixel(x,y); if(color.G>140&&color.R>100) iconPixels++; }
+            if(textPixels<=100*scale*scale||iconPixels<=50*scale*scale)
+            {
+                using var screen=new Bitmap(bitmap.Width,bitmap.Height);
+                using(var graphics=Graphics.FromImage(screen)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,screen.Size);
+                screen.Save(Path.Combine(folder,name+"-screen.png"),ImageFormat.Png);
+                foreach(var child in Children(window).Where(IsWindowVisible))
+                {
+                    GetWindowRect(child,out var rect);
+                    Console.WriteLine($"Setup control {GetDlgCtrlID(child)}: {Text(child)}, bounds {rect.Left-bounds.Left},{rect.Top-bounds.Top},{rect.Right-rect.Left},{rect.Bottom-rect.Top}, style {GetWindowLong(child,-16):X}, exstyle {GetWindowLong(child,-20):X}");
+                }
+            }
             check(textPixels>100*scale*scale,"custom page heading is visibly painted: "+name);
             check(iconPixels>50*scale*scale,"custom page displays the actual abstract icon: "+name);
         }
