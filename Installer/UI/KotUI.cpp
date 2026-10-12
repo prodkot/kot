@@ -18,6 +18,7 @@ static bool uninstalling;
 static constexpr COLORREF background = RGB(21,23,24), surface = RGB(32,36,37),
     line = RGB(48,53,54), text = RGB(242,244,237), muted = RGB(150,158,159),
     accent = RGB(213,248,140), ink = RGB(38,51,28);
+static constexpr UINT refreshPage = WM_APP + 20;
 static int Scale(int value) { return MulDiv(value, dpi, 96); }
 static std::wstring Pop(Stack** stack) {
     if (!stack || !*stack) return {};
@@ -131,6 +132,12 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
 }
 static void Place(HWND window,int x,int y,int width,int height) { MoveWindow(window,Scale(x),Scale(y),Scale(width),Scale(height),TRUE); }
 static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR) {
+    if(message==refreshPage) {
+        // Native pages become visible after their show callback returns.
+        // Repaint the shared header once NSIS has completed that switch.
+        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+        return 0;
+    }
     if((message==WM_COMMAND && LOWORD(w)==9009)||message==WM_CLOSE) {
         HWND cancel=GetDlgItem(window,IDCANCEL),next=GetDlgItem(window,IDOK);
         if(IsWindowEnabled(cancel)) SendMessageW(window,WM_COMMAND,IDCANCEL,reinterpret_cast<LPARAM>(cancel));
@@ -141,7 +148,9 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
         POINT point{static_cast<short>(LOWORD(l)),static_cast<short>(HIWORD(l))}; ScreenToClient(window,&point);
         if(point.y<Scale(64)&&point.x<Scale(584)) return HTCAPTION;
     }
-    if(message==WM_ERASEBKGND) { RECT bounds; GetClientRect(window,&bounds); FillRect(reinterpret_cast<HDC>(w),&bounds,backgroundBrush); return 1; }
+    // The paint handler fills the background and header together. Erasing
+    // separately can clear the header while switching native pages.
+    if(message==WM_ERASEBKGND) return 1;
     if(message==WM_PAINT || message==WM_PRINTCLIENT) {
         PAINTSTRUCT paint{}; HDC dc=message==WM_PAINT?BeginPaint(window,&paint):reinterpret_cast<HDC>(w);
         RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,backgroundBrush);
@@ -216,6 +225,7 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         Place(hint,0,160,568,58); SkinControl(hint,0);
     }
     InvalidateRect(page,nullptr,TRUE);
+    PostMessageW(GetParent(page),refreshPage,0,0);
 }
 extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,void*) {
     HWND window=PopWindow(stack);

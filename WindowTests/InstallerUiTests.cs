@@ -71,6 +71,11 @@ static class InstallerUiTests
         {
             using(var graphics=Graphics.FromImage(screen)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,screen.Size);
             screen.Save(Path.Combine(folder,name+"-screen.png"),ImageFormat.Png);
+            int headerPixels=0;
+            for(int y=(int)(18*scale);y<(int)(48*scale);y++)
+                for(int x=(int)(36*scale);x<(int)(210*scale);x++)
+                { var color=screen.GetPixel(x,y); if(color.R>130&&color.G>130&&color.B>100) headerPixels++; }
+            check(headerPixels>100*scale*scale,"custom Setup header remains visible on the desktop: "+name);
         }
         var pixel=bitmap.GetPixel((int)(20*scale),(int)(100*scale));
         check(pixel.R==21&&pixel.G==23&&pixel.B==24,"custom Setup paints the app background: "+name);
@@ -136,9 +141,17 @@ static class InstallerUiTests
             Click(GetDlgItem(window,1)); Close(install,true);
             check(File.Exists(Path.Combine(target,"Kot.exe"))&&File.Exists(Path.Combine(target,"Uninstall.exe")),"custom pages install the verified client in a Unicode path");
             string shortcut=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),"kot..lnk");
+            check(File.Exists(shortcut),"custom installer creates the actual common desktop shortcut");
             object shell=Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!; object? link=null;
             try { dynamic wsh=shell; link=wsh.CreateShortcut(shortcut); dynamic value=link;
-                check((string)value.TargetPath==Path.Combine(target,"Kot.exe")&&(string)value.IconLocation==Path.Combine(target,"kot.ico")+",0"&&ShellIdentity.ShortcutId(shortcut)==ShellIdentity.AppId,"actual desktop shortcut uses the new abstract icon and stable taskbar ID");
+                string actualTarget=(string)value.TargetPath, actualIcon=(string)value.IconLocation;
+                string? actualId=ShellIdentity.ShortcutId(shortcut);
+                Console.WriteLine($"Installed desktop shortcut: target={actualTarget}; icon={actualIcon}; application ID={actualId}");
+                static bool SamePath(string left,string right)=>!string.IsNullOrWhiteSpace(left)&&string.Equals(Path.GetFullPath(left),Path.GetFullPath(right),StringComparison.OrdinalIgnoreCase);
+                check(SamePath(actualTarget,Path.Combine(target,"Kot.exe")),"desktop shortcut launches the installed executable");
+                int separator=actualIcon.LastIndexOf(',');
+                check(separator>0&&actualIcon[(separator+1)..].Trim()=="0"&&SamePath(actualIcon[..separator].Trim(' ', '"'),Path.Combine(target,"kot.ico"))&&File.Exists(Path.Combine(target,"kot.ico")),"desktop shortcut uses the installed abstract icon at index zero");
+                check(actualId==ShellIdentity.AppId,"desktop shortcut persists the stable taskbar application ID");
             } finally {if(link!=null)Marshal.ReleaseComObject(link);Marshal.ReleaseComObject(shell);}
             File.WriteAllText(Path.Combine(target,"user-note.txt"),"preserve");
             var uninstall=Start(Path.Combine(target,"Uninstall.exe"),"_?="+target); processes.Add(uninstall); window=Window(uninstall);
