@@ -38,7 +38,7 @@ public sealed class StartupScreen : UserControl
             mark.SetBounds((content.ClientSize.Width - Px(72)) / 2, middle - Px(56), Px(72), Px(72));
             label.SetBounds(0, middle + Px(36), content.ClientSize.Width, Px(24));
         };
-        var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side };
+        var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
         var version = new Label { Text = "kot.  " + ClientIdentity.Version, Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0) };
         title.Controls.Add(version);
@@ -64,6 +64,8 @@ public sealed class StartupScreen : UserControl
             };
             title.Controls.Add(button); button.BringToFront();
         }
+        // Dock the fill label last so it cannot cover the window controls.
+        version.BringToFront();
         Controls.Add(content); Controls.Add(title);
     }
 

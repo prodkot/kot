@@ -154,8 +154,15 @@ internal static class Program
             bitmap.Save(Path.Combine(folder, "tray-" + theme + ".png"), ImageFormat.Png);
             menu.Close();
             using var sourceIcon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
-            using var loading = new StartupScreen(theme, sourceIcon, () => { }, () => { }, () => { }, () => { });
+            int minimized = 0, maximized = 0, closed = 0;
+            using var loading = new StartupScreen(theme, sourceIcon, () => minimized++, () => maximized++, () => closed++, () => { });
             window.ClientSize = new Size(800, 600); window.Controls.Add(loading); Application.DoEvents();
+            var buttons = new[] { "minimize", "maximize", "close" }.Select(name => (Button)loading.Controls.Find(name, true).Single()).ToArray();
+            var title = buttons[0].Parent!;
+            var version = title.Controls.OfType<Label>().Single();
+            Check(version.Right <= buttons[0].Left && buttons.Zip(buttons.Skip(1)).All(pair => pair.First.Right <= pair.Second.Left) && buttons.All(button => button.Visible && button.Width > 0 && button.Bottom <= title.ClientSize.Height && button.Right <= title.ClientSize.Width), "loading title and window buttons have separate visible bounds " + theme);
+            foreach (var button in buttons) button.PerformClick();
+            Check(minimized == 1 && maximized == 1 && closed == 1, "loading screen retains all window actions " + theme);
             using var startupBitmap = new Bitmap(loading.Width, loading.Height);
             loading.DrawToBitmap(startupBitmap, new Rectangle(Point.Empty, startupBitmap.Size));
             startupBitmap.Save(Path.Combine(folder, "loading-" + theme + ".png"), ImageFormat.Png);
