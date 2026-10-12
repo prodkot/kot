@@ -36,8 +36,8 @@ static class ShellTests
             }
             using var original = new Icon(iconPath, 64, 64);
             using var bitmap = original.ToBitmap();
-            check(bitmap.GetPixel(20, 20).ToArgb() == Color.FromArgb(243, 244, 237).ToArgb()
-                && bitmap.GetPixel(53, 49).ToArgb() == Color.FromArgb(213, 248, 140).ToArgb()
+            check(bitmap.GetPixel(16, 20).ToArgb() == Color.FromArgb(243, 244, 237).ToArgb()
+                && bitmap.GetPixel(47, 46).ToArgb() == Color.FromArgb(213, 248, 140).ToArgb()
                 && bitmap.GetPixel(6, 32).ToArgb() == Color.FromArgb(17, 21, 21).ToArgb()
                 && bitmap.GetPixel(0, 0).A == 0, "native icon keeps the website's white k, lime dot, dark background and transparent rounded corners");
         }
