@@ -1,4 +1,8 @@
 using System.Drawing.Text;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Kot.Core;
 
 namespace Kot.Windows;
@@ -25,19 +29,9 @@ public sealed class StartupScreen : UserControl
         Name = "startupScreen"; AccessibleName = "Загрузка kot."; Dock = DockStyle.Fill;
         AutoScaleMode = AutoScaleMode.Dpi; BackColor = background; ForeColor = muted; Font = regular;
         DoubleBuffered = true;
-        var content = new Panel { Dock = DockStyle.Fill, BackColor = background };
         using var large = new Icon(icon, new Size(256, 256));
         image = large.ToBitmap();
-        var mark = new PictureBox { Image = image, SizeMode = PictureBoxSizeMode.Zoom, TabStop = false, AccessibleName = "kot." };
-        var label = new Label { Text = "Загрузка…", TextAlign = ContentAlignment.MiddleCenter, AutoSize = false, AccessibleRole = AccessibleRole.StaticText };
-        content.Controls.Add(mark); content.Controls.Add(label);
-        content.Resize += (_, _) =>
-        {
-            int Px(int value) => (int)Math.Round(value * DeviceDpi / 96f);
-            int middle = content.ClientSize.Height / 2;
-            mark.SetBounds((content.ClientSize.Width - Px(72)) / 2, middle - Px(56), Px(72), Px(72));
-            label.SetBounds(0, middle + Px(36), content.ClientSize.Width, Px(24));
-        };
+        var content = new StartupArtwork(image) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
         var version = new Label { Text = "kot.  " + ClientIdentity.Version, Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0) };
@@ -73,5 +67,83 @@ public sealed class StartupScreen : UserControl
     {
         base.Dispose(disposing);
         if (disposing) { image.Dispose(); regular.Dispose(); small.Dispose(); fonts.Dispose(); }
+    }
+
+    // Paint only the small loading artwork; window controls remain live and unanimated.
+    sealed class StartupArtwork : Control
+    {
+        readonly Bitmap image;
+        readonly System.Windows.Forms.Timer timer = new() { Interval = 16 };
+        readonly Stopwatch clock = new();
+        bool reduced;
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SystemParametersInfoW(uint action, uint parameter,
+            [MarshalAs(UnmanagedType.Bool)] out bool enabled, uint flags);
+
+        public StartupArtwork(Bitmap image)
+        {
+            this.image = image;
+            DoubleBuffered = true; ResizeRedraw = true; TabStop = false;
+            AccessibleName = "kot. Загрузка…"; AccessibleRole = AccessibleRole.StaticText;
+            VisibleChanged += (_, _) => UpdateAnimation();
+            timer.Tick += (_, _) =>
+            {
+                if (FindForm()?.WindowState != FormWindowState.Minimized) Invalidate();
+            };
+        }
+
+        void UpdateAnimation()
+        {
+            timer.Stop(); clock.Stop();
+            if (!Visible || !IsHandleCreated) return;
+            reduced = SystemParametersInfoW(0x1042, 0, out bool enabled, 0) && !enabled;
+            if (!reduced) { clock.Start(); timer.Start(); }
+            Invalidate();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e); UpdateAnimation();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            timer.Stop(); clock.Stop(); base.OnHandleDestroyed(e);
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            base.WndProc(ref message);
+            if (message.Msg == 0x001A) UpdateAnimation(); // WM_SETTINGCHANGE
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            float dpi = DeviceDpi / 96f, seconds = (float)clock.Elapsed.TotalSeconds;
+            float progress = reduced ? 1 : Math.Clamp(seconds / .42f, 0, 1);
+            float entered = 1 - MathF.Pow(1 - progress, 3);
+            float breath = reduced ? 0 : .009f * (1 - MathF.Cos(Math.Max(0, seconds - .42f) * MathF.PI / 1.1f));
+            float size = 72 * dpi * (.88f + .12f * entered + breath);
+            float centerY = ClientSize.Height / 2f - 20 * dpi + 6 * dpi * (1 - entered);
+            var bounds = Rectangle.Round(new RectangleF((ClientSize.Width - size) / 2, centerY - size / 2, size, size));
+            var g = e.Graphics; g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            using var attributes = new ImageAttributes();
+            attributes.SetColorMatrix(new ColorMatrix { Matrix33 = entered });
+            g.DrawImage(image, bounds, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            float labelProgress = reduced ? 1 : Math.Clamp((seconds - .08f) / .36f, 0, 1);
+            int Mix(int background, int foreground) => (int)Math.Round(background + (foreground - background) * labelProgress);
+            Color textColor = Color.FromArgb(Mix(BackColor.R, ForeColor.R), Mix(BackColor.G, ForeColor.G), Mix(BackColor.B, ForeColor.B));
+            var textBounds = new Rectangle(0, (int)(ClientSize.Height / 2f + (36 + 4 * (1 - labelProgress)) * dpi), ClientSize.Width, (int)(24 * dpi));
+            TextRenderer.DrawText(g, "Загрузка…", Font, textBounds, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { timer.Stop(); timer.Dispose(); clock.Stop(); }
+            base.Dispose(disposing);
+        }
     }
 }

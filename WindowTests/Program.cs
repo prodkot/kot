@@ -1,6 +1,7 @@
 using Kot.Windows;
 using System.Runtime.InteropServices;
 using System.Drawing.Imaging;
+using System.Diagnostics;
 
 internal static class Program
 {
@@ -161,6 +162,8 @@ internal static class Program
             Check(version.Right <= buttons[0].Left && buttons.Zip(buttons.Skip(1)).All(pair => pair.First.Right <= pair.Second.Left) && buttons.All(button => button.Visible && button.Width > 0 && button.Bottom <= title.ClientSize.Height && button.Right <= title.ClientSize.Width), "loading title and window buttons have separate visible bounds " + theme);
             foreach (var button in buttons) button.PerformClick();
             Check(minimized == 1 && maximized == 1 && closed == 1, "loading screen retains all window actions " + theme);
+            var entrance = Stopwatch.StartNew();
+            while (entrance.ElapsedMilliseconds < 520) { Application.DoEvents(); Thread.Sleep(10); }
             using var startupBitmap = new Bitmap(loading.Width, loading.Height);
             loading.DrawToBitmap(startupBitmap, new Rectangle(Point.Empty, startupBitmap.Size));
             startupBitmap.Save(Path.Combine(folder, "loading-" + theme + ".png"), ImageFormat.Png);

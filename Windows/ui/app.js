@@ -75,6 +75,34 @@
     meow.play().catch(()=>toast('Не удалось воспроизвести мяу.'));
   });
   async function request(action,data={}) {try{await rpc(action,data);return true;}catch(e){toast(e.message);return false;}}
+  async function finishStartup(){
+    const screen=$('startupScreen'),mark=screen.querySelector('img'),caption=screen.querySelector('p');
+    const main=document.querySelector('.main'),sidebar=document.querySelector('.sidebar'),started=[];
+    try{
+      await Promise.all([document.fonts.ready,mark.decode().catch(()=>{})]);
+      // Paint the web loading screen before the native one is removed by the host.
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await rpc('uiReady');
+      const markStyle=getComputedStyle(mark),captionStyle=getComputedStyle(caption);
+      const markFrom={opacity:markStyle.opacity,filter:markStyle.filter,transform:markStyle.transform};
+      const captionFrom={opacity:captionStyle.opacity,transform:captionStyle.transform};
+      mark.style.animation='none';caption.style.animation='none';
+      document.body.classList.remove('booting');document.body.classList.add('revealing');
+      const run=(el,frames,options)=>{const motion=animate(el,frames,options);if(motion)started.push(motion);};
+      run(mark,[markFrom,{opacity:0,filter:'blur(7px)',transform:'translateY(-8px) scale(.9)'}],{duration:300,fill:'forwards'});
+      run(caption,[captionFrom,{opacity:0,transform:'translateY(-4px)'}],{duration:220,fill:'forwards'});
+      run(screen,[{opacity:1},{opacity:0}],{duration:480,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'});
+      for(const el of [main,sidebar])run(el,[{opacity:0,filter:'blur(10px)',transform:'translateY(5px)'},{opacity:1,filter:'blur(0)',transform:'translateY(0)'}],{duration:520});
+      run($('brandButton'),[{opacity:0,transform:'translateY(5px) scale(.96)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:460,delay:60,fill:'backwards'});
+      // Cancellation (including a changed motion preference) also releases input.
+      await Promise.allSettled(started.map(motion=>motion.finished));
+    }catch(e){toast(e.message);}
+    finally{
+      screen.hidden=true;screen.getAnimations({subtree:true}).forEach(motion=>motion.cancel());
+      started.forEach(motion=>motion.cancel());
+      document.body.classList.remove('booting','revealing');main.inert=false;sidebar.inert=false;
+    }
+  }
   function moveNav(){const active=document.querySelector('.nav-button[aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
   function page(name){
     if(name===current||!$('page-'+name))return;
@@ -120,7 +148,7 @@
     $('pingError').hidden=!ping.error;$('pingError').textContent=ping.error||'';
     clientTools.render();serviceTools.render();renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs'&&!logsPaused){logSnapshot={telemetry:data.telemetry,journal:data.journal,state:data.state};renderLogs();}
     setState(data.state,old);const renderKey=JSON.stringify([data.nodes,data.selected,data.favorites,data.ping?.settings?.sort,data.ping?.busy]);if(renderKey!==renderedServers){renderedServers=renderKey;renderServers();}
-    if(!initialSnapshot){initialSnapshot=true;document.fonts.ready.then(()=>requestAnimationFrame(()=>{getComputedStyle(document.body).backgroundColor;$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;document.body.classList.remove('booting');request('uiReady');}));}
+    if(!initialSnapshot){initialSnapshot=true;finishStartup();}
   }
   function renderServers(){
     const query=$('serverSearch').value.trim().toLocaleLowerCase('ru'),visible=model.nodes.filter(n=>(n.name+' '+n.protocol).toLocaleLowerCase('ru').includes(query));

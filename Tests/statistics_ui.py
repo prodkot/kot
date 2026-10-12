@@ -38,6 +38,7 @@ with sync_playwright() as p:
         page.clock.install(time=datetime(2026, 10, 11, 15, tzinfo=timezone.utc))
         page.goto((ROOT / 'Windows/ui/index.html').as_uri())
         expect(page.locator('#stateLabel')).to_have_text('Подключено')
+        expect(page.locator('#startupScreen')).to_be_hidden()
         page.clock.pause_at(datetime(2026, 10, 11, 15, 0, 5, tzinfo=timezone.utc))
         page.evaluate('fixtureStatistics()')
         # Home shares the confirmed session clock, while history stays on Statistics.

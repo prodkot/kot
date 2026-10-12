@@ -227,6 +227,7 @@ with sync_playwright() as p:
             try:
                 page.goto((ROOT / 'Windows/ui/index.html').as_uri())
                 expect(page.locator('#selectedName')).to_have_text('Добавить подписку')
+                expect(page.locator('#startupScreen')).to_be_hidden()
                 test(page)
                 assert not errors, errors
                 print('PASS ' + test.__name__, flush=True)

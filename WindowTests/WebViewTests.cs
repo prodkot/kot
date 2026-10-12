@@ -67,8 +67,18 @@ static class WebViewTests
             Complete(core.ExecuteScriptAsync("""
             (async()=>{
               const $=id=>document.getElementById(id),pause=ms=>new Promise(r=>setTimeout(r,ms));
-              await pause(100);await document.fonts.ready;
+              await document.fonts.ready;
+              let sawReveal=false;
+              for(let i=0;i<150&&!$('startupScreen').hidden;i++){
+                if(document.body.classList.contains('revealing')){
+                  if(!document.querySelector('.main').inert||!document.querySelector('.sidebar').inert)throw Error('startup input released early');
+                  sawReveal ||= getComputedStyle(document.querySelector('.main')).filter!=='none';
+                }
+                await pause(20);
+              }
               if(!$('startupScreen').hidden||document.querySelector('.main').inert||document.querySelector('.sidebar').inert)throw Error('startup overlay');
+              if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!sawReveal)throw Error('startup transition missing');
+              if(document.body.classList.contains('revealing')||getComputedStyle(document.querySelector('.main')).filter!=='none')throw Error('startup blur retained');
               if($('selectedName').textContent!=='Добавить подписку'||!document.fonts.check('600 14px Manrope','Соединение'))throw Error('UI/font');
               document.querySelector('[data-page=settings]').click();$('advancedButton').click();
               await pause(35);const before=Number(getComputedStyle($('advancedDialog')).opacity);

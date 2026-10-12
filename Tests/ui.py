@@ -47,8 +47,54 @@ def open_hwid(page):
         page.locator('#advancedButton').click()
     page.locator('#hwidButton').click()
 
+def check_startup(browser):
+    for theme, reduced in [('dark',False),('light',False),('dark',True)]:
+        page=browser.new_page(viewport={'width':800,'height':600},reduced_motion='reduce' if reduced else 'no-preference')
+        page.on('pageerror',lambda e:errors.append(str(e)))
+        page.add_init_script(mock+'''(()=>{
+          const send=chrome.webview.postMessage;
+          window.startupReadyCount=0;
+          chrome.webview.postMessage=message=>{
+            if(message.action==='uiReady'){
+              window.startupReadyCount++;
+              window.startupHandoff={visible:!document.getElementById('startupScreen').hidden,
+                inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
+                image:document.querySelector('#startupScreen img').complete};
+            }
+            setTimeout(()=>send(message),message.action==='ready'?500:message.action==='uiReady'?180:0);
+          };
+        })();''')
+        page.goto((root/'Windows/ui/index.html').as_uri())
+        page.wait_for_function('()=>typeof fixtureSnapshot==="function"')
+        if theme=='light':page.evaluate('fixtureSnapshot({settings:{theme:"light",mode:"tun",tray:true}})')
+        expect(page.locator('#startupScreen')).to_be_visible()
+        assert page.evaluate('document.querySelector(".main").inert&&document.querySelector(".sidebar").inert')
+        page.wait_for_function('()=>window.startupHandoff')
+        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
+        if not reduced:
+            page.wait_for_function('()=>document.body.classList.contains("revealing")')
+            assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')!='none'
+            page.evaluate('fixtureSnapshot({});fixtureSnapshot({});')
+        expect(page.locator('#startupScreen')).to_be_hidden()
+        assert page.evaluate('window.startupReadyCount')==1
+        assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert||document.body.classList.contains("revealing")')
+        assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')=='none'
+        assert not page.evaluate('document.querySelector("#startupScreen").getAnimations({subtree:true}).length')
+        page.locator('[data-page=settings]').click();expect(page.locator('#page-settings')).to_be_visible()
+        page.close()
+    # Turning off motion during the reveal must not strand the app behind an inert overlay.
+    page=browser.new_page();page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
+    page.goto((root/'Windows/ui/index.html').as_uri())
+    page.wait_for_function('()=>document.body.classList.contains("revealing")')
+    page.emulate_media(reduced_motion='reduce')
+    expect(page.locator('#startupScreen')).to_be_hidden()
+    assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert')
+    assert not page.evaluate('document.getAnimations().some(a=>a.playState==="running")')
+    page.close()
+
 with sync_playwright() as p:
     browser=p.chromium.launch(args=['--no-sandbox'])
+    check_startup(browser)
     page=browser.new_page(viewport={'width':960,'height':640})
     page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto((root/'Windows/ui/index.html').as_uri());expect(page.locator('#powerButton')).to_be_disabled()
