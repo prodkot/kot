@@ -159,8 +159,10 @@ public sealed partial class MainWindow : WindowChrome
             {
                 bool first = !bridgeReady; bridgeReady = true; Snapshot(); Send(new { kind = "reply", id, ok = true });
                 if (pendingTrayPage is { } page) { Send(new { kind = "navigate", page }); pendingTrayPage = null; }
-                if (first) { UpdateInstaller.Ready(); _ = services.AutoStart(); }
-                if (first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+                bool autoConnect = first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0;
+                if (first) UpdateInstaller.Ready();
+                if (autoConnect) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+                if (first) _ = services.AutoStart(startZapret: !autoConnect);
                 return;
             }
             if (!bridgeReady) return;

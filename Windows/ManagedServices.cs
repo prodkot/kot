@@ -33,7 +33,8 @@ internal sealed class ManagedServices
     readonly JsonSerializerOptions json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
     List<StrategyTestRun> history = [];
     StrategyTestRun? test;
-    bool shuttingDown, polling;
+    bool shuttingDown, polling, preparingVpn;
+    Task vpnPreparation = Task.CompletedTask;
     DateTimeOffset nextCheck = DateTimeOffset.UtcNow.AddSeconds(20);
     public bool Testing { get; private set; }
     public ManagedServices(Func<ServiceOptions> options, Func<bool> networkBusy, Action changed, CancellationToken lifetime, string? folder = null)
@@ -54,6 +55,7 @@ internal sealed class ManagedServices
         RegisterSecret();
     }
     Entry Get(string id) { ServicePackages.Repository(id); return entries.Single(e => e.Id == id); }
+    bool IsBusy(Entry entry) => entry.Busy || entry.Id == "zapret" && preparingVpn;
     string Root(string id) => Path.Combine(folder, id);
     string Manifest(string id) => Path.Combine(Root(id), "current.json");
     string Exe(Entry entry) => OwnedPath(entry.Id, entry.Installed?.Executable ?? throw new UserError("Сначала установите сервис."));
@@ -96,7 +98,7 @@ internal sealed class ManagedServices
             {
                 e.Id, installedVersion = e.Installed?.Version, availableVersion = e.Latest?.Version,
                 updateAvailable = e.Latest != null && ServicePackages.Newer(e.Latest.Version, e.Installed?.Version ?? ""),
-                running = e.Process != null && !e.Process.HasExited, e.Busy, e.Status, e.Error, e.Phase, e.Progress,
+                running = e.Process != null && !e.Process.HasExited, busy = IsBusy(e), e.Status, e.Error, e.Phase, e.Progress,
                 checkedAt = e.Checked, source = ServicePackages.Page(e.Id),
                 logs = full ? LogTail(e) : null,
                 strategies = e.Id == "zapret" && full && e.Installed != null ? Strategies(e).Select(s => Path.GetFileName(s)).ToArray() : null
@@ -133,7 +135,7 @@ internal sealed class ManagedServices
     public void Begin(string id, string action, string[]? selected = null)
     {
         if (shuttingDown) throw new UserError("Приложение завершает работу.");
-        var entry = Get(id); if (entry.Busy) throw new UserError("Дождитесь завершения операции или отмените её.");
+        var entry = Get(id); if (IsBusy(entry)) throw new UserError("Дождитесь завершения операции или отмените её.");
         if (action == "test" && (id != "zapret" || networkBusy())) throw new UserError("Отключите VPN и kill switch перед подбором, чтобы проверить zapret на прямом соединении.");
         if (Testing && action != "check") throw new UserError("Сначала завершите подбор стратегии.");
         entry.Busy = true; entry.Error = ""; entry.Progress = 0;
@@ -357,7 +359,7 @@ internal sealed class ManagedServices
         while (data.Length > 1024 * 1024 && history.Count > 1) { history.RemoveAt(0); data = JsonSerializer.SerializeToUtf8Bytes(history, json); }
         Atomic(Path.Combine(folder, "tests.json"), data);
     }
-    public Task Wait(string id) => Get(id).Work;
+    public Task Wait(string id) => id == "zapret" && preparingVpn ? vpnPreparation : Get(id).Work;
     public int? ProcessId(string id) => Get(id).Process?.Process.Id;
     public bool IsRunning(string id) => Get(id).Process != null && !Get(id).Process!.HasExited;
     public void Cancel(string id) => Get(id).Attempt?.Cancel();
@@ -366,18 +368,44 @@ internal sealed class ManagedServices
         var entry = Get("zapret");
         if (entry.Installed != null && !Strategies(entry).Any(s => Path.GetFileName(s) == name)) throw new UserError("Стратегия отсутствует в установленном пакете.");
     }
-    public void EnsureEditable(string id) { if (Get(id).Busy || Testing) throw new UserError("Дождитесь завершения текущей операции."); }
+    public void EnsureEditable(string id) { if (IsBusy(Get(id)) || Testing) throw new UserError("Дождитесь завершения текущей операции."); }
     public void ClearLog(string id) { var e = Get(id); e.LogCleared = DateTime.Now; lock (e.Log) e.Log.Clear(); if (id == "telegram" && e.Installed != null && e.Process == null) { string path = Path.Combine(Path.GetDirectoryName(Exe(e))!, "TgWsProxy_data", "proxy.log"); TryDelete(path); TryDelete(path + ".1"); } }
     public void SelectTest(DateTimeOffset started)
     {
-        if (Testing || Get("zapret").Busy) throw new UserError("Дождитесь окончания подбора.");
+        if (Testing || IsBusy(Get("zapret"))) throw new UserError("Дождитесь окончания подбора.");
         test = history.FirstOrDefault(h => h.Started == started) ?? throw new UserError("Сохранённый прогон не найден.");
     }
     public string Export() => JsonSerializer.Serialize(test ?? history.LastOrDefault() ?? throw new UserError("Результатов теста пока нет."), json);
-    public async Task AutoStart()
+    public Task StopZapretForVpn()
+    {
+        if (shuttingDown) throw new UserError("Приложение завершает работу.");
+        if (Testing) throw new UserError("Завершите подбор zapret перед подключением VPN.");
+        if (preparingVpn) return vpnPreparation;
+        preparingVpn = true;
+        vpnPreparation = StopZapretBeforeVpn(Get("zapret"));
+        return vpnPreparation;
+    }
+    async Task StopZapretBeforeVpn(Entry entry)
+    {
+        bool active = entry.Process != null || entry.Busy;
+        entry.Attempt?.Cancel();
+        try
+        {
+            // A pending start or installation rollback can recreate the process.
+            // Wait for that work before stopping the entire owned job.
+            await entry.Work;
+            entry.Busy = true; entry.Error = ""; entry.Phase = "Остановка перед VPN";
+            if (!shuttingDown) changed();
+            await Stop(entry);
+            if (active) AddLog(entry, "Автоматически остановлен перед подключением VPN");
+        }
+        catch (Exception ex) { entry.Error = Store.Friendly(ex); throw; }
+        finally { entry.Busy = false; entry.Phase = ""; preparingVpn = false; if (!shuttingDown) changed(); }
+    }
+    public async Task AutoStart(bool startZapret = true)
     {
         foreach (var entry in entries)
-            if (entry.Installed != null && (entry.Id == "zapret" ? options().Zapret.AutoStart : options().Telegram.AutoStart)) { Begin(entry.Id, "start"); await entry.Work; }
+            if (!IsBusy(entry) && entry.Installed != null && (entry.Id == "zapret" ? startZapret && options().Zapret.AutoStart : options().Telegram.AutoStart)) { Begin(entry.Id, "start"); await entry.Work; }
     }
     public async Task Tick()
     {
@@ -385,7 +413,7 @@ internal sealed class ManagedServices
         try
         {
             foreach (var entry in entries)
-                if (!entry.Busy && entry.Process != null && (entry.Process.HasExited || entry.Id == "telegram" && !await PortOpen(options().Telegram.Port, lifetime)))
+                if (!IsBusy(entry) && entry.Process != null && (entry.Process.HasExited || entry.Id == "telegram" && !await PortOpen(options().Telegram.Port, lifetime)))
                 {
                     AddLog(entry, entry.Process.HasExited ? "Процесс завершился, код " + entry.Process.ExitCode : "Локальный порт прокси больше не доступен");
                     entry.Error = "Сервис завершился. Проверьте журнал и запустите его снова."; await Stop(entry); changed();
@@ -393,7 +421,7 @@ internal sealed class ManagedServices
             if (DateTimeOffset.UtcNow >= nextCheck && options().CheckUpdates && !Testing)
             {
                 nextCheck = DateTimeOffset.UtcNow.AddHours(24);
-                foreach (var entry in entries) if (!entry.Busy) Begin(entry.Id, "check");
+                foreach (var entry in entries) if (!IsBusy(entry)) Begin(entry.Id, "check");
             }
         }
         finally { polling = false; }
@@ -402,7 +430,7 @@ internal sealed class ManagedServices
     {
         if (exit) shuttingDown = true;
         foreach (var entry in entries) entry.Attempt?.Cancel();
-        try { await Task.WhenAll(entries.Select(e => e.Work)); }
+        try { await Task.WhenAll(entries.Select(e => e.Work).Append(vpnPreparation)); }
         finally { await Task.WhenAll(entries.Select(Stop)); }
     }
     static void TryDelete(string path) { try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { } }

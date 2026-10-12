@@ -88,6 +88,7 @@
   }
   function setState(state, previous){
     $('connection').dataset.state=state;
+    document.querySelector('.title-brand').dataset.state=state;
     const texts={idle:['Не подключено','Подключить'],connecting:['Подключение','Отменить'],connected:['Подключено','Отключить'],disconnecting:['Отключение','Отключить'],waiting:['Ожидание сети · повтор подключения','Отменить']}[state]||['Не подключено','Подключить'];
     $('stateLabel').textContent=texts[0];$('powerLabel').textContent=texts[1];$('powerButton').setAttribute('aria-label',texts[1]);
     $('powerButton').disabled=(!model.nodes.length && state==='idle')||state==='disconnecting';

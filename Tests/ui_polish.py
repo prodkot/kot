@@ -155,6 +155,29 @@ def home_stability(page):
             assert page.locator('#homeServer').bounding_box() == before[1]
 
 
+def connection_chrome(page):
+    page.set_viewport_size({'width': 800, 'height': 600})
+    assert page.locator('#page-home [data-open-add]').count() == 0
+    for theme in ['dark', 'light']:
+        page.evaluate('theme=>fixtureSnapshot({settings:{theme,mode:"tun",tray:true}})', theme)
+        for state in ['idle', 'waiting', 'connecting', 'connected', 'disconnecting', 'idle', 'connected']:
+            page.evaluate('state=>fixtureSnapshot({state})', state)
+            assert page.locator('.title-brand .brand-dot').evaluate('''(e,connected)=>{
+              const colors=getComputedStyle(document.body),expected=document.createElement('span');
+              expected.style.color=colors.getPropertyValue(connected?'--accent':'--muted');
+              document.body.append(expected);
+              const matches=getComputedStyle(e).backgroundColor===getComputedStyle(expected).color;
+              expected.remove();return matches;
+            }''', state == 'connected'), (theme, state)
+    page.evaluate("fixtureSnapshot({state:'idle'})")
+    page.locator('.sidebar [data-open-add]').click()
+    expect(page.locator('#addDialog')).to_be_visible()
+    page.locator('#cancelAdd').click()
+    page.evaluate("fixtureNavigate('servers')")
+    page.locator('#page-servers [data-open-add]').click()
+    expect(page.locator('#addDialog')).to_be_visible()
+
+
 def settings_navigation(page):
     page.set_viewport_size({'width': 800, 'height': 600})
     page.locator('[data-page=settings]').click()
@@ -196,7 +219,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, connections, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, settings_navigation, startup_loading]:
+        for test in [servers, connections, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, settings_navigation, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))

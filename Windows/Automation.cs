@@ -52,6 +52,14 @@ public sealed partial class MainWindow
         connecting = true;
         try
         {
+            try { await services.StopZapretForVpn(); }
+            catch (Exception ex)
+            {
+                reconnect.Stop();
+                connectionNotice = "Не удалось остановить zapret перед подключением VPN. " + Store.Friendly(ex);
+                throw;
+            }
+            if (exiting || !reconnect.Desired) return;
             await tunnel.Connect(profile);
             if (tunnel.State == "connected") { reconnect.Healthy(); connectionNotice = ""; failedHealth = 0; lastHealth = DateTimeOffset.UtcNow; }
             else if (reconnect.Desired) { if (profile.Automation.Reconnect) reconnect.Retry(DateTimeOffset.UtcNow); else reconnect.Stop(); }

@@ -92,6 +92,25 @@ static class WebViewTests
             PumpUntil(() => result != null, "native UI regression did not complete");
             check(result == "ok", "production page, modal popover, font and interrupted animation work in Windows WebView2: " + result);
             check(!loading.Visible, "first rendered profile snapshot dismisses the native loading screen");
+            foreach (string theme in new[] { "dark", "light" })
+                foreach (string state in new[] { "idle", "waiting", "connecting", "connected", "disconnecting", "idle" })
+                {
+                    result = null;
+                    core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "snapshot", data = new { nodes = Array.Empty<object>(), selected = "", state, hasSubscription = false, settings = new { theme, mode = "tun", tray = true }, version = "fixture" } }));
+                    Complete(core.ExecuteScriptAsync($$"""
+                    (async()=>{
+                      const state={{JsonSerializer.Serialize(state)}},light={{(theme == "light" ? "true" : "false")}},title=document.querySelector('.title-brand');
+                      for(let i=0;i<100&&(title.dataset.state!==state||document.body.classList.contains('theme-light')!==light);i++)await new Promise(r=>setTimeout(r,20));
+                      if(title.dataset.state!==state||document.body.classList.contains('theme-light')!==light)throw Error('snapshot not applied');
+                      const expected=document.createElement('span');expected.style.color=state==='connected'?'var(--accent)':'var(--muted)';document.body.append(expected);
+                      const matches=getComputedStyle(title.querySelector('.brand-dot')).backgroundColor===getComputedStyle(expected).color;expected.remove();
+                      if(!matches||document.querySelector('#page-home [data-open-add]'))throw Error('connection title or home add button');
+                      return 'ok';
+                    })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
+                    """));
+                    PumpUntil(() => result != null, "native title state check did not complete");
+                    check(result == "ok", "title dot reflects VPN state without a home plus button in native WebView2: " + theme + " " + state + " " + result);
+                }
         }
         finally
         {
