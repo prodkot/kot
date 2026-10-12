@@ -8,6 +8,7 @@ using System.Security.Authentication;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 namespace Kot.WindowTests;
 
 public static class XhttpChecks
@@ -58,8 +59,8 @@ public static class XhttpChecks
             while (!await Open("127.0.0.1", bridge.Port, ct)) { if (legacy.HasExited) throw new Exception(await legacy.ReadRecentOutput(true)); await Task.Delay(100, ct); }
             lines.Clear();
             await RequestBridge(bridge, webPort, ct);
-            // This reproduces the old process-only bypass: dual-stack UDP's
-            // IPv4 packets cannot find Xray in the IPv4 owner table on Windows.
+            // Observe the previous process-based bypass for comparison. Its
+            // result depends on the Windows socket and process lookup behavior.
             bool loop = lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target));
             Console.WriteLine("LEGACY QUIC process bypass enters proxy: " + loop);
             if (!loop) Console.WriteLine("Legacy Xray routing output:\n" + CoreDiagnostics.Redact(await legacy.ReadRecentOutput(false), null));
@@ -68,14 +69,20 @@ public static class XhttpChecks
         finally { File.Delete(legacyFile); }
         lines.Clear();
         await RequestBridge(session.Bridges[h3.Id], webPort, ct);
-        bool direct = lines.Any(line => line.Contains("inbound/socks[xray-direct-in]: inbound packet connection to " + target)) && lines.Any(line => line.Contains("outbound/direct[direct]: outbound packet connection to " + target));
+        var observed = lines.ToArray();
+        static string ConnectionId(string line) => Regex.Match(line, @"\[(\d+) [^\]]+\]").Groups[1].Value;
+        // Authenticated SOCKS logs include the username before the destination;
+        // direct UDP logs omit the destination. Correlate the connection IDs.
+        var transportIds = observed.Where(line => line.Contains("inbound/socks[xray-direct-in]:") && line.Contains("inbound packet connection to " + target))
+            .Select(ConnectionId).Where(id => id.Length > 0).ToHashSet();
+        bool direct = observed.Any(line => transportIds.Contains(ConnectionId(line)) && line.Contains("outbound/direct[direct]: outbound packet connection"));
         if (!direct)
         {
             Console.WriteLine("Xray HTTP/3 routing output:\n" + await session.RecentOutput());
             Console.WriteLine("sing-box HTTP/3 routing output:\n" + string.Join('\n', lines));
         }
         check(direct, "HTTP/3 transport reaches the physical direct dialer with Windows TUN and WFP active");
-        check(!lines.Any(line => line.Contains("outbound/socks[proxy]: outbound packet connection to " + target)), "HTTP/3 transport never loops back into its own XHTTP outbound");
+        check(!observed.Any(line => line.Contains("outbound/socks[proxy]:") && (transportIds.Contains(ConnectionId(line)) || line.Contains("outbound packet connection to " + target))), "HTTP/3 transport never loops back into its own XHTTP outbound");
     }
     public static async Task Run(string singBox, string xray, Action<bool, string> check)
     {
@@ -130,8 +137,8 @@ public static class XhttpChecks
             int bridgePort = session.Bridges[node.Id].Port;
             var profile = new Profile { Nodes = [node], Selected = node.Id, ConnectionMode = "tun" };
             var configuration = Configuration.BuildConnection(profile, Port(), xhttp: session.Bridges, xhttpEgress: session.Egress);
-            // Retain the old bypass only in this fixture, to demonstrate why
-            // relying on process detection cannot protect HTTP/3 sockets.
+            // Retain the previous bypass only for the comparison fixture. The
+            // authenticated relay must select direct without relying on it.
             Xhttp.BypassCore(configuration, xray);
             File.WriteAllText(tunFile, configuration.ToJsonString());
             check(await Open("1.1.1.1", 443, ct), "XHTTP TUN baseline reaches a real TCP destination");
