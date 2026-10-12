@@ -3,7 +3,7 @@ namespace Kot.Installer;
 
 public static class SetupExtraction
 {
-    public static void Extract(string setup, string destination, string version, string? publicKey = null, Action<int>? afterWrite = null)
+    public static void Extract(string setup, string destination, string version, string? publicKey = null, Action<int>? afterWrite = null, Action<int, int>? onProgress = null)
     {
         string source = Path.GetFullPath(setup), root = Path.GetFullPath(destination);
         UpdateTransaction.SafePath(root);
@@ -22,7 +22,11 @@ public static class SetupExtraction
         try
         {
             // Manual Setup also supports reinstalling the same version.
-            transaction.Apply(archive, new Version("0.0.0"), version, publicKey, afterWrite);
+            transaction.Apply(archive, new Version("0.0.0"), version, publicKey, count =>
+            {
+                afterWrite?.Invoke(count);
+                onProgress?.Invoke(count, archive.Entries.Count);
+            });
             transaction.Commit();
         }
         catch

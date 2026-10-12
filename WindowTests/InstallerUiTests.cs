@@ -66,7 +66,8 @@ static class InstallerUiTests
         bool checkbox=(GetWindowLong(button,-16)&15) is 2 or 3;
         // A native checkbox accepts clicks on its tick/text, not the unused
         // space to the right of a short caption in a wide layout rectangle.
-        int x=checkbox?(int)(8*GetDpiForWindow(button)/96f):bounds.Right/2;
+        bool toggle=checkbox&&(GetWindowLong(button,-16)&0x1000)!=0;
+        int x=toggle?bounds.Right-(int)(28*GetDpiForWindow(button)/96f):checkbox?(int)(8*GetDpiForWindow(button)/96f):bounds.Right/2;
         var center=(IntPtr)((bounds.Bottom/2<<16)|(x&0xFFFF));
         SendMessage(button,0x201,(IntPtr)1,center);
         PostMessage(button,0x202,IntPtr.Zero,center);
@@ -89,7 +90,8 @@ static class InstallerUiTests
             check(white<pixels.Width*pixels.Height/4,$"installer button keeps its palette {state}: {stage}, {Text(button)}");
             if(checkbox)
             {
-                int x=Math.Clamp((int)(3*GetDpiForWindow(window)/96f),1,pixels.Width-1);
+                bool toggle=(GetWindowLong(button,-16)&0x1000)!=0;
+                int x=toggle?pixels.Width-(int)(20*GetDpiForWindow(window)/96f):Math.Clamp((int)(3*GetDpiForWindow(window)/96f),1,pixels.Width-1);
                 var tick=pixels.GetPixel(x,pixels.Height/2);
                 check(tick.B<180,$"native checkbox keeps its dark/accent fill {state}: {stage}");
             }
@@ -164,7 +166,7 @@ static class InstallerUiTests
         SetForegroundWindow(window);
         Thread.Sleep(250); GetWindowRect(window,out var bounds); GetClientRect(window,out var client);
         float scale=GetDpiForWindow(window)/96f;
-        check(Math.Abs(client.Right-640*scale)<=2&&Math.Abs(client.Bottom-480*scale)<=2,"custom Setup has a 640 by 480 client area at native DPI: "+name);
+        check(Math.Abs(client.Right-800*scale)<=2&&Math.Abs(client.Bottom-600*scale)<=2,"custom Setup has a 800 by 600 client area at native DPI: "+name);
         check((GetWindowLong(window,-16)&0xC00000)==0,"custom Setup uses its own borderless title: "+name);
         using var bitmap=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
         using(var graphics=Graphics.FromImage(bitmap)) { var dc=graphics.GetHdc(); try { check(PrintWindow(window,dc,0),"capture real installer window: "+name); } finally {graphics.ReleaseHdc(dc);} }
@@ -174,21 +176,21 @@ static class InstallerUiTests
             using(var graphics=Graphics.FromImage(screen)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,screen.Size);
             screen.Save(Path.Combine(folder,name+"-screen.png"),ImageFormat.Png);
             int headerPixels=0;
-            for(int y=(int)(18*scale);y<(int)(48*scale);y++)
-                for(int x=(int)(36*scale);x<(int)(210*scale);x++)
+            for(int y=(int)(8*scale);y<(int)(32*scale);y++)
+                for(int x=(int)(22*scale);x<(int)(160*scale);x++)
                 { var color=screen.GetPixel(x,y); if(color.R>130&&color.G>130&&color.B>100) headerPixels++; }
             check(headerPixels>100*scale*scale,"custom Setup header remains visible on the desktop: "+name);
         }
-        var pixel=bitmap.GetPixel((int)(20*scale),(int)(100*scale));
+        var pixel=bitmap.GetPixel((int)(230*scale),(int)(60*scale));
         check(pixel.R==21&&pixel.G==23&&pixel.B==24,"custom Setup paints the app background: "+name);
         if(name is "setup-welcome" or "setup-finish" or "setup-uninstall")
         {
             int textPixels=0,iconPixels=0;
-            for(int y=(int)(190*scale);y<(int)(238*scale);y++)
-                for(int x=(int)(36*scale);x<(int)(604*scale);x++)
+            for(int y=(int)(98*scale);y<(int)(250*scale);y++)
+                for(int x=(int)(253*scale);x<(int)(765*scale);x++)
                 { var color=bitmap.GetPixel(x,y); if(color.R>130&&color.G>130&&color.B>100) textPixels++; }
-            for(int y=(int)(88*scale);y<(int)(164*scale);y++)
-                for(int x=(int)(36*scale);x<(int)(112*scale);x++)
+            for(int y=(int)(69*scale);y<(int)(105*scale);y++)
+                for(int x=(int)(23*scale);x<(int)(59*scale);x++)
                 { var color=bitmap.GetPixel(x,y); if(color.G>140&&color.R>100) iconPixels++; }
             if(textPixels<=100*scale*scale||iconPixels<=50*scale*scale)
             {
@@ -221,17 +223,35 @@ static class InstallerUiTests
         try
         {
             var cancel=Start(setup,"/D="+target); processes.Add(cancel); var window=Window(cancel);
-            Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
+            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
             Click(GetDlgItem(window,9009)); Close(cancel,false);
             check(!Directory.Exists(target),"cancelling custom Setup before installation creates no application files");
+            string damaged=Path.Combine(folder,"damaged-setup.exe"); File.Copy(setup,damaged,true);
+            using(var package=new FileStream(damaged,FileMode.Open,FileAccess.ReadWrite))
+            { package.Position=package.Length/2; int value=package.ReadByte(); package.Position--; package.WriteByte((byte)(value^1)); }
+            var rejected=Start(damaged,"/D="+target); processes.Add(rejected); window=Window(rejected);
+            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"tampered setup welcome");
+            Click(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"tampered setup directory");
+            Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка прервалась.")!=IntPtr.Zero,"custom signed-payload error",120);
+            Capture(window,folder,"setup-error",check);
+            check(!Directory.Exists(target),"tampered graphical Setup creates no application files");
+            check(ByText(window,"Можно подключаться.")==IntPtr.Zero,"failed install never shows success");
+            Click(GetDlgItem(window,1)); Close(rejected,false);
+            check(rejected.ExitCode!=0,"failed graphical Setup returns a failing exit code");
+            File.Delete(damaged);
             var install=Start(setup,"/D="+target); processes.Add(install); window=Window(install);
-            Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"welcome again");
+            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"welcome again");
             MouseClick(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory");
             var edit=ById(window,1019); check(Text(edit)==target,"native directory page preserves the Unicode destination");
+            var invalid=new StringBuilder("relative-path"); SendTextMessage(edit,0xC,IntPtr.Zero,invalid,2,2000,out _);
+            Wait(()=>!IsWindowEnabled(GetDlgItem(window,1)),"invalid directory rejects Next");
+            var valid=new StringBuilder(target); SendTextMessage(edit,0xC,IntPtr.Zero,valid,2,2000,out _);
+            Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"valid directory restores Next");
+            check(true,"native directory validation rejects a relative path and accepts Unicode again");
             var desktop=ById(window,1008); check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==(IntPtr)1,"desktop shortcut starts enabled");
             MouseClick(desktop); Wait(()=>SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"native checkbox mouse toggle");
             check(true,"native checkbox click toggles the desktop option");
-            MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Привет, это kot.")!=IntPtr.Zero,"back to welcome");
+            MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"back to welcome");
             var next=GetDlgItem(window,1); SendMessage(window,0x28,next,(IntPtr)1);
             SendMessage(next,0x100,(IntPtr)32,(IntPtr)1);
             PostMessage(next,0x101,(IntPtr)32,(IntPtr)unchecked((int)0xC0000001));
@@ -242,9 +262,9 @@ static class InstallerUiTests
             SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); ButtonStates(window,folder,"setup-options",check); Capture(window,folder,"setup-options",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"progress"); Capture(window,folder,"setup-progress",check);
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
-            Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Готово. Можно подключаться.")!=IntPtr.Zero,"finish");
+            Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Можно подключаться.")!=IntPtr.Zero,"finish");
             ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
-            var run=ByText(window,"Запустить kot."); check(run!=IntPtr.Zero,"finish offers application launch"); SendMessage(run,0xF1,IntPtr.Zero,IntPtr.Zero);
+            var run=ByText(window,"Открыть kot после установки"); check(run!=IntPtr.Zero,"finish offers application launch"); SendMessage(run,0xF1,IntPtr.Zero,IntPtr.Zero);
             Click(GetDlgItem(window,1)); Close(install,true);
             check(File.Exists(Path.Combine(target,"Kot.exe"))&&File.Exists(Path.Combine(target,"Uninstall.exe")),"custom pages install the verified client in a Unicode path");
             string shortcut=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),"kot..lnk");

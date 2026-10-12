@@ -6,6 +6,7 @@ Var Dialog
 Var Control
 Var DesktopShortcut
 Var RunApp
+Var InstallError
 Page custom Welcome
 Page directory "" OptionsShow OptionsLeave
 Page instfiles "" ProgressShow
@@ -23,40 +24,46 @@ FunctionEnd
 !macroend
 !insertmacro InitSkin "" "install"
 !insertmacro InitSkin "un" "uninstall"
+!macro FailInstall
+  IfSilent +2
+  KotUI::Failure /NOUNLOAD "$InstallError"
+  SetErrorLevel 1
+  Abort
+!macroend
 
 !macro Label text x y width height role
   ${NSD_CreateLabel} 0 0 1 1 "${text}"
   Pop $Control
   KotUI::Control /NOUNLOAD "$Control" "${x}" "${y}" "${width}" "${height}" "${role}"
 !macroend
-!macro NewPage
+!macro NewPage role
   nsDialogs::Create 1018
   Pop $Dialog
   ${If} $Dialog == error
     Abort
   ${EndIf}
-  KotUI::Page /NOUNLOAD "$Dialog" "custom"
+  KotUI::Page /NOUNLOAD "$Dialog" "${role}"
 !macroend
 !macro ButtonText text
   GetDlgItem $Control $HWNDPARENT 1
   SendMessage $Control ${WM_SETTEXT} 0 "STR:${text}"
 !macroend
 Function Welcome
-  ; NSIS runs a native page's leave callback only on Next. On Back the old
-  ; directory dialog is still alive until nsDialogs::Create replaces it.
+  ; Native directory pages only call Leave on Next. Preserve the checkbox on Back too.
   GetDlgItem $Control $Dialog 1008
   ${If} $Control != 0
     SendMessage $Control ${BM_GETCHECK} 0 0 $DesktopShortcut
   ${EndIf}
-  !insertmacro NewPage
-  !insertmacro Label "" 0 6 76 76 "hero"
-  !insertmacro Label "Привет, это kot." 0 108 568 44 "heading"
-  !insertmacro Label "Всё для подключения в одном месте.$\r$\nУстановим приложение и подготовим его к работе." 0 168 568 58 "body"
-  ${NSD_CreateButton} 0 0 1 1 "Лицензия"
+  !insertmacro NewPage "welcome"
+  !insertmacro Label "ПРИВЕТ, ЭТО KOT" 0 2 512 22 "overline"
+  !insertmacro Label "Всё готово$\r$\nдля связи." 0 26 512 82 "heading"
+  !insertmacro Label "Установим приложение и подготовим его к работе.$\r$\nВаши подключения будут в одном месте." 0 116 512 44 "small"
+  ${NSD_CreateButton} 0 0 1 1 "Лицензия MIT"
   Pop $Control
-  KotUI::Control /NOUNLOAD "$Control" "0" "254" "150" "32" "button"
+  KotUI::Control /NOUNLOAD "$Control" "0" "369" "120" "28" "button"
   ${NSD_OnClick} $Control License
-  !insertmacro ButtonText "Далее"
+  !insertmacro Label "Настройки и подписки сохранятся при обновлении." 0 407 512 22 "small"
+  !insertmacro ButtonText "Продолжить"
   nsDialogs::Show
 FunctionEnd
 Function License
@@ -78,16 +85,26 @@ Function OptionsLeave
 FunctionEnd
 Function ProgressShow
   FindWindow $Dialog "#32770" "" $HWNDPARENT
-  KotUI::Page /NOUNLOAD "$Dialog" "progress"
+  Delete "$PLUGINSDIR\extract-progress.txt"
+  KotUI::Page /NOUNLOAD "$Dialog" "progress" "$PLUGINSDIR\extract-progress.txt"
 FunctionEnd
 Function Finish
-  !insertmacro NewPage
-  !insertmacro Label "" 0 6 76 76 "hero"
-  !insertmacro Label "Готово. Можно подключаться." 0 108 568 48 "heading"
-  !insertmacro Label "kot. установлен и готов к работе.$\r$\nДобавьте подписку или выберите сохранённый сервер." 0 174 568 54 "body"
-  ${NSD_CreateCheckbox} 0 0 1 1 "Запустить kot."
+  !insertmacro NewPage "finish"
+  !insertmacro Label "Можно подключаться." 0 78 512 48 "heading"
+  !insertmacro Label "kot. установлен и готов к работе.$\r$\nДобавьте подписку или выберите сохранённый сервер." 0 140 512 48 "small"
+  !insertmacro Label "Версия" 0 204 110 22 "small"
+  !insertmacro Label "${VERSION} · Windows x64" 280 204 232 22 "body"
+  !insertmacro Label "Установлено в" 0 247 110 22 "small"
+  !insertmacro Label "$INSTDIR" 130 245 382 28 "body"
+  !insertmacro Label "Ярлык на рабочем столе" 0 293 300 22 "small"
+  ${If} $DesktopShortcut == ${BST_CHECKED}
+    !insertmacro Label "Создан" 400 293 112 22 "body"
+  ${Else}
+    !insertmacro Label "Не создавался" 400 293 112 22 "body"
+  ${EndIf}
+  ${NSD_CreateCheckbox} 0 0 1 1 "Открыть kot после установки"
   Pop $RunApp
-  KotUI::Control /NOUNLOAD "$RunApp" "0" "246" "568" "28" "checkbox"
+  KotUI::Control /NOUNLOAD "$RunApp" "0" "347" "512" "36" "checkbox"
   ${NSD_Check} $RunApp
   GetDlgItem $Control $HWNDPARENT 3
   ShowWindow $Control ${SW_HIDE}
@@ -105,15 +122,15 @@ Function FinishLeave
   Quit
 FunctionEnd
 Function un.Confirm
-  !insertmacro NewPage
-  !insertmacro Label "" 0 6 76 76 "hero"
-  !insertmacro Label "Удалить kot.?" 0 108 568 44 "heading"
-  !insertmacro Label "Файлы приложения и его ярлыки будут удалены.$\r$\nВаш профиль, подписки и статистика останутся." 0 174 568 56 "body"
-  !insertmacro Label "$INSTDIR" 0 250 568 42 "muted"
+  !insertmacro NewPage "uninstall"
+  !insertmacro Label "" 0 0 76 76 "hero"
+  !insertmacro Label "Удалить kot.?" 0 103 512 48 "heading"
+  !insertmacro Label "Файлы приложения и его ярлыки будут удалены.$\r$\nВаш профиль, подписки и статистика останутся." 0 174 512 56 "body"
+  !insertmacro Label "$INSTDIR" 0 266 512 50 "small"
   !insertmacro ButtonText "Удалить"
   nsDialogs::Show
 FunctionEnd
 Function un.ProgressShow
   FindWindow $Dialog "#32770" "" $HWNDPARENT
-  KotUI::Page /NOUNLOAD "$Dialog" "progress"
+  KotUI::Page /NOUNLOAD "$Dialog" "progress" ""
 FunctionEnd

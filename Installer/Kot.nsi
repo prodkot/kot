@@ -54,10 +54,8 @@ Section "kot." SEC_MAIN
   ${If} ${FileExists} "$INSTDIR\Kot.exe"
     ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
     ${If} $0 != 0
-      IfSilent +2
-      MessageBox MB_ICONSTOP "Не удалось закрыть kot. Закройте приложение и повторите установку."
-      SetErrorLevel 1
-      Abort
+      StrCpy $InstallError "Не удалось закрыть kot. Закройте приложение и повторите установку."
+      !insertmacro FailInstall
     ${EndIf}
   ${EndIf}
   InitPluginsDir
@@ -68,7 +66,7 @@ Section "kot." SEC_MAIN
   DetailPrint "Проверка подписи и установка файлов kot."
   ClearErrors
   StrCpy $0 -1
-  ExecWait '$\"$PLUGINSDIR\Kot.Setup.Extract.exe$\" --extract $\"$EXEPATH$\" $\"$INSTDIR$\" $\"${VERSION}$\" $\"$PLUGINSDIR\extract-error.txt$\"' $0
+  ExecWait '$\"$PLUGINSDIR\Kot.Setup.Extract.exe$\" --extract $\"$EXEPATH$\" $\"$INSTDIR$\" $\"${VERSION}$\" $\"$PLUGINSDIR\extract-error.txt$\" $\"$PLUGINSDIR\extract-progress.txt$\"' $0
   ${If} ${Errors}
     StrCpy $0 1
   ${EndIf}
@@ -80,11 +78,11 @@ Section "kot." SEC_MAIN
       FileReadUTF16LE $1 $2
       FileClose $1
     ${EndIf}
-    IfSilent +2
-    MessageBox MB_ICONSTOP "$2"
-    SetErrorLevel 1
-    Abort
+    StrCpy $InstallError "$2"
+    !insertmacro FailInstall
   ${EndIf}
+  IfSilent +2
+  KotUI::Stage /NOUNLOAD "3"
   SetOutPath "$INSTDIR"
   !include "install-cleanup.nsh"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -98,10 +96,8 @@ Section "kot." SEC_MAIN
   ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --register-shortcuts' $0
   ${If} $0 != 0
-    IfSilent +2
-    MessageBox MB_ICONSTOP "Не удалось зарегистрировать ярлыки kot. Повторите установку."
-    SetErrorLevel 1
-    Abort
+    StrCpy $InstallError "Не удалось зарегистрировать ярлыки kot. Повторите установку."
+    !insertmacro FailInstall
   ${EndIf}
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayName" "kot."
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayVersion" "${VERSION}"
@@ -110,32 +106,32 @@ Section "kot." SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoRepair" 1
+  IfSilent +2
+  KotUI::Stage /NOUNLOAD "4"
 SectionEnd
 Section "Uninstall"
   SetRegView 64
   SetShellVarContext all
   ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
   ${If} $0 != 0
-    IfSilent +2
-    MessageBox MB_ICONSTOP "Не удалось закрыть kot. Закройте приложение и повторите удаление."
-    SetErrorLevel 1
-    Abort
+    StrCpy $InstallError "Не удалось закрыть kot. Закройте приложение и повторите удаление."
+    !insertmacro FailInstall
   ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-startup' $0
   ${If} $0 != 0
-    IfSilent +2
-    MessageBox MB_ICONSTOP "Не удалось отключить автозапуск kot. Удаление остановлено."
-    SetErrorLevel 1
-    Abort
+    StrCpy $InstallError "Не удалось отключить автозапуск kot. Удаление остановлено."
+    !insertmacro FailInstall
   ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-kill-switch' $0
   ${If} $0 != 0
-    IfSilent +2
-    MessageBox MB_ICONSTOP "Не удалось снять блокировку сети. Удаление остановлено."
-    SetErrorLevel 1
-    Abort
+    StrCpy $InstallError "Не удалось снять блокировку сети. Удаление остановлено."
+    !insertmacro FailInstall
   ${EndIf}
+  IfSilent +2
+  KotUI::Stage /NOUNLOAD "2"
   !include "uninstall-files.nsh"
+  IfSilent +2
+  KotUI::Stage /NOUNLOAD "3"
   Delete "$SMPROGRAMS\kot.\kot..lnk"
   Delete "$SMPROGRAMS\kot.\Удалить kot..lnk"
   RMDir "$SMPROGRAMS\kot."
@@ -144,4 +140,6 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   ; Profiles, subscription secrets and HWID live in LocalAppData and are preserved.
+  IfSilent +2
+  KotUI::Stage /NOUNLOAD "4"
 SectionEnd
