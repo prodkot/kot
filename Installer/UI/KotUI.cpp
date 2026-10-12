@@ -60,7 +60,7 @@ static void Check(HDC dc,int x,int y,COLORREF color) {
     MoveToEx(dc,Scale(x),Scale(y+5),nullptr); LineTo(dc,Scale(x+4),Scale(y+9)); LineTo(dc,Scale(x+11),Scale(y+1)); SelectObject(dc,old); DeleteObject(pen);
 }
 static void Brand(HDC dc,int x,int y,bool large) {
-    HFONT font=large?brandFont:bold; RECT bounds=Area(x,y,110,large?36:24);
+    HFONT font=large?brandFont:bold;
     TextAt(dc,L"kot",x,y,110,large?36:24,font,text,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
     auto old=SelectObject(dc,font); SIZE size{}; GetTextExtentPoint32W(dc,L"kot",3,&size); SelectObject(dc,old);
     RECT dot{Scale(x)+size.cx+Scale(3),Scale(y+(large?16:11)),Scale(x)+size.cx+Scale(large?7:6),Scale(y+(large?20:14))};
@@ -283,7 +283,7 @@ static void RefreshProgress() {
         if(file!=INVALID_HANDLE_VALUE) {
             char data[24]{}; DWORD length=0;
             if(ReadFile(file,data,23,&length,nullptr)&&length) {
-                percentage=std::clamp(atoi(data),0,94);
+                percentage=std::max(0,std::min(atoi(data),94));
                 if(percentage>0) InterlockedExchange(&phase,2);
             }
             CloseHandle(file);
