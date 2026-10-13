@@ -100,7 +100,9 @@ internal static class Program
     }
     [STAThread] static int Main(string[] args)
     {
-        ApplicationConfiguration.Initialize();
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
         if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
         if (args.Length == 3 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
@@ -131,7 +133,8 @@ internal static class Program
         var power = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "power");
         Check(!power.Enabled, "connect disabled without a subscription");
         menu.Update("dark", "connected", "Test & node\nwith control", true);
-        Check(menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("Test & node") && !menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("\n"), "server label preserves ampersands and removes control characters");
+        string statusText = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text ?? "";
+        Check(statusText.Contains("Test & node") && !statusText.Contains("\n"), "server label preserves ampersands and removes control characters");
         Check(power.Enabled && power.Text == "Отключить", "tray connection action follows state");
         power.PerformClick(); Check(toggled == 1, "tray action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "open").PerformClick(); Check(opened == 1, "open action executes once");

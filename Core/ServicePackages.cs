@@ -8,6 +8,12 @@ namespace Kot.Core;
 public sealed record ServiceRelease(string Id, string Version, Uri Download, long Size, string Sha256, Uri Page);
 public static class ServicePackages
 {
+    static readonly uint[] CrcTable = Enumerable.Range(0, 256).Select(value =>
+    {
+        uint crc = (uint)value;
+        for (int bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ ((crc & 1) == 0 ? 0 : 0xedb88320u);
+        return crc;
+    }).ToArray();
     public static string TelegramLicense
     {
         get { using var reader = new StreamReader(typeof(ServicePackages).Assembly.GetManifestResourceStream("Kot.Core.TelegramProxyLicense.txt")!); return reader.ReadToEnd(); }
@@ -49,7 +55,7 @@ public static class ServicePackages
     {
         // Revalidate the descriptor even when it came from a local test or manifest.
         if (!ValidVersion(release.Version) || release.Download.AbsoluteUri != $"https://github.com/{Repository(release.Id)}/releases/download/{release.Version}/{(release.Id == "zapret" ? "zapret-discord-youtube-" + release.Version.TrimStart('v') + ".zip" : "TgWsProxy_windows.exe")}" || release.Size is <= 0 or > MaxDownload || !Regex.IsMatch(release.Sha256, "^[a-f0-9]{64}$")) throw new UserError("Некорректный пакет сервиса.");
-        using var http = Client(transport); Uri url = release.Download;
+        using var http = Client(transport); Uri url = release.Download; bool created = false;
         try
         {
             for (int redirects = 0; redirects <= 4; redirects++)
@@ -67,6 +73,7 @@ public static class ServicePackages
                 using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                 await using var input = await response.Content.ReadAsStreamAsync(ct);
                 await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true);
+                created = true;
                 byte[] buffer = new byte[65536]; long total = 0; int read;
                 while ((read = await input.ReadAsync(buffer, ct)) != 0)
                 {
@@ -77,7 +84,7 @@ public static class ServicePackages
                 return;
             }
         }
-        catch { try { File.Delete(path); } catch { } throw; }
+        catch { if (created) { try { File.Delete(path); } catch { } } throw; }
         throw new UserError("Пакет не загружен.");
     }
     static async Task<byte[]> ReadLimited(HttpContent content, int limit, CancellationToken ct)
@@ -95,13 +102,29 @@ public static class ServicePackages
         {
             ct.ThrowIfCancellationRequested(); string name = entry.FullName.Replace('\\', '/');
             string[] segments = name.TrimEnd('/').Split('/');
-            if (segments.Any(s => s.Length == 0 || s is "." or ".." || s.IndexOfAny([':', '\0', '?', '*', '<', '>', '|', '"']) >= 0 || s.EndsWith('.') || s.EndsWith(' ') || Regex.IsMatch(s, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase)) || name.StartsWith('/') || !seen.Add(name.TrimEnd('/')) || (entry.ExternalAttributes >> 16 & 0xF000) == 0xA000)
+            if (segments.Any(s => s.Length == 0 || s is "." or ".." || s.Any(char.IsControl) || s.IndexOfAny([':', '\0', '?', '*', '<', '>', '|', '"']) >= 0 || s.EndsWith('.') || s.EndsWith(' ') || Regex.IsMatch(s, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase)) || name.StartsWith('/') || !seen.Add(name.TrimEnd('/')) || (entry.ExternalAttributes >> 16 & 0xF000) == 0xA000)
                 throw new UserError("Небезопасный путь в пакете сервиса.");
             string target = Path.GetFullPath(Path.Combine(destination, name)); if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new UserError("Пакет выходит за папку установки.");
             total += entry.Length; if (total > 128 * 1024 * 1024 || entry.Length > MaxDownload) throw new UserError("Распакованный пакет слишком большой.");
             if (name.EndsWith('/')) { Directory.CreateDirectory(target); continue; }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            entry.ExtractToFile(target, overwrite: false);
+            bool created = false;
+            try
+            {
+                using var input = entry.Open();
+                using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                created = true; byte[] buffer = new byte[65536]; long written = 0; int read; uint crc = uint.MaxValue;
+                while ((read = input.Read(buffer)) > 0)
+                {
+                    ct.ThrowIfCancellationRequested(); written += read;
+                    if (written > entry.Length || written > MaxDownload) throw new UserError("Файл пакета превысил заявленный размер.");
+                    for (int i = 0; i < read; i++) crc = (crc >> 8) ^ CrcTable[(crc ^ buffer[i]) & 255];
+                    output.Write(buffer, 0, read);
+                }
+                if (written != entry.Length) throw new UserError("Файл пакета распакован не полностью.");
+                if (~crc != entry.Crc32) throw new UserError("Контрольная сумма файла пакета не совпала.");
+            }
+            catch { if (created) File.Delete(target); throw; }
         }
     }
 }

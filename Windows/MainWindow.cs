@@ -238,13 +238,13 @@ public sealed partial class MainWindow : WindowChrome
                 if (action == "refresh" && profile.Local) throw new UserError("Локальный профиль обновляется повторным импортом файла.");
                 string address = action == "import" ? data.GetProperty("url").GetString()?.Trim() ?? "" : profile.Address;
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
-                AppLog.Secret(address); AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
+                AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
                 if (name.Length > 60) throw new UserError("Название слишком длинное.");
                 SubscriptionResult result;
                 using (var fetchCancellation = new CancellationTokenSource())
                 {
                     importAttempt = fetchCancellation;
-                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; if (device != null) AppLog.Secret(device.Hwid); result = await Subscriptions.Download(address, fetchCancellation.Token, device: device); }
+                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; result = await Subscriptions.Download(address, fetchCancellation.Token, device: device); }
                     finally { if (importAttempt == fetchCancellation) importAttempt = null; }
                 }
                 if (exiting) return;
@@ -298,11 +298,14 @@ public sealed partial class MainWindow : WindowChrome
             case "downloadUpdate": await DownloadUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "deferUpdate": DeferUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "remove":
+                string removedSubscription = data.GetProperty("id").GetString() ?? "";
+                if (removedSubscription.Length == 0 || removedSubscription != profile.ActiveSubscription || profile.Subscriptions.All(s => s.Id != removedSubscription))
+                    throw new UserError("Подписка уже удалена или выбрана другая подписка.");
                 await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
-                profile.Subscriptions.RemoveAll(s => s.Id == profile.ActiveSubscription);
+                profile.Subscriptions.RemoveAll(s => s.Id == removedSubscription);
                 profile.ActiveSubscription = ""; profile.Address = ""; profile.Local = false; profile.SubscriptionUsage = null; profile.Nodes = []; profile.Selected = ""; profile.Name = "Подписка"; profile.Updated = null; profile.Favorites = []; warnings = [];
                 if (profile.Subscriptions.Count > 0) profile.Activate(profile.Subscriptions[0].Id); else reconnect.Stop();
-                Store.Save(profile); ResumeDesired(); break;
+                Store.Save(profile); refreshAttempts.Remove(removedSubscription); AppLog.Register(profile); ResumeDesired(); break;
             default: throw new UserError("Неизвестная команда.");
         }
     }

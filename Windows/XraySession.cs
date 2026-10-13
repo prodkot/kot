@@ -36,7 +36,6 @@ public sealed class XraySession : IAsyncDisposable
                 do { listener = new(IPAddress.Loopback, 0); listener.Start(); port = ((IPEndPoint)listener.LocalEndpoint).Port; if (excludedPorts.Contains(port)) listener.Stop(); } while (excludedPorts.Contains(port));
                 reservations.Add(listener);
                 string user = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), password = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-                AppLog.Secret(user); AppLog.Secret(password);
                 return new(port, user, password);
             }
             session.Egress = Reserve();

@@ -103,11 +103,11 @@ public sealed partial class MainWindow
                     var due = profile.Subscriptions.FirstOrDefault(s => !s.Local && now - (s.Updated ?? DateTimeOffset.MinValue) >= TimeSpan.FromHours(profile.Automation.RefreshHours) && (!refreshAttempts.TryGetValue(s.Id, out var tried) || now - tried >= TimeSpan.FromMinutes(15)));
                     if (due != null)
                     {
-                        refreshAttempts[due.Id] = now; AppLog.Secret(due.Address);
+                        refreshAttempts[due.Id] = now;
                         using var ct = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); importAttempt = ct;
                         try
                         {
-                            var device = profile.SendHwid ? DeviceIdentity.Get() : null; if (device != null) AppLog.Secret(device.Hwid);
+                            var device = profile.SendHwid ? DeviceIdentity.Get() : null;
                             var result = await Subscriptions.Download(due.Address, ct.Token, device: device);
                             if (exiting) return;
                             if (due.Id == profile.ActiveSubscription) await ApplySubscription(due.Address, due.Name, result, false);
@@ -131,17 +131,17 @@ public sealed partial class MainWindow
     }
     async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing)
     {
-        await StopTools();
-        profile.CaptureActive();
         var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
+        if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
+        await StopTools();
+        profile.CaptureActive();
         bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(n => n.Id).Order().SequenceEqual(result.Nodes.Select(n => n.Id).Order()) : result.Nodes.All(n => n.Id != profile.Selected));
         if (restart) await tunnel.Stop(); await ping.Stop(clear: true);
         if (switchProfile)
         {
             if (saved == null)
             {
-                if (profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
                 saved = new SavedSubscription { Address = address, Name = name.Length > 0 ? name : "Подписка" }; profile.Subscriptions.Add(saved);
             }
             saved.Nodes = result.Nodes; saved.Usage = result.Usage; saved.Updated = DateTimeOffset.UtcNow; if (saved.Selected != "auto" && saved.Nodes.All(n => n.Id != saved.Selected)) saved.Selected = result.Nodes[0].Id;
@@ -170,11 +170,18 @@ public sealed partial class MainWindow
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (new FileInfo(dialog.FileName).Length > 20 * 1024 * 1024 + 52) throw new UserError("Резервная копия слишком большая.");
         byte[] data = await File.ReadAllBytesAsync(dialog.FileName); var restored = await Task.Run(() => Backup.Import(data, password));
-        AppLog.Register(restored); await services.StopAll(); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
-        if (restored.Startup != profile.Startup) await Startup.Set(restored.Startup);
         // Keep a recoverable encrypted copy before replacing a working profile.
         string old = Path.Combine(Store.Folder, "profile.bin"); if (File.Exists(old)) File.Copy(old, Path.Combine(Store.Folder, "profile-before-restore.bin"), true);
-        KillSwitch.Release(); Store.Save(restored); profile = restored; warnings = []; backgroundError = ""; refreshAttempts.Clear(); routingAttempts.Clear(); routingErrors.Clear(); geoIpAttempt = null; geoIpError = ""; lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
+        await StopTools(); await services.StopAll(); reconnect.Stop(); await ping.Stop(clear: true); await tunnel.Stop();
+        bool startupChanged = restored.Startup != profile.Startup;
+        if (startupChanged) await Startup.Set(restored.Startup);
+        try { Store.Save(restored); }
+        catch
+        {
+            if (startupChanged) await Startup.Set(profile.Startup);
+            throw;
+        }
+        profile = restored; AppLog.Register(profile); KillSwitch.Release(); warnings = []; backgroundError = ""; refreshAttempts.Clear(); routingAttempts.Clear(); routingErrors.Clear(); geoIpAttempt = null; geoIpError = ""; lastPing = DateTimeOffset.UtcNow; AppLog.Write("backup", "profile restored; connection remains stopped");
     }
     void DisposeAutomation()
     {

@@ -122,7 +122,6 @@ public sealed class Tunnel
             AppLog.Write("tunnel", "build configuration");
             do { apiPort = ReservePort(); } while (apiPort == port);
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            AppLog.Secret(apiSecret);
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
             xray = await XraySession.Start(Xhttp.ConnectionNodes(profile), ct, null, port, apiPort, systemPort);

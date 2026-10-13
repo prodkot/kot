@@ -52,7 +52,6 @@ internal sealed class ManagedServices
             if (File.Exists(path) && new FileInfo(path).Length <= 1024 * 1024) history = JsonSerializer.Deserialize<List<StrategyTestRun>>(File.ReadAllText(path), json)?.TakeLast(10).Where(r => r != null && r.Results.Count <= 64 && r.Baseline.Count <= 12 && r.Results.All(v => v.Checks.Count <= 12)).ToList() ?? [];
         }
         catch (Exception ex) { AddLog(Get("zapret"), "История тестов не прочитана: " + Store.Friendly(ex)); }
-        RegisterSecret();
     }
     Entry Get(string id) { ServicePackages.Repository(id); return entries.Single(e => e.Id == id); }
     bool IsBusy(Entry entry) => entry.Busy || entry.Id == "zapret" && preparingVpn;
@@ -82,7 +81,6 @@ internal sealed class ManagedServices
         try { File.WriteAllBytes(temp, data); File.Move(temp, path, true); } finally { if (File.Exists(temp)) File.Delete(temp); }
     }
     void Commit(Entry entry, ServiceInstallation install) => Atomic(Manifest(entry.Id), JsonSerializer.SerializeToUtf8Bytes(install, json));
-    void RegisterSecret() { AppLog.Secret(options().Telegram.Secret); AppLog.Secret("dd" + options().Telegram.Secret); }
     void AddLog(Entry entry, string message)
     {
         string clean = AppLog.Clean(message); if (clean.Length > 1500) clean = clean[..1500];
@@ -253,7 +251,7 @@ internal sealed class ManagedServices
     {
         if (entry.Process != null && !entry.Process.HasExited) return;
         if (entry.Process != null) { entry.Process.Dispose(); entry.Process = null; }
-        ct.ThrowIfCancellationRequested(); string exe = Exe(entry); RegisterSecret(); options().Validate();
+        ct.ThrowIfCancellationRequested(); string exe = Exe(entry); options().Validate();
         if (entry.Id == "telegram")
         {
             if (await PortOpen(options().Telegram.Port, ct)) throw new UserError("Локальный порт Telegram занят. Измените порт или остановите другой прокси.");
@@ -413,17 +411,22 @@ internal sealed class ManagedServices
         try
         {
             foreach (var entry in entries)
-                if (!IsBusy(entry) && entry.Process != null && (entry.Process.HasExited || entry.Id == "telegram" && !await PortOpen(options().Telegram.Port, lifetime)))
-                {
-                    AddLog(entry, entry.Process.HasExited ? "Процесс завершился, код " + entry.Process.ExitCode : "Локальный порт прокси больше не доступен");
-                    entry.Error = "Сервис завершился. Проверьте журнал и запустите его снова."; await Stop(entry); changed();
-                }
+            {
+                if (IsBusy(entry) || entry.Process is not { } process) continue;
+                if (!process.HasExited && (entry.Id != "telegram" || await PortOpen(options().Telegram.Port, lifetime))) continue;
+                // A stop/restart can replace or dispose the process while the port check awaits.
+                if (shuttingDown || lifetime.IsCancellationRequested || IsBusy(entry) || entry.Process != process) continue;
+                AddLog(entry, process.HasExited ? "Процесс завершился, код " + process.ExitCode : "Локальный порт прокси больше не доступен");
+                entry.Error = "Сервис завершился. Проверьте журнал и запустите его снова."; await Stop(entry); changed();
+            }
+            if (shuttingDown || lifetime.IsCancellationRequested) return;
             if (DateTimeOffset.UtcNow >= nextCheck && options().CheckUpdates && !Testing)
             {
                 nextCheck = DateTimeOffset.UtcNow.AddHours(24);
                 foreach (var entry in entries) if (!IsBusy(entry)) Begin(entry.Id, "check");
             }
         }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         finally { polling = false; }
     }
     public async Task StopAll(bool exit = false)

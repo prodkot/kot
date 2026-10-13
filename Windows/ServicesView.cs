@@ -32,7 +32,7 @@ public sealed partial class MainWindow
                     if (!data.GetProperty("settings").TryGetProperty("secret", out var secret) || string.IsNullOrEmpty(secret.GetString())) telegram.Secret = profile.Services.Telegram.Secret;
                     telegram.Validate(); var old = profile.Services.Telegram; profile.Services.Telegram = telegram;
                     try { Store.Save(profile); } catch { profile.Services.Telegram = old; throw; }
-                    AppLog.Secret(old.Secret); AppLog.Secret(telegram.Secret);
+                    AppLog.Register(profile);
                 }
                 else throw new UserError("Неизвестный сервис.");
                 if (data.TryGetProperty("restart", out var restart) && restart.GetBoolean()) services.Begin(id, "restart");
@@ -45,7 +45,7 @@ public sealed partial class MainWindow
                 services.EnsureEditable("telegram"); string oldSecret = profile.Services.Telegram.Secret;
                 profile.Services.Telegram.Secret = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
                 try { Store.Save(profile); } catch { profile.Services.Telegram.Secret = oldSecret; throw; }
-                AppLog.Secret(oldSecret); AppLog.Secret(profile.Services.Telegram.Secret); if (services.IsRunning("telegram")) services.Begin("telegram", "restart"); break;
+                AppLog.Register(profile); if (services.IsRunning("telegram")) services.Begin("telegram", "restart"); break;
             case "serviceCopyLink": Clipboard.SetText(profile.Services.Telegram.Link); break;
             case "serviceOpenTelegram":
                 services.EnsureEditable("telegram");

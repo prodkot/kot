@@ -550,8 +550,13 @@
     try{await rpc('pingSettings',{mode:$('pingMode').value,url:$('pingUrl').value.trim(),timeoutMs:Number($('pingTimeout').value),attempts:Number($('pingAttempts').value),parallelism:Number($('pingParallel').value),sort:$('pingSort').value});closeDialog($('pingDialog'));toast('Настройки пинга сохранены');}
     catch(e){$('pingSettingsError').textContent=e.message;}finally{submit.disabled=false;}
   });
-  $('removeSubscription').addEventListener('click',()=>openDialog($('removeDialog')));$('cancelRemove').addEventListener('click',()=>closeDialog($('removeDialog')));
-  $('confirmRemove').addEventListener('click',async()=>{if(await request('remove')){closeDialog($('removeDialog'));closeDialog($('advancedDialog'));page('home');toast('Подписка удалена');}});
+  let removingSubscription='',removeBusy=false;
+  $('removeSubscription').addEventListener('click',()=>{removingSubscription=model.activeSubscription;openDialog($('removeDialog'));});$('cancelRemove').addEventListener('click',()=>closeDialog($('removeDialog')));
+  $('confirmRemove').addEventListener('click',async()=>{
+    if(removeBusy)return;removeBusy=true;$('confirmRemove').disabled=true;
+    try{if(await request('remove',{id:removingSubscription})){closeDialog($('removeDialog'));closeDialog($('advancedDialog'));page('home');toast('Подписка удалена');}}
+    finally{removeBusy=false;$('confirmRemove').disabled=false;}
+  });
   $('automationButton').addEventListener('click',()=>{const a=model.automation||{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50};$('reconnectSetting').setAttribute('aria-checked',a.reconnect);$('refreshHours').value=a.refreshHours;$('backgroundPing').value=a.pingMinutes;$('autoMinutes').value=a.autoMinutes;$('autoTolerance').value=a.autoToleranceMs;$('automationError').textContent='';openDialog($('automationDialog'));});
   $('reconnectSetting').addEventListener('click',()=>{$('reconnectSetting').setAttribute('aria-checked',$('reconnectSetting').getAttribute('aria-checked')!=='true');});
   $('closeAutomation').addEventListener('click',()=>closeDialog($('automationDialog')));

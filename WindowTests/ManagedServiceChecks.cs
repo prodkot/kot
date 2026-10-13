@@ -13,9 +13,10 @@ internal static class ManagedServiceChecks
     {
         string folder = Path.Combine(Path.GetTempPath(), "kot-managed-services-" + Guid.NewGuid().ToString("N"));
         using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(limit.Token);
         var options = new ServiceOptions { CheckUpdates = false }; bool networkBusy = false;
         using (var reserve = new TcpListener(IPAddress.Loopback, 0)) { reserve.Start(); options.Telegram.Port = ((IPEndPoint)reserve.LocalEndpoint).Port; }
-        var manager = new ManagedServices(() => options, () => networkBusy, () => { }, limit.Token, folder);
+        var manager = new ManagedServices(() => options, () => networkBusy, () => { }, lifecycle.Token, folder);
         async Task Action(string id, string action, string[]? selected = null)
         {
             manager.Begin(id, action, selected); await manager.Wait(id).WaitAsync(limit.Token);
@@ -116,6 +117,9 @@ internal static class ManagedServiceChecks
             await Action("telegram", "start");
             manager.Begin("zapret", "start");
             Task pendingPreparation = manager.StopZapretForVpn();
+            lifecycle.Cancel();
+            await manager.Tick();
+            check(manager.IsRunning("telegram"), "cancelled lifetime polling completes without an unhandled exception or a false service failure");
             await manager.StopAll(true);
             await pendingPreparation;
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");

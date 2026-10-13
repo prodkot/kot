@@ -60,18 +60,42 @@ public static class ServicesTests
         await DownloadReject(release,new(_=>new(HttpStatusCode.Redirect){Headers={Location=new Uri("http://github.com/plain")}}),"download rejects HTTPS downgrade");
         await DownloadReject(release,new(_=>new(HttpStatusCode.Redirect){Headers={Location=new Uri("https://evil.example/package")}}),"download rejects external redirect");
         await DownloadReject(release,new(_=>new(HttpStatusCode.Redirect){Headers={Location=new Uri("https://github.com/loop")}}),"download redirect loop is bounded");
+        using (var handler = new Transport(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) }))
+        {
+            string existing = Path.Combine(folder, "existing-package"); File.WriteAllText(existing, "keep existing data");
+            bool rejected = false;
+            try { await ServicePackages.Download(release, existing, null, CancellationToken.None, handler); }
+            catch (IOException) { rejected = true; }
+            check(rejected && File.Exists(existing) && File.ReadAllText(existing) == "keep existing data", "failed service download preserves a pre-existing destination");
+        }
         using(var cts=new CancellationTokenSource())
         using(var handler=new Transport(_=>new(HttpStatusCode.OK){Content=new ByteArrayContent(payload)}))
         {cts.Cancel();string path=Path.Combine(folder,"cancelled");bool cancelled=false;try{await ServicePackages.Download(release,path,null,cts.Token,handler);}catch(OperationCanceledException){cancelled=true;}check(cancelled&&!File.Exists(path),"cancelled download leaves no partial package");}
         void Archive(string path, params string[] files)
         {File.Delete(path);using var zip=ZipFile.Open(path,ZipArchiveMode.Create);foreach(string file in files){using var entry=zip.CreateEntry(file).Open();entry.Write(payload);}}
         string archive=Path.Combine(folder,"fixture.zip");
-        foreach(string bad in new[]{"../outside", "/absolute", "bin/../../outside", "bin/x:stream", "bin/NUL.txt", "bin/filename. ", "bin/CON", "bin\\..\\escape"})
+        foreach(string bad in new[]{"../outside", "/absolute", "bin/../../outside", "bin/x:stream", "bin/NUL.txt", "bin/filename. ", "bin/CON", "bin\\..\\escape", "bin/bad\nname"})
         {
             Archive(archive,bad);string target=Path.Combine(folder,"extract-"+Guid.NewGuid().ToString("N"));Reject(()=>ServicePackages.Extract(archive,target,CancellationToken.None),"service archive rejects "+bad);
         }
         Archive(archive,"bin/test","bin/TEST");Reject(()=>ServicePackages.Extract(archive,Path.Combine(folder,"collision"),CancellationToken.None),"service archive rejects case-insensitive filename collision");
         Archive(archive,"release/bin/winws.exe","release/lists/test.txt");string valid=Path.Combine(folder,"valid-"+Guid.NewGuid().ToString("N"));ServicePackages.Extract(archive,valid,CancellationToken.None);check(File.Exists(Path.Combine(valid,"release/bin/winws.exe")),"valid service archive is extracted inside its destination");
+        byte[] corrupt = File.ReadAllBytes(archive);
+        for (int i = 0; i < corrupt.Length - 46; i++)
+            if (BitConverter.ToUInt32(corrupt, i) == 0x02014b50 && Encoding.UTF8.GetString(corrupt, i + 46, BitConverter.ToUInt16(corrupt, i + 28)) == "release/bin/winws.exe")
+                BitConverter.GetBytes(1u).CopyTo(corrupt, i + 24);
+        File.WriteAllBytes(archive, corrupt);
+        string corruptTarget = Path.Combine(folder, "lying-length-" + Guid.NewGuid().ToString("N"));
+        Reject(() => ServicePackages.Extract(archive, corruptTarget, CancellationToken.None), "service extraction rejects falsified uncompressed file length");
+        string partial = Path.Combine(corruptTarget, "release/bin/winws.exe");
+        check(!File.Exists(partial), "failed service extraction removes the partial file");
+        Archive(archive, "release/bin/winws.exe"); corrupt = File.ReadAllBytes(archive);
+        for (int i = 0; i < corrupt.Length - 46; i++)
+            if (BitConverter.ToUInt32(corrupt, i) == 0x02014b50) corrupt[i + 16] ^= 1;
+        File.WriteAllBytes(archive, corrupt);
+        string badCrc = Path.Combine(folder, "bad-crc-" + Guid.NewGuid().ToString("N"));
+        Reject(() => ServicePackages.Extract(archive, badCrc, CancellationToken.None), "service extraction rejects a corrupted entry checksum");
+        check(!File.Exists(Path.Combine(badCrc, "release/bin/winws.exe")), "checksum failure removes the corrupt extracted file");
         string bin=Path.Combine(folder,"bin with spaces & bang!"),lists=Path.Combine(folder,"lists with % spaces");Directory.CreateDirectory(bin);Directory.CreateDirectory(lists);File.WriteAllText(Path.Combine(bin,"fake.bin"),"fixture");File.WriteAllText(Path.Combine(lists,"list.txt"),"example.com");
         string strategy="@echo off\r\ncall service.bat\r\nstart \"zapret\" /min \"%BIN%winws.exe\" --wf-tcp=80,443,%GameFilterTCP% ^\r\n--hostlist=\"%LISTS%list.txt\" --dpi-desync-fake-tls=\"%BIN%fake.bin\" --new\r\necho unrelated shell tail";
         var parsed=ZapretStrategy.Parse(strategy,bin,lists,true);
