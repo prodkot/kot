@@ -95,7 +95,7 @@ Function Finish
   !insertmacro Label "Версия" 0 204 110 22 "small"
   !insertmacro Label "${VERSION} · Windows x64" 280 204 232 22 "body"
   !insertmacro Label "Установлено в" 0 247 110 22 "small"
-  !insertmacro Label "$INSTDIR" 130 245 382 28 "body"
+  !insertmacro Label "$INSTDIR" 130 245 382 28 "path"
   !insertmacro Label "Ярлык на рабочем столе" 0 293 300 22 "small"
   ${If} $DesktopShortcut == ${BST_CHECKED}
     !insertmacro Label "Создан" 400 293 112 22 "body"
@@ -126,7 +126,7 @@ Function un.Confirm
   !insertmacro Label "" 0 0 76 76 "hero"
   !insertmacro Label "Удалить kot.?" 0 103 512 48 "heading"
   !insertmacro Label "Файлы приложения и его ярлыки будут удалены.$\r$\nВаш профиль, подписки и статистика останутся." 0 174 512 56 "body"
-  !insertmacro Label "$INSTDIR" 0 266 512 50 "small"
+  !insertmacro Label "$INSTDIR" 0 266 512 28 "path"
   !insertmacro ButtonText "Удалить"
   nsDialogs::Show
 FunctionEnd

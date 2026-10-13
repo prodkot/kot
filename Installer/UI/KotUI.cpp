@@ -98,6 +98,7 @@ static void PaintPage(HDC dc) {
         if(current<0) {
             Box(dc,Area(0,0,54,54),surface,RGB(174,100,93),16);
             TextAt(dc,L"!",0,0,54,54,heading,RGB(232,156,146),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            Box(dc,Area(0,237,512,123),surface,line,12);
         } else {
             std::wstring status=current==4?L"Готово":current==3?L"Создаём ярлыки":percentage>0?L"Устанавливаем файлы":L"Проверяем и подготавливаем пакет";
             TextAt(dc,status.c_str(),0,152,418,32,regular,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
@@ -218,7 +219,8 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
         } else if(label) {
             wchar_t caption[2048]{}; GetWindowTextW(window,caption,2048);
             auto font=reinterpret_cast<HFONT>(SendMessageW(window,WM_GETFONT,0,0));
-            DrawTextIn(dc,caption,bounds,font?font:regular,GetPropW(window,L"kot.accent")?accent:GetPropW(window,L"kot.primary")?text:muted,DT_LEFT|DT_WORDBREAK);
+            UINT format=GetPropW(window,L"kot.path")?DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_PATH_ELLIPSIS:DT_LEFT|DT_WORDBREAK;
+            DrawTextIn(dc,caption,bounds,font?font:regular,GetPropW(window,L"kot.accent")?accent:GetPropW(window,L"kot.primary")?text:muted,format);
         } else PaintButton(window,dc,bounds,ButtonState(window));
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
@@ -240,8 +242,9 @@ static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, 
     }
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) {
         HWND child=reinterpret_cast<HWND>(l); HDC dc=reinterpret_cast<HDC>(w);
-        SetTextColor(dc,GetPropW(child,L"kot.primary")?text:muted); SetBkColor(dc,message==WM_CTLCOLOREDIT?surface:background);
-        return reinterpret_cast<LRESULT>(message==WM_CTLCOLOREDIT?surfaceBrush:backgroundBrush);
+        bool onSurface=message==WM_CTLCOLOREDIT||GetPropW(child,L"kot.surface")!=nullptr;
+        SetTextColor(dc,GetPropW(child,L"kot.primary")?text:muted); SetBkColor(dc,onSurface?surface:background);
+        return reinterpret_cast<LRESULT>(onSurface?surfaceBrush:backgroundBrush);
     }
     if(message==WM_ERASEBKGND) { RECT bounds; GetClientRect(window,&bounds); FillRect(reinterpret_cast<HDC>(w),&bounds,backgroundBrush); return 1; }
     if(message==WM_NCDESTROY) RemoveWindowSubclass(window,PageProc,1);
@@ -420,7 +423,10 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         HWND status=GetDlgItem(page,1006); Place(status,0,26,512,44);
         SetPropW(status,L"kot.primary",reinterpret_cast<HANDLE>(1)); SetPropW(status,L"kot.progress-status",reinterpret_cast<HANDLE>(1));
         SetWindowTextW(status,L""); SendMessageW(status,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE);
-        Place(GetDlgItem(page,1004),0,191,512,6);
+        HWND progress=GetDlgItem(page,1004); Place(progress,0,191,512,6);
+        SetWindowLongW(progress,GWL_STYLE,GetWindowLongW(progress,GWL_STYLE)&~WS_BORDER);
+        SetWindowLongW(progress,GWL_EXSTYLE,GetWindowLongW(progress,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
+        SetWindowPos(progress,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED);
         Label(page,9060,L"ПОЧТИ НА СВЯЗИ",0,2,512,22,small,muted);
         Label(page,9061,uninstalling?L"Удалим файлы приложения и ярлыки. Ваш профиль останется.":L"Проверим пакет, установим приложение\r\nи подготовим ярлыки.",0,81,512,48,small,muted);
         Label(page,9063,L"Ваши сохранённые подключения останутся на месте.",0,392,512,30,small,muted);
@@ -441,8 +447,8 @@ static void ShowFailure(const std::wstring& detail) {
     HWND child=GetWindow(activePage,GW_CHILD); while(child) { ShowWindow(child,SW_HIDE); child=GetWindow(child,GW_HWNDNEXT); }
     Label(activePage,9090,uninstalling?L"Удаление прервалось.":L"Установка прервалась.",0,78,512,80,heading);
     Label(activePage,9091,L"Закройте приложения, проверьте выбранную папку\r\nи запустите установщик повторно.",0,164,512,48,regular,muted);
-    HWND details=CreateWindowExW(WS_EX_CLIENTEDGE,L"Edit",failureText.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|WS_VSCROLL,0,0,0,0,activePage,reinterpret_cast<HMENU>(9092),GetModuleHandleW(nullptr),nullptr);
-    Place(details,0,237,512,123); SkinControl(details,0); SetPropW(details,L"kot.primary",reinterpret_cast<HANDLE>(1));
+    HWND details=CreateWindowExW(0,L"Edit",failureText.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,0,0,activePage,reinterpret_cast<HMENU>(9092),GetModuleHandleW(nullptr),nullptr);
+    Place(details,12,249,488,99); SkinControl(details,0); SetPropW(details,L"kot.primary",reinterpret_cast<HANDLE>(1)); SetPropW(details,L"kot.surface",reinterpret_cast<HANDLE>(1));
     Label(activePage,9093,L"Профиль и подписки остаются в вашей папке пользователя.",0,389,512,34,small,muted);
     ShowWindow(GetDlgItem(mainWindow,3),SW_HIDE); SetWindowTextW(GetDlgItem(mainWindow,IDOK),L"Закрыть");
     InvalidateRect(activePage,nullptr,TRUE); PostMessageW(mainWindow,refreshPage,0,0);
@@ -456,6 +462,7 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
     if(role==L"accent") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE); SetPropW(window,L"kot.accent",reinterpret_cast<HANDLE>(1)); }
     if(role==L"surface") SetPropW(window,L"kot.surface",reinterpret_cast<HANDLE>(1));
     if(role==L"body") SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1));
+    if(role==L"path") SetPropW(window,L"kot.path",reinterpret_cast<HANDLE>(1));
     if(role==L"hero") SetPropW(window,L"kot.hero",reinterpret_cast<HANDLE>(1));
     InvalidateRect(window,nullptr,TRUE);
 }
