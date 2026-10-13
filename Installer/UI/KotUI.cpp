@@ -63,7 +63,7 @@ static void Brand(HDC dc,int x,int y,bool large) {
     HFONT font=large?brandFont:bold;
     TextAt(dc,L"kot",x,y,110,large?36:24,font,text,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
     auto old=SelectObject(dc,font); SIZE size{}; GetTextExtentPoint32W(dc,L"kot",3,&size); SelectObject(dc,old);
-    RECT dot{Scale(x)+size.cx+Scale(3),Scale(y+(large?16:11)),Scale(x)+size.cx+Scale(large?7:6),Scale(y+(large?20:14))};
+    RECT dot{Scale(x)+size.cx+Scale(3),Scale(y+(large?24:11)),Scale(x)+size.cx+Scale(large?7:6),Scale(y+(large?28:14))};
     HBRUSH brush=CreateSolidBrush(accent); FillRect(dc,&dot,brush); DeleteObject(brush);
 }
 static int Step() {
