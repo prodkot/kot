@@ -69,7 +69,10 @@ static class InstallerUiTests
         bool toggle=checkbox&&(GetWindowLong(button,-16)&0x1000)!=0;
         int x=toggle?bounds.Right-(int)(28*GetDpiForWindow(button)/96f):checkbox?(int)(8*GetDpiForWindow(button)/96f):bounds.Right/2;
         var center=(IntPtr)((bounds.Bottom/2<<16)|(x&0xFFFF));
-        SendMessage(button,0x201,(IntPtr)1,center);
+        // Queue both edges on the installer thread. A cross-thread sent
+        // mouse-down can interrupt the preceding posted mouse-up before
+        // ReleaseCapture and cancel the next button's press.
+        PostMessage(button,0x201,(IntPtr)1,center);
         PostMessage(button,0x202,IntPtr.Zero,center);
     }
     static void ButtonStates(IntPtr window,string folder,string stage,Action<bool,string> check)
