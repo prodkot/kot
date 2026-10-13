@@ -55,12 +55,10 @@ Function Welcome
     SendMessage $Control ${BM_GETCHECK} 0 0 $DesktopShortcut
   ${EndIf}
   !insertmacro NewPage "welcome"
-  !insertmacro Label "ПРИВЕТ, ЭТО KOT" 0 2 512 22 "overline"
-  !insertmacro Label "Всё готово$\r$\nдля связи." 0 26 512 82 "heading"
-  !insertmacro Label "Установим приложение и подготовим его к работе.$\r$\nВаши подключения будут в одном месте." 0 116 512 44 "small"
+  !insertmacro Label "Установка kot." 0 26 512 48 "heading"
   ${NSD_CreateButton} 0 0 1 1 "Лицензия MIT"
   Pop $Control
-  KotUI::Control /NOUNLOAD "$Control" "0" "369" "120" "28" "button"
+  KotUI::Control /NOUNLOAD "$Control" "0" "264" "120" "28" "button"
   ${NSD_OnClick} $Control License
   !insertmacro Label "Настройки и подписки сохранятся при обновлении." 0 407 512 22 "small"
   !insertmacro ButtonText "Продолжить"
@@ -90,8 +88,7 @@ Function ProgressShow
 FunctionEnd
 Function Finish
   !insertmacro NewPage "finish"
-  !insertmacro Label "Можно подключаться." 0 78 512 48 "heading"
-  !insertmacro Label "kot. установлен и готов к работе.$\r$\nДобавьте подписку или выберите сохранённый сервер." 0 140 512 48 "small"
+  !insertmacro Label "Установка завершена" 0 78 512 48 "heading"
   !insertmacro Label "Версия" 0 204 110 22 "small"
   !insertmacro Label "${VERSION} · Windows x64" 280 204 232 22 "body"
   !insertmacro Label "Установлено в" 0 247 110 22 "small"

@@ -74,21 +74,15 @@ static int Step() {
 }
 static void PaintPage(HDC dc) {
     if(pageRole==L"welcome") {
-        Box(dc,Area(0,178,512,124),surface,line,18);
-        Logo(dc,Scale(22),Scale(201),Scale(76));
-        TextAt(dc,L"kot. для Windows",122,209,366,24,bold);
-        TextAt(dc,L"VPN, подписки и сервисы.\r\nСпокойный интерфейс. Простой запуск.",122,243,366,44,small,muted);
-        const wchar_t* features[]{L"Ядра в комплекте",L"Новая иконка ярлыка",L"Обновление поверх"};
-        int left[]{0,150,337},width[]{140,177,175};
-        for(int i=0;i<3;i++) {
-            Box(dc,Area(left[i],324,width[i],28),background,line,8); Check(dc,left[i]+9,333,accent);
-            TextAt(dc,features[i],left[i]+28,324,width[i]-32,28,small,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
-        }
+        Box(dc,Area(0,116,512,124),surface,line,18);
+        Logo(dc,Scale(22),Scale(139),Scale(76));
+        TextAt(dc,L"kot. для Windows",122,147,366,24,bold);
+        std::wstring release=L"Версия "+version;
+        TextAt(dc,release.c_str(),122,181,366,24,small,muted);
     } else if(pageRole==L"options") {
         Box(dc,Area(0,138,408,40),surface,line,12);
         Box(dc,Area(0,226,512,112),surface,line,16); Rule(dc,16,282,496);
-        TextAt(dc,L"Меню «Пуск»",16,293,400,21,bold);
-        TextAt(dc,L"Приложение и удаление всегда под рукой",16,315,450,20,small,muted);
+        TextAt(dc,L"Ярлыки в меню «Пуск»",16,286,400,46,bold,text,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         Check(dc,477,300,accent);
     } else if(pageRole==L"finish") {
         Box(dc,Area(0,0,54,54),surface,accent,16); Check(dc,21,20,accent);
@@ -100,11 +94,11 @@ static void PaintPage(HDC dc) {
             TextAt(dc,L"!",0,0,54,54,heading,RGB(232,156,146),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
             Box(dc,Area(0,237,512,123),surface,line,12);
         } else {
-            std::wstring status=current==4?L"Готово":current==3?L"Создаём ярлыки":percentage>0?L"Устанавливаем файлы":L"Проверяем и подготавливаем пакет";
+            std::wstring status=current==4?L"Готово":current==3?L"Создаём ярлыки":percentage>0?L"Устанавливаем файлы":L"Проверяем пакет";
             TextAt(dc,status.c_str(),0,152,418,32,regular,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
             std::wstring value=std::to_wstring(percentage)+L"%";
             TextAt(dc,value.c_str(),420,150,92,34,brandFont,text,DT_RIGHT|DT_VCENTER|DT_SINGLELINE);
-            const wchar_t* install[]{L"Подготовка и проверка подписи",L"Приложение и ядра подключения",L"Ярлыки и завершение"};
+            const wchar_t* install[]{L"Проверка пакета",L"Установка файлов",L"Создание ярлыков"};
             const wchar_t* remove[]{L"Закрываем приложение",L"Удаляем файлы приложения",L"Удаляем ярлыки"};
             for(int i=0;i<3;i++) {
                 int y=229+i*49;
@@ -148,8 +142,7 @@ static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
             Box(dc,track,checked?(pressed?RGB(190,224,119):accent):line,checked?accent:line,22);
             int x=checked?track.right-Scale(19):track.left+Scale(3);
             Box(dc,RECT{x,track.top+Scale(3),x+Scale(16),track.top+Scale(19)},checked?ink:muted,checked?ink:muted,16);
-            DrawTextIn(dc,caption.c_str(),Area(16,8,420,24),bold,enabled?text:muted,DT_LEFT|DT_SINGLELINE);
-            DrawTextIn(dc,L"С новой абстрактной иконкой",Area(16,32,420,20),small,muted,DT_LEFT|DT_SINGLELINE);
+            DrawTextIn(dc,caption.c_str(),Area(16,0,420,54),bold,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         } else {
             RECT tick{Scale(1),(bounds.bottom-Scale(16))/2,Scale(17),(bounds.bottom+Scale(16))/2};
             Box(dc,tick,checked?(pressed?RGB(190,224,119):accent):(pressed?RGB(26,30,31):surface),checked?accent:line,4);
@@ -360,10 +353,7 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
             else { std::wstring number=std::to_wstring(i+1); TextAt(dc,number.c_str(),23,y,28,28,small,i==step?ink:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
             TextAt(dc,(uninstalling?removeSteps:installSteps)[i],63,y,144,28,small,i==step?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         }
-        TextAt(dc,uninstalling?L"ВАШ ПРОФИЛЬ ОСТАНЕТСЯ":L"БЕЗ ЛИШНИХ ШАГОВ",23,430,190,20,small,muted);
-        TextAt(dc,uninstalling?L"Подписки, настройки и статистика\r\nсохраняются после удаления.":L"Приложение, ядра подключения\r\nи всё необходимое в одном пакете.",23,456,180,42,small,muted);
         TextAt(dc,L"Windows 10 / 11 · x64",23,507,180,20,small,muted);
-        TextAt(dc,phase<0?L"Подробности ошибки выше.":pageRole==L"finish"?L"Всё готово к первому запуску.":L"Настройки и подписки\r\nсохранятся при обновлении.",253,543,205,40,small,muted);
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) return PageProc(window,message,w,l,1,0);
@@ -401,10 +391,8 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
     Place(page,253,72,512,430); SetWindowSubclass(page,PageProc,1,0); EnumChildWindows(page,SkinControl,0);
     if(pageRole==L"options") {
         ShowWindow(GetDlgItem(page,1031),SW_HIDE); ShowWindow(GetDlgItem(page,1020),SW_HIDE);
-        HWND title=GetDlgItem(page,1006); Place(title,0,26,512,44); SetWindowTextW(title,L"Пара штрихов.");
+        HWND title=GetDlgItem(page,1006); Place(title,0,26,512,44); SetWindowTextW(title,L"Параметры установки");
         SendMessageW(title,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(title,L"kot.primary",reinterpret_cast<HANDLE>(1));
-        Label(page,9060,L"УСТАНОВКА ПОД ВАС",0,2,512,22,small,muted);
-        Label(page,9061,L"Выберите папку и то, как kot будет появляться в системе.",0,81,512,30,small,muted);
         Label(page,9062,L"Папка установки",0,112,512,22,small,muted);
         HWND edit=GetDlgItem(page,1019); Place(edit,12,148,384,23); SetPropW(edit,L"kot.primary",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(edit,GWL_STYLE,GetWindowLongW(edit,GWL_STYLE)&~WS_BORDER);
@@ -415,7 +403,7 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         SetPropW(checkbox,L"kot.toggle",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(checkbox,GWL_STYLE,GetWindowLongW(checkbox,GWL_STYLE)|BS_PUSHLIKE);
         Place(GetDlgItem(page,1023),0,184,512,20); ShowWindow(GetDlgItem(page,1024),SW_HIDE);
-        Label(page,9064,L"Установка для всех пользователей этого компьютера.\r\nАвтозапуск можно настроить в приложении.",0,359,512,52,small,muted);
+        Label(page,9064,L"Для всех пользователей компьютера.",0,359,512,24,small,muted);
     }
     if(pageRole==L"progress") {
         InterlockedExchange(&phase,1); percentage=0; progressFile=Pop(stack);
@@ -427,9 +415,6 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         SetWindowLongW(progress,GWL_STYLE,GetWindowLongW(progress,GWL_STYLE)&~WS_BORDER);
         SetWindowLongW(progress,GWL_EXSTYLE,GetWindowLongW(progress,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
         SetWindowPos(progress,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED);
-        Label(page,9060,L"ПОЧТИ НА СВЯЗИ",0,2,512,22,small,muted);
-        Label(page,9061,uninstalling?L"Удалим файлы приложения и ярлыки. Ваш профиль останется.":L"Проверим пакет, установим приложение\r\nи подготовим ярлыки.",0,81,512,48,small,muted);
-        Label(page,9063,L"Ваши сохранённые подключения останутся на месте.",0,392,512,30,small,muted);
     }
     InvalidateRect(page,nullptr,TRUE); PostMessageW(mainWindow,refreshPage,0,0);
 }
@@ -449,7 +434,6 @@ static void ShowFailure(const std::wstring& detail) {
     Label(activePage,9091,L"Закройте приложения, проверьте выбранную папку\r\nи запустите установщик повторно.",0,164,512,48,regular,muted);
     HWND details=CreateWindowExW(0,L"Edit",failureText.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,0,0,activePage,reinterpret_cast<HMENU>(9092),GetModuleHandleW(nullptr),nullptr);
     Place(details,12,249,488,99); SkinControl(details,0); SetPropW(details,L"kot.primary",reinterpret_cast<HANDLE>(1)); SetPropW(details,L"kot.surface",reinterpret_cast<HANDLE>(1));
-    Label(activePage,9093,L"Профиль и подписки остаются в вашей папке пользователя.",0,389,512,34,small,muted);
     ShowWindow(GetDlgItem(mainWindow,3),SW_HIDE); SetWindowTextW(GetDlgItem(mainWindow,IDOK),L"Закрыть");
     InvalidateRect(activePage,nullptr,TRUE); PostMessageW(mainWindow,refreshPage,0,0);
 }

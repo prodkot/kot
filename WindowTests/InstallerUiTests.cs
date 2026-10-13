@@ -226,24 +226,24 @@ static class InstallerUiTests
         try
         {
             var cancel=Start(setup,"/D="+target); processes.Add(cancel); var window=Window(cancel);
-            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
+            Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
             Click(GetDlgItem(window,9009)); Close(cancel,false);
             check(!Directory.Exists(target),"cancelling custom Setup before installation creates no application files");
             string damaged=Path.Combine(folder,"damaged-setup.exe"); File.Copy(setup,damaged,true);
             using(var package=new FileStream(damaged,FileMode.Open,FileAccess.ReadWrite))
             { package.Position=package.Length/2; int value=package.ReadByte(); package.Position--; package.WriteByte((byte)(value^1)); }
             var rejected=Start(damaged,"/D="+target); processes.Add(rejected); window=Window(rejected);
-            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"tampered setup welcome");
+            Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"tampered setup welcome");
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"tampered setup directory");
             Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка прервалась.")!=IntPtr.Zero,"custom signed-payload error",120);
             Capture(window,folder,"setup-error",check);
             check(!Directory.Exists(target),"tampered graphical Setup creates no application files");
-            check(ByText(window,"Можно подключаться.")==IntPtr.Zero,"failed install never shows success");
+            check(ByText(window,"Установка завершена")==IntPtr.Zero,"failed install never shows success");
             Click(GetDlgItem(window,1)); Close(rejected,false);
             check(rejected.ExitCode!=0,"failed graphical Setup returns a failing exit code");
             File.Delete(damaged);
             var install=Start(setup,"/D="+target); processes.Add(install); window=Window(install);
-            Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"welcome again");
+            Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"welcome again");
             MouseClick(GetDlgItem(window,1)); Wait(()=>ById(window,1019)!=IntPtr.Zero,"directory");
             var edit=ById(window,1019); check(Text(edit)==target,"native directory page preserves the Unicode destination");
             var invalid=new StringBuilder("relative-path"); SendTextMessage(edit,0xC,IntPtr.Zero,invalid,2,2000,out _);
@@ -254,7 +254,7 @@ static class InstallerUiTests
             var desktop=ById(window,1008); check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==(IntPtr)1,"desktop shortcut starts enabled");
             MouseClick(desktop); Wait(()=>SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"native checkbox mouse toggle");
             check(true,"native checkbox click toggles the desktop option");
-            MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Всё готово\r\nдля связи.")!=IntPtr.Zero,"back to welcome");
+            MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"back to welcome");
             var next=GetDlgItem(window,1); SendMessage(window,0x28,next,(IntPtr)1);
             SendMessage(next,0x100,(IntPtr)32,(IntPtr)1);
             PostMessage(next,0x101,(IntPtr)32,(IntPtr)unchecked((int)0xC0000001));
@@ -265,7 +265,7 @@ static class InstallerUiTests
             SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); ButtonStates(window,folder,"setup-options",check); Capture(window,folder,"setup-options",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"progress"); Capture(window,folder,"setup-progress",check);
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
-            Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Можно подключаться.")!=IntPtr.Zero,"finish");
+            Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка завершена")!=IntPtr.Zero,"finish");
             ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
             var run=ByText(window,"Открыть kot после установки"); check(run!=IntPtr.Zero,"finish offers application launch"); SendMessage(run,0xF1,IntPtr.Zero,IntPtr.Zero);
             Click(GetDlgItem(window,1)); Close(install,true);
