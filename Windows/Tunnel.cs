@@ -81,7 +81,7 @@ public sealed class Tunnel
         var value = ConnectionSnapshot.Parse(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
         return Session == session && CanRead() ? value : null;
     }
-    static int ReservePort() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
+    static int ReservePort() { using var reserved = LoopbackPort.Reserve(); return reserved.Port; }
     public event Action? Changed;
     readonly string path = Path.Combine(Store.Folder, "runtime.json");
     string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe");
@@ -117,8 +117,8 @@ public sealed class Tunnel
             string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
             await GeoIpStore.Update(countries, true, ct);
             ct.ThrowIfCancellationRequested();
-            using var portReservation = new TcpListener(IPAddress.Loopback, 0); portReservation.Start();
-            int port = ((IPEndPoint)portReservation.LocalEndpoint).Port; portReservation.Stop();
+            using var portReservation = LoopbackPort.Reserve(ct);
+            int port = portReservation.Port;
             AppLog.Write("tunnel", "build configuration");
             do { apiPort = ReservePort(); } while (apiPort == port);
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
@@ -149,6 +149,7 @@ public sealed class Tunnel
             }
             ct.ThrowIfCancellationRequested();
             AppLog.Write("tunnel", "sing-box run: starting");
+            portReservation.Dispose();
             core = new NativeCore(CoreExe, path, text => AppLog.Write("tunnel-core", text));
             AppLog.Write("tunnel", "waiting for proxy health");
             using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };

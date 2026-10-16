@@ -15,7 +15,7 @@ public static class XhttpChecks
 {
     [DllImport("iphlpapi.dll")] static extern uint GetBestInterface(uint address, out uint index);
     [DllImport("iphlpapi.dll")] static extern uint ConvertInterfaceIndexToLuid(uint index, out ulong luid);
-    static int Port() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
+    static int Port() { using var reserved = LoopbackPort.Reserve(); return reserved.Port; }
     static async Task<bool> Open(string host, int port, CancellationToken ct)
     {
         using var socket = new TcpClient();
