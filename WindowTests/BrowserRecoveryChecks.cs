@@ -12,7 +12,7 @@ static class BrowserRecoveryChecks
         var clock = Stopwatch.StartNew();
         while (!done())
         {
-            if (clock.Elapsed.TotalSeconds > seconds) throw new TimeoutException(message);
+            if (clock.Elapsed.TotalSeconds > seconds) throw new TimeoutException(message + "\n" + AppLog.Snapshot());
             Application.DoEvents(); Thread.Sleep(10);
         }
     }
@@ -58,11 +58,19 @@ static class BrowserRecoveryChecks
                     check(retry.Enabled && app.Controls.Find("close", true).Single().Visible, "native recovery retains retry and window controls");
                     using var bitmap = new Bitmap(app.Width, app.Height); app.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
                     bitmap.Save(Path.Combine(screenshots, "interface-recovery.png"), ImageFormat.Png);
-                    retry.PerformClick(); Pump(() => app.InterfaceReady, "manual retry did not restore UI");
+                    int failedGeneration = app.InterfaceGeneration;
+                    retry.PerformClick();
+                    check(app.InterfaceGeneration > failedGeneration, "native retry click starts a new recovery attempt");
+                    Pump(() => app.InterfaceReady, "manual retry did not restore UI");
                     owned.Add(Process.GetProcessById(checked((int)app.BrowserProcessId)));
                     check(Script(app, "document.getElementById('page-settings').hidden") == "false", "manual retry resets the crash limit and restores usable UI");
                 }
             }
+        }
+        catch
+        {
+            File.WriteAllText(Path.Combine(screenshots, "browser-recovery-error.txt"), AppLog.Snapshot());
+            throw;
         }
         finally
         {
