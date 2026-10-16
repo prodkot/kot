@@ -133,11 +133,11 @@ public static class RoutingProfiles
             throw new UserError("Нужна HTTPS-ссылка на JSON-профиль без логина, пароля и фрагмента.");
         return uri;
     }
-    public static async Task<RoutingRules> Download(string address, CancellationToken ct, HttpMessageHandler? testTransport = null)
+    public static async Task<RoutingRules> Download(string address, CancellationToken ct, HttpMessageHandler? testTransport = null, int proxyPort = 0)
     {
         var uri = Source(address);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(35)); ct = deadline.Token;
-        using var handler = testTransport ?? new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All, UseProxy = false, UseCookies = false };
+        using var handler = testTransport ?? NetworkRequests.Handler(proxyPort);
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(35) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(ClientIdentity.SubscriptionUserAgent);
         for (int redirects = 0; redirects <= 5; redirects++)

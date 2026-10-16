@@ -35,6 +35,21 @@ public static class UpdateTests
             catch(IOException) { failed=true; }
             check(failed && File.ReadAllText(Old("Kot.exe"))=="old app" && File.ReadAllText(Old("core/sing-box.exe"))=="old core" && File.ReadAllText(Old("ui/index.html"))=="old UI" && !File.Exists(Old("new-file.txt")) && File.ReadAllText(Old("user-note.txt"))=="keep", "rollback after write " + fail + " restores app/core/UI and preserves user files");
         }
+        string crashPackage = Path.GetFullPath(Path.Combine(folder, "crash-update.zip")), crashKey = Path.GetFullPath(Path.Combine(folder, "crash-public-key.txt"));
+        File.WriteAllBytes(crashPackage, Package()); File.WriteAllText(crashKey, rsa.ExportSubjectPublicKeyInfoPem());
+        for (int fail = 1; fail <= files.Count + 2; fail++)
+        {
+            Reset(); await UpdateCrashTests.Interrupt(Path.GetFullPath(root), crashPackage, crashKey, fail);
+            check(UpdateTransaction.PendingRecovery(root) != null, "interrupted updater is detected after rename " + fail);
+            check(UpdateTransaction.RecoverPending(root) && File.ReadAllText(Old("Kot.exe")) == "old app" && File.ReadAllText(Old("core/sing-box.exe")) == "old core" && File.ReadAllText(Old("ui/index.html")) == "old UI" && !File.Exists(Old("new-file.txt")) && File.ReadAllText(Old("user-note.txt")) == "keep", "fresh startup restores consistent files after real process termination " + fail);
+            check(!UpdateTransaction.RecoverPending(root), "completed crash recovery is idempotent " + fail);
+        }
+        Reset(); await UpdateCrashTests.Interrupt(Path.GetFullPath(root), crashPackage, crashKey, files.Count + 2);
+        string damaged = UpdateTransaction.PendingRecovery(root)!;
+        File.Delete(Path.Combine(damaged, "backup", "core", "sing-box.exe"));
+        bool missingBackup = false; try { UpdateTransaction.RecoverPending(root); } catch (UserError) { missingBackup = true; }
+        check(missingBackup && File.ReadAllText(Old("Kot.exe")) == "new app" && File.ReadAllText(Old("ui/index.html")) == "new UI" && !File.Exists(Path.Combine(damaged, "rolled-back")), "missing backup stops recovery before any file is changed and retains evidence");
+        File.Delete(crashPackage); File.Delete(crashKey);
         Reset(); string success = Path.Combine(root,".kot-update-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(success);
         using (var zip = new ZipArchive(new MemoryStream(Package()),ZipArchiveMode.Read))
         { var t = new UpdateTransaction(root,success); t.Apply(zip,new Version("0.4.0"),"0.4.1",rsa.ExportSubjectPublicKeyInfoPem()); check(File.ReadAllText(Old("Kot.exe"))=="new app" && File.ReadAllText(Old("user-note.txt"))=="keep","update applies in place and preserves unrelated files"); new UpdateTransaction(root,success).Rollback(); check(File.ReadAllText(Old("Kot.exe"))=="old app" && !File.Exists(Old("new-file.txt")),"journal allows rollback by a fresh updater instance"); }

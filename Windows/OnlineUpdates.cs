@@ -13,7 +13,7 @@ public sealed partial class MainWindow
     object UpdateModel() => new { busy = updateBusy, bytes = updateBytes, status = updateStatus, error = updateError, availableVersion = remoteRelease?.Version, dismissedVersion = profile.DeferredUpdateVersion, size = remoteRelease?.Size ?? 0, checkedAt = lastUpdateCheck == DateTimeOffset.MinValue ? null : lastUpdateCheck.ToLocalTime().ToString("dd.MM HH:mm") };
     void ScheduleUpdateCheck()
     {
-        if (!updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates();
+        if (DownloadsAvailable && !updateBusy && DateTimeOffset.UtcNow >= nextUpdateCheck && operations.CurrentCount > 0 && !connecting) _ = CheckUpdates();
     }
     async Task CheckUpdates()
     {
@@ -22,7 +22,7 @@ public sealed partial class MainWindow
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); updateAttempt = attempt;
         try
         {
-            remoteRelease = await RemoteUpdates.Check(new Version(AppVersion), attempt.Token);
+            remoteRelease = await RemoteUpdates.Check(new Version(AppVersion), attempt.Token, proxyPort: RequestProxyPort);
             updateStatus = remoteRelease == null ? "Установлена последняя версия" : "Доступна версия " + remoteRelease.Version;
             AppLog.Write("update", remoteRelease == null ? "no newer release" : "release available: " + remoteRelease.Version);
         }
@@ -33,7 +33,7 @@ public sealed partial class MainWindow
     void DeferUpdate(string version)
     {
         if (updateBusy || remoteRelease?.Version != version) throw new UserError("Предложение обновления изменилось. Проверьте обновления ещё раз.");
-        profile.DeferredUpdateVersion = version; Store.Save(profile);
+        SaveProfile(p => p.DeferredUpdateVersion = version);
     }
     async Task DownloadUpdate(string version)
     {
@@ -52,7 +52,7 @@ public sealed partial class MainWindow
                     updateBytes = bytes; long now = Stopwatch.GetTimestamp();
                     if (Stopwatch.GetElapsedTime(lastProgress, now).TotalSeconds < .5) return; lastProgress = now;
                     if (!exiting && !IsDisposed && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); });
-                });
+                }, proxyPort: RequestProxyPort);
             attempt.Token.ThrowIfCancellationRequested(); updateStatus = "Проверка подписи"; Snapshot();
             await InstallPackage(temporary, release.Version, attempt.Token);
             if (!exiting) updateStatus = "Установка отменена";

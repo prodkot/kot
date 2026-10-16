@@ -26,10 +26,10 @@ public static class RemoteUpdates
         Https(url); if (size < 0 || size > MaximumArchive) throw new UserError("Некорректный размер обновления.");
         return new(version.ToString(), url, size);
     }
-    public static HttpClient Client() => new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false, UseCookies = false, AutomaticDecompression = DecompressionMethods.GZip }) { Timeout = Timeout.InfiniteTimeSpan };
-    public static async Task<UpdateRelease?> Check(Version current, CancellationToken ct, HttpClient? client = null)
+    public static HttpClient Client(int proxyPort = 0) => new(NetworkRequests.Handler(proxyPort)) { Timeout = Timeout.InfiniteTimeSpan };
+    public static async Task<UpdateRelease?> Check(Version current, CancellationToken ct, HttpClient? client = null, int proxyPort = 0)
     {
-        bool owned = client == null; client ??= Client();
+        bool owned = client == null; client ??= Client(proxyPort);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
         try
         {
@@ -39,9 +39,9 @@ public static class RemoteUpdates
         }
         finally { if (owned) client.Dispose(); }
     }
-    public static async Task Download(UpdateRelease release, Stream output, CancellationToken ct, Action<long>? progress = null, HttpClient? client = null)
+    public static async Task Download(UpdateRelease release, Stream output, CancellationToken ct, Action<long>? progress = null, HttpClient? client = null, int proxyPort = 0)
     {
-        bool owned = client == null; client ??= Client();
+        bool owned = client == null; client ??= Client(proxyPort);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromMinutes(10));
         try { long received = await Fetch(client, release.Url, output, MaximumArchive, deadline.Token, progress); if (release.Size > 0 && received != release.Size) throw new UserError("Размер загруженного обновления не совпадает с релизом."); }
         finally { if (owned) client.Dispose(); }

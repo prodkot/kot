@@ -33,6 +33,7 @@ jobs:
           python3 Tests/client_tools_ui.py
           python3 Tests/services_ui.py
           python3 Tests/ui_polish.py
+          python3 Tests/ui_resilience.py
   integration:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -85,10 +86,13 @@ jobs:
       - name: Official zapret and Telegram managed services
         timeout-minutes: 5
         shell: pwsh
+        env:
+          KOT_TEST_GITHUB_TOKEN: ${{ github.token }}
         run: |
           ./artifacts/window-tests/Kot.WindowTests.exe --services-test
           if ($LASTEXITCODE -ne 0) { throw 'Managed service lifecycle or package checks failed.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: tray-preview
-          path: artifacts/window-ui/*.png
+          path: artifacts/window-ui/*

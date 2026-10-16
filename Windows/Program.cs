@@ -25,6 +25,7 @@ static class Program
                 if (!closed) { Environment.ExitCode = 1; return; } running.ReleaseMutex(); SystemProxy.Restore(); return;
             }
             if (args.Contains("--apply-update")) { UpdateInstaller.Apply(); return; }
+            if (args.Contains("--recover-update")) { UpdateInstaller.Recover(); return; }
             if (args.Contains("--disable-startup")) { Startup.Set(false).GetAwaiter().GetResult(); var saved = Store.Load(); saved.Startup = false; Store.Save(saved); return; }
             ShellIdentity.Initialize();
             int receipt = Array.IndexOf(args, "--update-receipt");
@@ -50,6 +51,7 @@ static class Program
             using Mutex mutex = new(true, AppRuntime.InstanceMutex, out bool first);
             if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
             SystemProxy.Restore();
+            if (UpdateInstaller.Receipt == null && UpdateInstaller.StartRecovery(args)) return;
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
             foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
@@ -58,7 +60,8 @@ static class Program
                 try { Kot.Core.UpdateTransaction.SafePath(work); if (File.Exists(Path.Combine(work, "committed")) || File.Exists(Path.Combine(work, "rolled-back"))) Directory.Delete(work, true); }
                 catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
-            Application.Run(new MainWindow(args.Contains("--startup"), args.Contains("--resume-connection")));
+            var profile = ProfileRecovery.LoadProfile();
+            if (profile != null) Application.Run(new MainWindow(args.Contains("--startup"), args.Contains("--resume-connection"), profile));
         }
         catch (Exception ex)
         {

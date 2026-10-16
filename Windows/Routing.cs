@@ -46,7 +46,7 @@ public sealed partial class MainWindow
     {
         if (saved.SourceUrl.Length == 0) throw new UserError("У профиля нет источника обновлений.");
         routingAttempts[saved.Id] = DateTimeOffset.UtcNow;
-        var rules = await RoutingProfiles.Download(saved.SourceUrl, ct);
+        var rules = await RoutingProfiles.Download(saved.SourceUrl, ct, proxyPort: RequestProxyPort);
         ct.ThrowIfCancellationRequested();
         if (exiting) return;
         await PutRouting(new RoutingProfile { Id = saved.Id, Rules = rules, SourceUrl = saved.SourceUrl, RefreshHours = saved.RefreshHours, Updated = DateTimeOffset.UtcNow }, false);
@@ -78,7 +78,7 @@ public sealed partial class MainWindow
                 candidate.Validate();
                 if (source.Length > 0 && source != saved?.SourceUrl)
                 {
-                    candidate.Rules = await RoutingProfiles.Download(source, lifetime.Token); candidate.Updated = DateTimeOffset.UtcNow;
+                    candidate.Rules = await RoutingProfiles.Download(source, lifetime.Token, proxyPort: RequestProxyPort); candidate.Updated = DateTimeOffset.UtcNow;
                     lifetime.Token.ThrowIfCancellationRequested();
                 }
                 if (!exiting) await PutRouting(candidate, true);
@@ -88,7 +88,7 @@ public sealed partial class MainWindow
                 string url = content.StartsWith('{') ? "" : content;
                 RoutingRules imported;
                 if (url.Length == 0) imported = RoutingProfiles.Parse(content);
-                else { RoutingProfiles.Source(url); imported = await RoutingProfiles.Download(url, lifetime.Token); }
+                else { RoutingProfiles.Source(url); imported = await RoutingProfiles.Download(url, lifetime.Token, proxyPort: RequestProxyPort); }
                 lifetime.Token.ThrowIfCancellationRequested();
                 var existing = url.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.SourceUrl == url);
                 if (!exiting) await PutRouting(new RoutingProfile { Id = existing?.Id ?? Guid.NewGuid().ToString("N"), Rules = imported, SourceUrl = url, RefreshHours = 24, Updated = DateTimeOffset.UtcNow }, true);

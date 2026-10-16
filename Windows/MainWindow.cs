@@ -7,7 +7,7 @@ using System.Text.Json;
 namespace Kot.Windows;
 public sealed partial class MainWindow : WindowChrome
 {
-    readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
+    WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
     readonly NotifyIcon tray;
     readonly ThemeIcons icons = new();
     readonly TrayMenu trayMenu;
@@ -24,15 +24,15 @@ public sealed partial class MainWindow : WindowChrome
     List<string> warnings = [];
     CancellationTokenSource? importAttempt;
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    public MainWindow(bool startup, bool resumeConnection = false)
+    public MainWindow(bool startup, bool resumeConnection = false, Profile? initialProfile = null)
     {
-        this.startup = startup; this.resumeConnection = resumeConnection; profile = Store.Load();
+        this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? Store.Load();
         if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
         InitAutomation();
-        services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token);
+        services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token, proxyPort: () => RequestProxyPort, downloadsAvailable: () => DownloadsAvailable);
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
         Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
@@ -42,6 +42,7 @@ public sealed partial class MainWindow : WindowChrome
         Controls.Add(web);
         loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSpin);
         Controls.Add(loading); loading.BringToFront();
+        InitBrowserWatch();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
         tray = new NotifyIcon { Text = AppRuntime.DisplayName + " · Не подключено", ContextMenuStrip = trayMenu };
@@ -50,7 +51,7 @@ public sealed partial class MainWindow : WindowChrome
         FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); Icon = null; icons.Dispose(); };
         tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = AppRuntime.DisplayName + (tunnel.State == "connected" ? " · Подключено" : " · Не подключено"); Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
-        Shown += async (_, _) => await Initialize();
+        Shown += async (_, _) => { StartApplication(); await Initialize(); };
         FormClosing += async (_, e) =>
         {
             if (allowClose) return;
@@ -99,25 +100,26 @@ public sealed partial class MainWindow : WindowChrome
             {
                 bool enabled = await Startup.IsEnabled();
                 if (exiting || IsDisposed) return;
-                if (profile.Startup != enabled) { profile.Startup = enabled; Store.Save(profile); }
+                if (profile.Startup != enabled) SaveProfile(p => p.Startup = enabled);
             }
             catch (Exception ex) { AppLog.Error("startup state", ex); }
             CoreWebView2Environment env;
-            try { env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")); }
+            try { env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")).WaitAsync(TimeSpan.FromSeconds(30), lifetime.Token); }
             catch (WebView2RuntimeNotFoundException)
             {
                 string installer = Path.Combine(AppContext.BaseDirectory, "Install-WebView2.exe");
                 if (!File.Exists(installer)) throw new UserError("Не найден WebView2 Runtime и установщик Install-WebView2.exe.");
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
                 var installInfo = new ProcessStartInfo(installer) { UseShellExecute = true }; installInfo.ArgumentList.Add("/install");
-                using var install = Process.Start(installInfo); if (install != null) await install.WaitForExitAsync();
+                using var install = Process.Start(installInfo); if (install != null) await install.WaitForExitAsync(lifetime.Token).WaitAsync(TimeSpan.FromMinutes(3), lifetime.Token);
                 if (exiting || IsDisposed) return;
-                env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView"));
+                env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView")).WaitAsync(TimeSpan.FromSeconds(30), lifetime.Token);
             }
             if (exiting || IsDisposed) return;
-            await web.EnsureCoreWebView2Async(env);
+            await web.EnsureCoreWebView2Async(env).WaitAsync(TimeSpan.FromSeconds(30), lifetime.Token);
             if (exiting || IsDisposed) return;
             var c = web.CoreWebView2;
+            WatchBrowser(env, c);
             c.Settings.AreDefaultContextMenusEnabled = false; c.Settings.AreDevToolsEnabled = false; c.Settings.IsStatusBarEnabled = false; c.Settings.IsZoomControlEnabled = false;
             c.Settings.IsGeneralAutofillEnabled = false; c.Settings.IsPasswordAutosaveEnabled = false;
             c.Settings.AreHostObjectsAllowed = false; c.Settings.AreDefaultScriptDialogsEnabled = false;
@@ -127,16 +129,22 @@ public sealed partial class MainWindow : WindowChrome
             c.NewWindowRequested += (_, e) => e.Handled = true;
             c.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             c.DownloadStarting += (_, e) => e.Cancel = true;
-            c.WebMessageReceived += async (_, e) => await Message(e);
+            c.WebMessageReceived += async (_, e) => { if (!exiting && !web.IsDisposed && web.CoreWebView2 == c) await Message(e); };
             // Bootstrap contains only appearance, available before the first HTML paint.
             await c.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup=" + JsonSerializer.Serialize(new { theme = profile.Theme, spin = startupSpin }) + ";");
             if (exiting || IsDisposed) return;
             c.Navigate("https://kot.local/index.html"); initialized = true;
-            if (startup && profile.Tray) Hide();
+            if (!interfaceStarted && startup && profile.Tray) Hide();
         }
-        catch (Exception ex) { AppLog.Error("initialize", ex); MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error); await ExitApp(); }
+        catch (OperationCanceledException) when (exiting) { }
+        catch (Exception ex) { BrowserFailure(ex); }
     }
-    void Send(object value) { if (!exiting && bridgeReady && !web.IsDisposed && web.CoreWebView2 != null) web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(value, Json)); }
+    void Send(object value)
+    {
+        if (exiting || !bridgeReady || web.IsDisposed || web.CoreWebView2 == null) return;
+        try { web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(value, Json)); }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException) { RecoverBrowser("Связь с интерфейсом потеряна."); }
+    }
     object Model() => new
     {
         name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
@@ -155,6 +163,8 @@ public sealed partial class MainWindow : WindowChrome
     {
         if (exiting || e.Source != "https://kot.local/index.html") return;
         int id = 0;
+        int generation = browserGeneration;
+        void Reply(object value) { if (generation == browserGeneration) Send(value); }
         try
         {
             string raw = e.WebMessageAsJson;
@@ -164,18 +174,15 @@ public sealed partial class MainWindow : WindowChrome
             JsonElement data = root.GetProperty("data");
             if (action == "ready")
             {
-                bool first = !bridgeReady; bridgeReady = true; Snapshot(); Send(new { kind = "reply", id, ok = true });
+                interfaceStarted = true; bridgeReady = true; Snapshot(); Reply(new { kind = "reply", id, ok = true });
                 if (pendingTrayPage is { } page) { Send(new { kind = "navigate", page }); pendingTrayPage = null; }
-                bool autoConnect = first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0;
-                if (first) UpdateInstaller.Ready();
-                if (autoConnect) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
-                if (first) _ = services.AutoStart(startZapret: !autoConnect);
                 return;
             }
             if (!bridgeReady) return;
             switch (action)
             {
-                case "uiReady": loading.Hide(); break;
+                case "heartbeat": browserDeadline = DateTimeOffset.UtcNow.AddSeconds(45); Reply(new { kind = "reply", id, ok = true }); return;
+                case "uiReady": BrowserReady(); break;
                 case "drag": if (data.GetProperty("double").GetBoolean()) ToggleMaximize(); else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
                 case "resize":
                     var hit = data.GetProperty("edge").GetString() switch { "w" => 10, "e" => 11, "n" => 12, "nw" => 13, "ne" => 14, "s" => 15, "sw" => 16, "se" => 17, _ => 0 };
@@ -183,7 +190,7 @@ public sealed partial class MainWindow : WindowChrome
                 case "minimize": MinimizeWindow(); break;
                 case "maximize": ToggleMaximize(); break;
                 case "close": Close(); break;
-                case "toggle": _ = ToggleConnection(); break;
+                case "toggle": await ToggleConnection(); break;
                 case "view":
                     string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
                 case "serviceAction": case "serviceCancel": case "serviceSettings": case "serviceUpdateSettings": case "serviceRotateSecret":
@@ -194,9 +201,9 @@ public sealed partial class MainWindow : WindowChrome
                 case "cancelTools": toolsAttempt?.Cancel(); break;
                 case "readQrFile": case "readQrClipboard":
                     string? qrText = await ReadQr(action == "readQrClipboard");
-                    Send(new { kind = "reply", id, ok = true, data = new { text = qrText } }); return;
+                    Reply(new { kind = "reply", id, ok = true, data = new { text = qrText } }); return;
                 case "readNodeQr":
-                    Send(new { kind = "reply", id, ok = true, data = ReadShareQr(data) }); return;
+                    Reply(new { kind = "reply", id, ok = true, data = ReadShareQr(data) }); return;
                 case "copyNodeLink": case "copyNodeQr": case "saveNodeQr": ExportShareQr(data, action); break;
                 case "checkUpdates": await CheckUpdates(); break;
                 case "cancelUpdate": updateAttempt?.Cancel(); break;
@@ -208,7 +215,7 @@ public sealed partial class MainWindow : WindowChrome
                 case "cancelPing": lastPing = DateTimeOffset.UtcNow; ping.Cancel(); break;
                 case "readHwid":
                     var device = DeviceIdentity.Get();
-                    Send(new { kind = "reply", id, ok = true, data = new { hwid = device.Hwid, name = device.Model } });
+                    Reply(new { kind = "reply", id, ok = true, data = new { hwid = device.Hwid, name = device.Model } });
                     return;
                 case "copyHwid":
                     Clipboard.SetText(DeviceIdentity.Get().Hwid); break;
@@ -222,10 +229,11 @@ public sealed partial class MainWindow : WindowChrome
                     try { if (!exiting) await Mutate(action, data); } finally { operations.Release(); }
                     break;
             }
-            Snapshot(); Send(new { kind = "reply", id, ok = true });
+            Snapshot(); Reply(new { kind = "reply", id, ok = true });
         }
-        catch (Exception ex) { AppLog.Error("UI request", ex); Send(new { kind = "reply", id, ok = false, error = Store.Friendly(ex) }); Snapshot(); }
+        catch (Exception ex) { AppLog.Error("UI request", ex); Reply(new { kind = "reply", id, ok = false, error = Store.Friendly(ex) }); Snapshot(); }
     }
+    void SaveProfile(Action<Profile> change) => profile = Store.Change(profile, change);
     async Task Mutate(string action, JsonElement data)
     {
         switch (action)
@@ -244,7 +252,7 @@ public sealed partial class MainWindow : WindowChrome
                 using (var fetchCancellation = new CancellationTokenSource())
                 {
                     importAttempt = fetchCancellation;
-                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; result = await Subscriptions.Download(address, fetchCancellation.Token, device: device); }
+                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; result = await Subscriptions.Download(address, fetchCancellation.Token, device: device, proxyPort: RequestProxyPort); }
                     finally { if (importAttempt == fetchCancellation) importAttempt = null; }
                 }
                 if (exiting) return;
@@ -253,46 +261,31 @@ public sealed partial class MainWindow : WindowChrome
             case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "pingSettings":
                 var options = JsonSerializer.Deserialize<PingOptions>(data.GetRawText(), Json) ?? throw new UserError("Не переданы настройки пинга.");
-                options.Validate(); await ping.Stop(clear: true); profile.Ping = options; Store.Save(profile); AppLog.Write("ping", "settings saved"); break;
+                options.Validate(); SaveProfile(p => p.Ping = options); await ping.Stop(clear: true); AppLog.Write("ping", "settings saved"); break;
             case "select":
                 string id = data.GetProperty("id").GetString() ?? "";
                 if (id != "auto" && !profile.Nodes.Any(n => n.Id == id)) throw new UserError("Сервер уже удалён. Обновите подписку.");
-                if (id != profile.Selected) { await StopTools(); await tunnel.Stop(); profile.Selected = id; Store.Save(profile); ResumeDesired(); }
+                if (id != profile.Selected) { await StopTools(); await tunnel.Stop(); try { SaveProfile(p => p.Selected = id); } finally { ResumeDesired(); } }
                 break;
-            case "settings":
-                string key = data.GetProperty("key").GetString() ?? ""; var value = data.GetProperty("value");
-                bool restart = false;
-                switch (key)
-                {
-                    case "theme": string theme = value.GetString()!; if (theme is not ("dark" or "light")) throw new UserError("Неизвестная тема."); profile.Theme = theme; break;
-                    case "mode": string mode = value.GetString()!; if (mode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим."); restart = mode != profile.ConnectionMode; if (restart) await tunnel.Stop(); profile.ConnectionMode = mode; break;
-                    case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass) || profile.Mode != "smart"; if (restart) await tunnel.Stop(); profile.Bypass = domains; profile.Mode = "smart"; break;
-                    case "startup": bool enabled = value.GetBoolean(); await Startup.Set(enabled); profile.Startup = enabled; break;
-                    case "autoConnect": profile.AutoConnect = value.GetBoolean(); break;
-                    case "tray": profile.Tray = value.GetBoolean(); break;
-                    case "killSwitch":
-                        bool protect = value.GetBoolean();
-                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, tunnel.UsesXhttp);
-                        if (!protect) KillSwitch.Release();
-                        profile.KillSwitch = protect; break;
-                    case "sendHwid": profile.SendHwid = value.GetBoolean(); break;
-                    default: throw new UserError("Неизвестная настройка.");
-                }
-                Store.Save(profile); if (restart) ResumeDesired(); break;
+            case "settings": await ChangeSetting(data); break;
             case "switchSubscription":
                 string subscriptionId = data.GetProperty("id").GetString() ?? "";
                 if (profile.Subscriptions.All(s => s.Id != subscriptionId)) throw new UserError("Подписка уже удалена.");
-                if (subscriptionId != profile.ActiveSubscription) { await StopTools(); await ping.Stop(clear: true); await tunnel.Stop(); profile.CaptureActive(); profile.Activate(subscriptionId); warnings = []; Store.Save(profile); AppLog.Register(profile); ResumeDesired(); }
+                if (subscriptionId != profile.ActiveSubscription)
+                {
+                    await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
+                    try { SaveProfile(p => p.Activate(subscriptionId)); warnings = []; AppLog.Register(profile); }
+                    finally { ResumeDesired(); }
+                }
                 break;
             case "favorite":
                 string favorite = data.GetProperty("id").GetString() ?? "";
                 if (profile.Nodes.All(n => n.Id != favorite)) throw new UserError("Сервер уже удалён.");
-                if (!profile.Favorites.Remove(favorite)) profile.Favorites.Add(favorite);
-                Store.Save(profile); if (profile.Selected == "auto" && reconnect.Desired) { await tunnel.Stop(); ResumeDesired(); } break;
+                SaveProfile(p => { if (!p.Favorites.Remove(favorite)) p.Favorites.Add(favorite); }); if (profile.Selected == "auto" && reconnect.Desired) { await tunnel.Stop(); ResumeDesired(); } break;
             case "automationSettings":
                 var automation = JsonSerializer.Deserialize<AutomationOptions>(data.GetRawText(), Json) ?? throw new UserError("Не переданы настройки.");
                 automation.Validate(); bool autoRestart = profile.Selected == "auto" && (automation.AutoMinutes != profile.Automation.AutoMinutes || automation.AutoToleranceMs != profile.Automation.AutoToleranceMs);
-                profile.Automation = automation; Store.Save(profile); if (autoRestart) { await tunnel.Stop(); ResumeDesired(); } break;
+                SaveProfile(p => p.Automation = automation); if (autoRestart) { await tunnel.Stop(); ResumeDesired(); } break;
             case "backupExport": await ExportBackup(data.GetProperty("password").GetString() ?? ""); break;
             case "backupImport": await ImportBackup(data.GetProperty("password").GetString() ?? ""); break;
             case "downloadUpdate": await DownloadUpdate(data.GetProperty("version").GetString() ?? ""); break;
@@ -302,10 +295,19 @@ public sealed partial class MainWindow : WindowChrome
                 if (removedSubscription.Length == 0 || removedSubscription != profile.ActiveSubscription || profile.Subscriptions.All(s => s.Id != removedSubscription))
                     throw new UserError("Подписка уже удалена или выбрана другая подписка.");
                 await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
-                profile.Subscriptions.RemoveAll(s => s.Id == removedSubscription);
-                profile.ActiveSubscription = ""; profile.Address = ""; profile.Local = false; profile.SubscriptionUsage = null; profile.Nodes = []; profile.Selected = ""; profile.Name = "Подписка"; profile.Updated = null; profile.Favorites = []; warnings = [];
-                if (profile.Subscriptions.Count > 0) profile.Activate(profile.Subscriptions[0].Id); else reconnect.Stop();
-                Store.Save(profile); refreshAttempts.Remove(removedSubscription); AppLog.Register(profile); ResumeDesired(); break;
+                try
+                {
+                    SaveProfile(p =>
+                    {
+                        p.Subscriptions.RemoveAll(s => s.Id == removedSubscription);
+                        p.ActiveSubscription = ""; p.Address = ""; p.Local = false; p.SubscriptionUsage = null; p.Nodes = []; p.Selected = ""; p.Name = "Подписка"; p.Updated = null; p.Favorites = [];
+                        if (p.Subscriptions.Count > 0) p.Activate(p.Subscriptions[0].Id);
+                    });
+                    warnings = []; if (profile.Subscriptions.Count == 0) reconnect.Stop();
+                    refreshAttempts.Remove(removedSubscription); AppLog.Register(profile);
+                }
+                finally { ResumeDesired(); }
+                break;
             default: throw new UserError("Неизвестная команда.");
         }
     }
@@ -329,7 +331,7 @@ public sealed partial class MainWindow : WindowChrome
     async Task ExitApp()
     {
         if (exiting) return;
-        exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
+        exiting = true; browserWatch.Stop(); browserWatch.Dispose(); DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
         try
         {
             try { await services.StopAll(exit: true); }

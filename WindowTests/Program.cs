@@ -110,8 +110,10 @@ internal static class Program
         if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return 0; }
         if (args.Length == 3 && args[0] == "--proxy-owner") { SystemProxy.Enable(int.Parse(args[1])); File.WriteAllText(args[2], "ready"); Thread.Sleep(60000); return 0; }
         Kot.WindowTests.ProfileUpgradeChecks.Run(Check);
+        Kot.WindowTests.ProfileRecoveryChecks.Run(Check, args.Length > 0 ? args[0] : "artifacts/window-ui");
         Kot.WindowTests.ShellTests.Run(Check);
         Kot.WindowTests.WebViewTests.Run(Check);
+        Kot.WindowTests.BrowserRecoveryChecks.Run(Check, args.Length > 0 ? args[0] : "artifacts/window-ui");
         ProxyFixture.Run(Check);
         Kot.WindowTests.QrTests.Run(Check);
         UpdateCleanupChecks();

@@ -13,6 +13,25 @@ public sealed class StartupScreen : UserControl
     readonly PrivateFontCollection fonts = new();
     readonly Font regular, small;
     readonly Bitmap image;
+    Control? failure;
+    Control artwork = null!;
+    readonly Control titleBar;
+
+    public void ShowFailure(string message, Action retry)
+    {
+        ClearFailure(); artwork.Hide();
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = BackColor, Padding = new Padding(48), ColumnCount = 1, RowCount = 3 };
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50)); panel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        panel.Controls.Add(new Label { Text = message, Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomCenter, Padding = new Padding(0, 0, 0, 20), AccessibleName = message }, 0, 0);
+        var button = new Button { Text = "Повторить", Name = "retryInterface", AutoSize = true, MinimumSize = new Size(160, 38), Anchor = AnchorStyles.None, FlatStyle = FlatStyle.Flat, ForeColor = ForeColor };
+        button.Click += (_, _) => retry(); panel.Controls.Add(button, 0, 1);
+        failure = panel; Controls.Add(panel); panel.BringToFront(); titleBar.BringToFront(); Show(); button.Focus();
+    }
+    public void ClearFailure()
+    {
+        if (failure != null) { Controls.Remove(failure); failure.Dispose(); failure = null; }
+        artwork?.Show();
+    }
 
     public StartupScreen(string theme, Icon icon, Action minimize, Action maximize, Action close, Action drag, bool spin = false)
     {
@@ -40,7 +59,9 @@ public sealed class StartupScreen : UserControl
             image = large.ToBitmap();
         }
         var content = new StartupArtwork(image, spin) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
+        artwork = content;
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
+        titleBar = title;
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
         var version = new Label { Text = "", Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0), AccessibleName = "kot. " + ClientIdentity.Version };
         version.Paint += (_, e) =>

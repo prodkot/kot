@@ -1,7 +1,7 @@
 'use strict';
 window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
   const $=id=>document.getElementById(id);
-  let provider='zapret', resultKey='', historyKey='', strategyKey='', settingService='', starting=new Set();
+  let provider='zapret', resultKey='', historyKey='', strategyKey='', settingService='', settingsSession=0, savingSettings=false, rotatingSecret=false, starting=new Set();
   const state=()=>getModel().services||{items:[],zapret:{},telegram:{}};
   const item=id=>state().items?.find(s=>s.id===id)||{id,status:'Не установлен'};
   async function perform(action,data={}){try{await rpc(action,data);return true;}catch(e){toast(e.message);return false;}}
@@ -69,7 +69,7 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
   function appendChecks(root,checks){for(const check of checks){const line=document.createElement('p');line.className='service-check';line.textContent=(check.success?'Доступен':'Ошибка')+' · '+check.target+' · '+check.milliseconds+' мс'+(check.status?' · HTTP '+check.status:'')+(check.error?' · '+check.error:'');root.append(line);}}
   async function saveStrategy(strategy){if(await perform('serviceSettings',{service:'zapret',settings:{...state().zapret,strategy},restart:!!item('zapret').running}))toast('Стратегия сохранена');render();}
   function settings(service){
-    settingService=service;const s=state(),z=s.zapret||{},t=s.telegram||{};
+    settingService=service;settingsSession++;$('serviceSettingsSave').disabled=savingSettings;const s=state(),z=s.zapret||{},t=s.telegram||{};
     text('serviceSettingsTitle',service==='zapret'?'Настройки zapret':'Настройки Telegram');$('zapretSettingsFields').hidden=service!=='zapret';$('telegramSettingsFields').hidden=service!=='telegram';
     $('serviceAutoStart').checked=!!(service==='zapret'?z.autoStart:t.autoStart);
     $('zapretGameFilter').checked=!!z.gameFilter;$('zapretDomains').value=z.domains||'';$('zapretExcludedDomains').value=z.excludedDomains||'';$('zapretTargets').value=z.targets||'https://discord.com\nhttps://www.youtube.com';$('zapretTimeout').value=z.timeoutSeconds||6;
@@ -90,14 +90,18 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
   $('telegramCopy').addEventListener('click',async()=>{if(await perform('serviceCopyLink'))toast('Ссылка на локальный прокси скопирована');});
   $('telegramRotate').addEventListener('click',()=>openDialog($('serviceSecretDialog')));
   $('serviceSecretCancel').addEventListener('click',()=>closeDialog($('serviceSecretDialog')));
-  $('serviceSecretConfirm').addEventListener('click',async()=>{if(await perform('serviceRotateSecret')){closeDialog($('serviceSecretDialog'));toast('Secret обновлён. Подключите Telegram по новой ссылке.');}});
+  $('serviceSecretConfirm').addEventListener('click',async()=>{
+    if(rotatingSecret)return;rotatingSecret=true;$('serviceSecretConfirm').disabled=true;
+    try{if(await perform('serviceRotateSecret')){closeDialog($('serviceSecretDialog'));toast('Secret обновлён. Подключите Telegram по новой ссылке.');}}
+    finally{rotatingSecret=false;$('serviceSecretConfirm').disabled=false;}
+  });
   $('serviceSettingsClose').addEventListener('click',()=>closeDialog($('serviceSettingsDialog')));
-  $('serviceSettingsDialog').addEventListener('close',()=>{$('telegramSecret').value='';});
+  $('serviceSettingsDialog').addEventListener('close',()=>{settingsSession++;$('telegramSecret').value='';});
   $('serviceSettingsForm').addEventListener('submit',async event=>{
-    event.preventDefault();const b=$('serviceSettingsSave');b.disabled=true;
+    event.preventDefault();if(savingSettings)return;savingSettings=true;const session=settingsSession,b=$('serviceSettingsSave');b.disabled=true;
     const service=settingService,autoStart=$('serviceAutoStart').checked;
     const settings=service==='zapret'?{...state().zapret,autoStart,gameFilter:$('zapretGameFilter').checked,domains:$('zapretDomains').value,excludedDomains:$('zapretExcludedDomains').value,targets:$('zapretTargets').value,timeoutSeconds:Number($('zapretTimeout').value)}:{autoStart,port:Number($('telegramPort').value),poolSize:Number($('telegramPool').value),cloudflare:$('telegramCloudflare').checked,http2:$('telegramHttp2').checked,dcIp:$('telegramDcIp').value,domains:$('telegramDomains').value,workerDomains:$('telegramWorkers').value,secret:$('telegramSecret').value};
-    try{await rpc('serviceSettings',{service,settings,restart:!!item(service).running});closeDialog($('serviceSettingsDialog'));toast('Настройки сохранены');}catch(e){text('serviceSettingsError',e.message);}finally{b.disabled=false;}
+    try{await rpc('serviceSettings',{service,settings,restart:!!item(service).running});if(session===settingsSession)closeDialog($('serviceSettingsDialog'));toast('Настройки сохранены');}catch(e){if(session===settingsSession)text('serviceSettingsError',e.message);else toast(e.message);}finally{savingSettings=false;b.disabled=false;}
   });
   $('serviceRemoveCancel').addEventListener('click',()=>closeDialog($('serviceRemoveDialog')));
   $('serviceRemoveConfirm').addEventListener('click',async()=>{if(await operation($('serviceRemoveDialog').dataset.service,'remove'))closeDialog($('serviceRemoveDialog'));});

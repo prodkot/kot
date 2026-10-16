@@ -93,7 +93,7 @@ try {
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
       if (Test-Path (Join-Path $profile $name)) { throw 'Legacy update test requires a fresh Windows test account. Existing user data was left untouched.' }
     }
-    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch 'legacy client'; $parent=$null
+    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch 'legacy client'; $parent=$null; $recoveryWork=$null
     try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
@@ -132,6 +132,35 @@ try {
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Automatic update changed the old profile or traffic history.' }
       Write-Host 'PASS authentic 0.6.1 updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved.'
+
+      # Exercise startup recovery from the actual bundled executable. Kot.exe is
+      # in the journal, so restoration must happen from a separate helper after
+      # the original process has exited and released its executable mapping.
+      Run-Checked (Join-Path $legacy 'Kot.exe') @('--shutdown') $legacy -Timeout 40000 | Out-Null
+      $recoveryWork=Join-Path $legacy ('.kot-update-'+[Guid]::NewGuid().ToString('N'))
+      New-Item -ItemType Directory (Join-Path $recoveryWork 'backup/ui') -Force | Out-Null
+      Copy-Item (Join-Path $legacy 'Kot.exe') (Join-Path $recoveryWork 'backup/Kot.exe')
+      Copy-Item (Join-Path $legacy 'ui/app.js') (Join-Path $recoveryWork 'backup/ui/app.js')
+      $journal=@(@{Name='ui/app.js';Existed=$true},@{Name='interrupted-update.tmp';Existed=$false},@{Name='Kot.exe';Existed=$true})
+      [IO.File]::WriteAllText((Join-Path $recoveryWork 'journal.json'),(ConvertTo-Json -InputObject $journal -Compress))
+      [IO.File]::WriteAllText((Join-Path $legacy 'ui/app.js'),'throw new Error("interrupted update fixture");')
+      [IO.File]::WriteAllText((Join-Path $legacy 'interrupted-update.tmp'),'remove on rollback')
+      Run-Checked (Join-Path $legacy 'Kot.exe') @('--startup') $legacy -Timeout 60000 | Out-Null
+      $deadline=[Diagnostics.Stopwatch]::StartNew(); $restarted=$false
+      while ($deadline.Elapsed.TotalSeconds -lt 45 -and !$restarted) {
+        if (!(Test-Path (Join-Path $legacy 'interrupted-update.tmp'))) {
+          foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot')) {
+            try { if (!$app.HasExited -and $app.MainModule.FileName -eq (Join-Path $legacy 'Kot.exe')) { $restarted=$true } } finally { $app.Dispose() }
+          }
+        }
+        if (!$restarted) { Start-Sleep -Milliseconds 200 }
+      }
+      if (!$restarted) { throw 'Interrupted update did not restore and restart the installed application.' }
+      Verify-Files $legacy
+      Run-Checked (Join-Path $legacy 'Kot.exe') @('--shutdown') $legacy -Timeout 40000 | Out-Null
+      if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through automatic update') { throw 'Startup recovery changed a user file.' }
+      Write-Host 'PASS installed startup recovery restores a journal containing the running Kot.exe, removes partial new files and restarts the application through a separate helper.'
+
     } finally {
       if ($null -ne $parent) { if (!$parent.HasExited) { $parent.Kill($true); $parent.WaitForExit(5000) | Out-Null }; $parent.Dispose() }
       if ($ownedProfile) {
@@ -140,6 +169,11 @@ try {
           # Confine cleanup to app processes created from this private fixture.
           foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot')) {
             try { if ($app.MainModule.FileName -eq (Join-Path $legacy 'Kot.exe') -and !$app.HasExited) { $app.Kill($true); $app.WaitForExit(10000) | Out-Null } } finally { $app.Dispose() }
+          }
+          if ($recoveryWork) {
+            foreach ($helper in [Diagnostics.Process]::GetProcessesByName('Recovery')) {
+              try { if (!$helper.HasExited -and $helper.MainModule.FileName -eq (Join-Path $recoveryWork 'Recovery.exe')) { $helper.Kill($true); $helper.WaitForExit(10000) | Out-Null } } finally { $helper.Dispose() }
+            }
           }
           Remove-TestDirectory $profile
           if (Test-Path $backup) { Move-Item $backup $profile }

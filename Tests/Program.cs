@@ -2,6 +2,7 @@ using Kot.Core;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+if (args.Length == 5 && args[0] == "--crash-update") { Kot.Tests.UpdateCrashTests.Child(args); return; }
 if (args.Length >= 2 && args[0] == "geoip-core")
 {
     await Kot.Tests.GeoIpCoreTests.Run(args[1], args.Length > 2 ? args[2] : null); return;
@@ -306,6 +307,8 @@ using (var rsa = System.Security.Cryptography.RSA.Create(2048))
 }
 await Kot.Tests.ServicesTests.Run(Check, fixtureFolder);
 await Kot.Tests.BodyTests.Run(Check);
+await Kot.Tests.NetworkRequestTests.Run(Check, fixtureFolder);
+Kot.Tests.ProfilePersistenceTests.Run(Check, Path.Combine(fixtureFolder, "profile-recovery-" + Guid.NewGuid().ToString("N")));
 Kot.Tests.SetupTests.Run(Check);
 Kot.Tests.InstallerTests.Run(Check, fixtureFolder);
 Kot.Tests.InstallationTests.Run(Check, fixtureFolder);

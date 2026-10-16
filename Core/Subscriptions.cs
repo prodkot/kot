@@ -178,7 +178,7 @@ public static class Subscriptions
         { var kv = pair.Split('=', 2); result[Uri.UnescapeDataString(kv[0])] = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : ""; }
         return result;
     }
-    public static async Task<SubscriptionResult> Download(string address, CancellationToken ct, HttpMessageHandler? testTransport = null, SubscriptionDevice? device = null)
+    public static async Task<SubscriptionResult> Download(string address, CancellationToken ct, HttpMessageHandler? testTransport = null, SubscriptionDevice? device = null, int proxyPort = 0)
     {
         if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? uri) || uri.Scheme != "https" || uri.UserInfo.Length > 0) throw new UserError("Нужна HTTPS-ссылка на подписку.");
         device?.Validate();
@@ -186,7 +186,7 @@ public static class Subscriptions
         bool deviceOrigin = true;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(35)); ct = deadline.Token;
-        using var handler = testTransport ?? new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All, UseProxy = false, UseCookies = false };
+        using var handler = testTransport ?? NetworkRequests.Handler(proxyPort);
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(35) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(ClientIdentity.SubscriptionUserAgent);
         for (int redirects = 0; redirects <= 5; redirects++)
