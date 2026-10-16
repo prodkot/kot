@@ -1,0 +1,26 @@
+name: Предложение
+description: Идея, которая сделает kot. удобнее.
+title: "[Идея] "
+body:
+  - type: markdown
+    attributes:
+      value: Опиши задачу и желаемое поведение. Не публикуй ссылки подписок, ключи или личные данные.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу хочется решить?
+      description: Что сейчас неудобно или чего не хватает? Пример сценария поможет.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Как это должно работать?
+      description: Опиши результат для пользователя. Можно приложить набросок или скриншот.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы и детали
+      description: Необязательно. Как решаешь задачу сейчас и что ещё стоит учесть?

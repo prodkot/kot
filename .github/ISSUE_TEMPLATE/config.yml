@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Руководства и настройка
+    url: https://github.com/prodkot/kot/blob/main/docs/README.md
+    about: Подключение, маршрутизация, диагностика, сервисы и восстановление профиля.
   - name: Сообщить об уязвимости приватно
     url: https://github.com/prodkot/kot/security/advisories/new
     about: Для ошибок, затрагивающих безопасность и личные данные.
