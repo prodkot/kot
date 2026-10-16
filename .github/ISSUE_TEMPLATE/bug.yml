@@ -1,32 +1,46 @@
 name: Ошибка
-description: Сообщить об ошибке kot.
-title: ""
+description: Что-то не работает или выглядит неправильно.
+title: "[Ошибка] "
 body:
   - type: markdown
     attributes:
-      value: Не публикуй ссылки подписок, пароли или HWID. Уязвимости сообщай приватно через вкладку Security.
+      value: |
+        Спасибо за подробности. Не публикуй ссылки подписок, ключи серверов, пароли или HWID.
+        Об уязвимости сообщи [приватно](https://github.com/prodkot/kot/security/advisories/new).
   - type: input
     id: version
     attributes:
       label: Версия kot. и Windows
-      placeholder: Например, kot. 0.5.7, Windows 11 x64
+      description: Версия клиента указана в заголовке окна.
+      placeholder: kot. x.y.z, Windows 11 x64
     validations:
       required: true
+  - type: input
+    id: context
+    attributes:
+      label: Раздел и условия
+      description: Для подключения укажи TUN или системный прокси и протокол. Для оформления укажи тему и масштаб Windows.
+      placeholder: Подключение, TUN, VLESS; или Настройки, светлая тема, масштаб 150%
   - type: textarea
     id: reproduce
     attributes:
-      label: Шаги воспроизведения
-      description: Что нажимаешь и что происходит?
+      label: Шаги и фактический результат
+      description: Что нужно сделать, что происходит и повторяется ли ошибка?
+      placeholder: |
+        1. Открыть...
+        2. Нажать...
+        Результат: ...
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Ожидаемый результат
+      description: Как это должно работать?
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
       label: Скриншот или очищенный лог
-      description: Проверь, что в них нет личных данных.
+      description: Удали личные данные и адреса подписок перед публикацией.
