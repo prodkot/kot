@@ -7,7 +7,7 @@ internal sealed class ProfileRecovery : Form
 {
     readonly ProfilePersistence store;
     readonly Label error = new() { AutoSize = true, MaximumSize = new Size(480, 0), ForeColor = Color.FromArgb(240, 165, 155) };
-    readonly TextBox password = new() { UseSystemPasswordChar = true, PlaceholderText = "Пароль резервной копии", Width = 480, AccessibleName = "Пароль резервной копии" };
+    readonly TextBox password = new() { UseSystemPasswordChar = true, Width = 480, AccessibleName = "Пароль резервной копии", BackColor = Color.FromArgb(40, 45, 46), ForeColor = Color.FromArgb(232, 236, 230), BorderStyle = BorderStyle.FixedSingle };
     Profile? result;
     internal ProfileRecovery(ProfilePersistence store, Exception reason)
     {
@@ -35,7 +35,8 @@ internal sealed class ProfileRecovery : Form
             layout.Controls.Add(button); return button;
         }
         Add("Восстановить предыдущую копию", () => { result = store.RestoreBackup(); DialogResult = DialogResult.OK; return Task.CompletedTask; }).Enabled = backup;
-        password.Margin = new Padding(3, 14, 3, 0); layout.Controls.Add(password);
+        layout.Controls.Add(new Label { Text = "Пароль резервной копии", AutoSize = true, Margin = new Padding(3, 12, 3, 0) });
+        password.Margin = new Padding(3, 4, 3, 0); layout.Controls.Add(password);
         Add("Импортировать .kotbackup", Import);
         Add("Начать с нового профиля", () =>
         {
