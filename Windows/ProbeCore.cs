@@ -1,5 +1,4 @@
 using Kot.Core;
-using System.Net;
 using System.Net.Sockets;
 namespace Kot.Windows;
 
@@ -16,7 +15,7 @@ public sealed class ProbeCore : IAsyncDisposable
         var probe = new ProbeCore();
         try
         {
-            using var reservation = new TcpListener(IPAddress.Loopback, 0); reservation.Start(); probe.Port = ((IPEndPoint)reservation.LocalEndpoint).Port; reservation.Stop();
+            using var reservation = LoopbackPort.Reserve(ct); probe.Port = reservation.Port;
             Directory.CreateDirectory(Store.Folder);
             if (Xhttp.Uses(node)) probe.xrayPermission = KillSwitch.AllowXhttpProbe(xrayExecutable ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe"));
             probe.xray = await XraySession.Start([node], ct, xrayExecutable, probe.Port);
@@ -24,6 +23,7 @@ public sealed class ProbeCore : IAsyncDisposable
             if (probe.xray != null) Xhttp.AddEgress(config, probe.xray.Egress);
             await File.WriteAllTextAsync(probe.path, config.ToJsonString(), ct);
             ct.ThrowIfCancellationRequested();
+            reservation.Dispose();
             probe.core = new NativeCore(executable ?? Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe"), probe.path, text => AppLog.Write("probe-core " + node.Id, text));
             var until = DateTime.UtcNow.AddSeconds(10);
             while (DateTime.UtcNow < until)

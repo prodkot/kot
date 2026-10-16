@@ -1,5 +1,4 @@
 using Kot.Core;
-using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 namespace Kot.Windows;
@@ -25,18 +24,15 @@ public sealed class XraySession : IAsyncDisposable
         var selected = nodes.Where(Xhttp.Uses).DistinctBy(n => n.Id).ToArray();
         if (selected.Length == 0) return null;
         var session = new XraySession { Executable = Path.GetFullPath(executable ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe")) };
-        List<TcpListener> reservations = [];
+        List<LoopbackPort> reservations = [];
         try
         {
             if (!File.Exists(session.Executable)) throw new UserError("Ядро Xray для XHTTP не найдено. Переустановите kot.");
             XhttpBridge Reserve()
             {
-                ct.ThrowIfCancellationRequested();
-                TcpListener listener; int port;
-                do { listener = new(IPAddress.Loopback, 0); listener.Start(); port = ((IPEndPoint)listener.LocalEndpoint).Port; if (excludedPorts.Contains(port)) listener.Stop(); } while (excludedPorts.Contains(port));
-                reservations.Add(listener);
+                var reserved = LoopbackPort.Reserve(ct, excludedPorts); reservations.Add(reserved);
                 string user = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), password = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-                return new(port, user, password);
+                return new(reserved.Port, user, password);
             }
             session.Egress = Reserve();
             foreach (var node in selected) { NodeSecurity.Validate(node); session.bridges.Add(node.Id, Reserve()); }
@@ -48,7 +44,7 @@ public sealed class XraySession : IAsyncDisposable
                 catch { await check.Stop(); throw; }
                 if (check.ExitCode != 0) throw new UserError("Xray не принял XHTTP-конфигурацию: " + CoreDiagnostics.Summary(AppLog.Clean(await check.ReadRecentOutput(true))));
             }
-            foreach (var listener in reservations) listener.Stop();
+            foreach (var reserved in reservations) reserved.Dispose();
             ct.ThrowIfCancellationRequested();
             session.core = new NativeCore(session.Executable, ["run", "-c", session.path], Path.GetDirectoryName(session.Executable)!, "kot. XHTTP core", text => AppLog.Write("xray-core", text));
             using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct); ready.CancelAfter(TimeSpan.FromSeconds(10));
@@ -66,7 +62,7 @@ public sealed class XraySession : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { await session.DisposeAsync(); throw new UserError("Xray не запустился за 10 секунд."); }
         catch { await session.DisposeAsync(); throw; }
-        finally { foreach (var listener in reservations) listener.Stop(); }
+        finally { foreach (var reserved in reservations) reserved.Dispose(); }
     }
     public async ValueTask DisposeAsync()
     {
