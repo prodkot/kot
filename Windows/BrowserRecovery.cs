@@ -62,6 +62,7 @@ public sealed partial class MainWindow
     {
         AppLog.Error("interface", error); bridgeReady = false; browserLoaded = false; browserWatch.Stop();
         if (exiting || IsDisposed) return;
+        web.Hide();
         loading.ShowFailure("Не удалось открыть интерфейс. Соединением можно управлять через меню kot. в трее.", () =>
         {
             browserFailures.Clear(); RecoverBrowser("Повторный запуск интерфейса.");

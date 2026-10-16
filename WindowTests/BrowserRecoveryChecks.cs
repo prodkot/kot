@@ -3,10 +3,12 @@ using Kot.Windows;
 using Microsoft.Web.WebView2.Core;
 using System.Diagnostics;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 namespace Kot.WindowTests;
 
 static class BrowserRecoveryChecks
 {
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
     static void Pump(Func<bool> done, string message, int seconds = 45)
     {
         var clock = Stopwatch.StartNew();
@@ -56,6 +58,8 @@ static class BrowserRecoveryChecks
                     Pump(() => app.Controls.Find("retryInterface", true).Any(c => c.Visible), "repeated crash did not expose native recovery");
                     var retry = (Button)app.Controls.Find("retryInterface", true).Single();
                     check(retry.Enabled && app.Controls.Find("close", true).Single().Visible, "native recovery retains retry and window controls");
+                    app.Activate(); Application.DoEvents();
+                    check(WindowFromPoint(retry.PointToScreen(new Point(retry.Width / 2, retry.Height / 2))) == retry.Handle, "failed browser does not obscure the native retry button");
                     using var bitmap = new Bitmap(app.Width, app.Height); app.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
                     bitmap.Save(Path.Combine(screenshots, "interface-recovery.png"), ImageFormat.Png);
                     int failedGeneration = app.InterfaceGeneration;
