@@ -78,13 +78,12 @@ public sealed partial class MainWindow
         pendingTrayPage ??= visiblePage;
         loading.ClearFailure(); loading.Show(); loading.BringToFront(); browserRecovering = true;
         // Leave the WebView event callback before disposing its control.
-        _ = RestartBrowser();
+        BeginInvoke(async () => await RestartBrowser());
     }
     async Task RestartBrowser()
     {
         try
         {
-            await Task.Yield();
             var previous = web; var exited = browserExited; browserExited = null;
             Controls.Remove(previous); previous.Dispose();
             if (exited != null) await exited.Task.WaitAsync(TimeSpan.FromSeconds(10), lifetime.Token);

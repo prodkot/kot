@@ -1,10 +1,12 @@
 """All production screens/dialogs at supported sizes, long data and scaled rendering."""
 import ast
 import os
+import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = re.search(r'Version\s*=\s*"([0-9.]+)"', (ROOT/'Core/ClientIdentity.cs').read_text()).group(1)
 def literal(path, name):
     return next(ast.literal_eval(n.value) for n in ast.parse((ROOT / path).read_text()).body
                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))
@@ -18,7 +20,7 @@ window.chrome=''')
 MOCK = MOCK.replace("window.statisticsRequests.push(msg);setTimeout(()=>{window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:true}});},10);", '''
 window.fixtureRequests.push(msg);
 setTimeout(()=>{
-const data=msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:''}:undefined;
+const data=msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
 window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:msg.action!==window.fixtureReject,error:'Не удалось сохранить настройки.',data}});
 },window.fixtureDelay||10);
 ''')
@@ -116,7 +118,7 @@ with sync_playwright() as pw:
                 try:
                     page.goto((ROOT/'Windows/ui/index.html').as_uri())
                     expect(page.locator('#startupScreen')).to_be_hidden()
-                    page.evaluate('p=>fixtureSnapshot(p)',{'settings':{'theme':theme,'mode':'tun','tray':True,'bypass':''},'nodes':NODES,'selected':'node0','name':LONG[:60],
+                    page.evaluate('p=>fixtureSnapshot(p)',{'version':VERSION,'settings':{'theme':theme,'mode':'tun','tray':True,'bypass':''},'nodes':NODES,'selected':'node0','name':LONG[:60],
                                   'subscriptions':[{'id':'s','name':LONG[:60],'count':len(NODES)}],'activeSubscription':'s','routing':ROUTING})
                     for section in PAGES:
                         page.evaluate('p=>fixtureNavigate(p)',section)

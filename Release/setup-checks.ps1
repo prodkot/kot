@@ -93,7 +93,7 @@ try {
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
       if (Test-Path (Join-Path $profile $name)) { throw 'Legacy update test requires a fresh Windows test account. Existing user data was left untouched.' }
     }
-    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch 'legacy client'; $parent=$null
+    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch 'legacy client'; $parent=$null; $recoveryWork=$null
     try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
@@ -169,6 +169,11 @@ try {
           # Confine cleanup to app processes created from this private fixture.
           foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot')) {
             try { if ($app.MainModule.FileName -eq (Join-Path $legacy 'Kot.exe') -and !$app.HasExited) { $app.Kill($true); $app.WaitForExit(10000) | Out-Null } } finally { $app.Dispose() }
+          }
+          if ($recoveryWork) {
+            foreach ($helper in [Diagnostics.Process]::GetProcessesByName('Recovery')) {
+              try { if (!$helper.HasExited -and $helper.MainModule.FileName -eq (Join-Path $recoveryWork 'Recovery.exe')) { $helper.Kill($true); $helper.WaitForExit(10000) | Out-Null } } finally { $helper.Dispose() }
+            }
           }
           Remove-TestDirectory $profile
           if (Test-Path $backup) { Move-Item $backup $profile }

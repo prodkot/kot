@@ -34,7 +34,16 @@ public sealed partial class MainWindow
         automationTimer.Tick += async (_, _) => await TickAutomation(); automationTimer.Start();
     }
     void AddressChanged(object? sender, EventArgs e) { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => networkChanged = true); }
-    void PowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume && !IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { networkChanged = true; networkSignature = ""; }); }
+    void PowerChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume && !IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() =>
+        {
+            networkChanged = true; networkSignature = "";
+            // Sleeping Windows could not deliver a heartbeat. Give the existing
+            // page time to answer after resume before treating it as unresponsive.
+            if (browserLoaded) { browserDeadline = DateTimeOffset.UtcNow.AddSeconds(45); browserHeartbeat = DateTimeOffset.MinValue; }
+        });
+    }
     static string PhysicalNetwork()
     {
         try

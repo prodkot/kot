@@ -33,7 +33,7 @@ public sealed partial class MainWindow
     void DeferUpdate(string version)
     {
         if (updateBusy || remoteRelease?.Version != version) throw new UserError("Предложение обновления изменилось. Проверьте обновления ещё раз.");
-        profile.DeferredUpdateVersion = version; Store.Save(profile);
+        SaveProfile(p => p.DeferredUpdateVersion = version);
     }
     async Task DownloadUpdate(string version)
     {
