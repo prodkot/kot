@@ -8,7 +8,6 @@ public sealed class Profile
     public List<Node> Nodes { get; set; } = [];
     public string Selected { get; set; } = "";
     public string Theme { get; set; } = "dark";
-    public string Accent { get; set; } = "lime";
     // Legacy routing preference remains independent from the connection method.
     public string Mode { get; set; } = "all";
     public string ConnectionMode { get; set; } = "tun";
@@ -28,13 +27,14 @@ public sealed class Profile
     public string ActiveSubscription { get; set; } = "";
     public List<string> Favorites { get; set; } = [];
     public AutomationOptions Automation { get; set; } = new();
+    public ServiceOptions Services { get; set; } = new();
     public void Normalize()
     {
         ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
         RoutingProfiles ??= []; ActiveRoutingProfile ??= "";
-        GeoIp ??= new(); GeoIp.Validate();
+        GeoIp ??= new(); GeoIp.Validate(); Services ??= new(); Services.Validate();
         if (RoutingProfiles.Count > 20 || RoutingProfiles.Any(p => p == null) || RoutingProfiles.Select(p => p.Id).Distinct().Count() != RoutingProfiles.Count || ActiveRoutingProfile.Length > 0 && RoutingProfiles.All(p => p.Id != ActiveRoutingProfile))
             throw new UserError("Некорректный список профилей маршрутизации. Максимум 20 профилей.");
         foreach (var routing in RoutingProfiles) routing.Validate();
@@ -91,7 +91,7 @@ public sealed class Profile
                 NodeSecurity.Validate(node);
             }
         }
-        if (Theme is not ("dark" or "light") || Accent is not ("gray" or "lime" or "green" or "purple") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
+        if (Theme is not ("dark" or "light") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
     }
     static void RejectFiles(System.Text.Json.Nodes.JsonNode? node)
     {
@@ -131,12 +131,18 @@ public sealed class ReconnectPolicy
     public bool Desired { get; private set; }
     public int Failures { get; private set; }
     public DateTimeOffset Next { get; private set; }
-    public void Start(DateTimeOffset now) { Desired = true; Failures = 0; Next = now; }
-    public void Stop() { Desired = false; Failures = 0; Next = DateTimeOffset.MaxValue; }
-    public void Healthy() { Failures = 0; }
+    bool established;
+    public void Start(DateTimeOffset now) { established = false; Desired = true; ResetDelay(now); }
+    public void ResetDelay(DateTimeOffset now) { Failures = 0; Next = now; }
+    public void Stop() { established = false; Desired = false; Failures = 0; Next = DateTimeOffset.MaxValue; }
+    public void Healthy() { established = true; Failures = 0; }
     public void Retry(DateTimeOffset now)
     {
+        if (!Desired) return;
         Failures = Math.Min(Failures + 1, 10);
+        // A server that never connected must eventually expose its error instead
+        // of spinning forever. Established sessions still recover automatically.
+        if (!established && Failures >= 3) { Desired = false; Next = DateTimeOffset.MaxValue; return; }
         int[] delays = [2, 5, 10, 20, 30, 60]; Next = now.AddSeconds(delays[Math.Min(Failures - 1, delays.Length - 1)]);
     }
     public bool Due(DateTimeOffset now, bool online) => Desired && online && now >= Next;

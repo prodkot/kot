@@ -22,7 +22,7 @@ MOCK = r'''(()=>{
        model.activeSubscription=message.data.id;model.name=model.subscriptions.find(s=>s.id===message.data.id).name;
      }
      fixtureSnapshot({});listener({data:{kind:'reply',id:message.id,ok:true}});
-   },message.action==='switchSubscription'?300:0);
+   },['switchSubscription','remove'].includes(message.action)?300:0);
  }}};
 })();'''.replace('MODEL', json.dumps(fixture, ensure_ascii=False))
 
@@ -60,6 +60,15 @@ with sync_playwright() as p:
     expect(trigger).to_have_attribute('data-subscription','sub2');page.evaluate('window.failSwitch=false')
     trigger.click();page.locator('#addSubscriptionOption').click();expect(menu).not_to_be_visible();expect(page.locator('#addDialog')).to_be_visible()
     page.keyboard.press('Escape');expect(page.locator('#addDialog')).not_to_be_visible()
+    # Repeated confirmation cannot queue removal of the next active subscription.
+    page.locator('[data-page=settings]').click();page.locator('#advancedButton').click()
+    page.locator('#removeSubscription').click()
+    page.evaluate("document.getElementById('confirmRemove').click();document.getElementById('confirmRemove').click()")
+    expect(page.locator('#confirmRemove')).to_be_disabled()
+    expect(page.locator('#removeDialog')).not_to_be_visible()
+    assert page.evaluate("actions.filter(a=>a.action==='remove').length")==1
+    assert page.evaluate("actions.find(a=>a.action==='remove').data.id")=='sub2'
+    page.locator('[data-page=servers]').click()
     # Top-layer menu must stay within the viewport, including long names and many profiles.
     for width,height in [(800,600),(1080,770),(390,640)]:
         page.set_viewport_size({'width':width,'height':height});trigger.click()

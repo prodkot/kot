@@ -1,6 +1,7 @@
 using Kot.Windows;
 using System.Runtime.InteropServices;
 using System.Drawing.Imaging;
+using System.Diagnostics;
 
 internal static class Program
 {
@@ -99,10 +100,16 @@ internal static class Program
     }
     [STAThread] static int Main(string[] args)
     {
-        ApplicationConfiguration.Initialize();
-        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); return 0; }
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
+        if (args.Length == 3 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.XhttpChecks.Run(core, Path.Combine(Path.GetDirectoryName(core)!, "xray.exe"), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return 0; }
         if (args.Length == 3 && args[0] == "--proxy-owner") { SystemProxy.Enable(int.Parse(args[1])); File.WriteAllText(args[2], "ready"); Thread.Sleep(60000); return 0; }
+        Kot.WindowTests.ProfileUpgradeChecks.Run(Check);
         Kot.WindowTests.ShellTests.Run(Check);
         Kot.WindowTests.WebViewTests.Run(Check);
         ProxyFixture.Run(Check);
@@ -122,26 +129,52 @@ internal static class Program
         window.ToggleMaximize();
         int opened = 0, toggled = 0; string page = "";
         using var menu = new TrayMenu(() => opened++, p => page = p, () => { toggled++; return Task.CompletedTask; }, () => Task.CompletedTask);
-        menu.Update("dark", "lime", "idle", "", false);
+        menu.Update("dark", "idle", "", false);
         var power = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "power");
         Check(!power.Enabled, "connect disabled without a subscription");
-        menu.Update("dark", "lime", "connected", "Test & node\nwith control", true);
-        Check(menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("Test & node") && !menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text.Contains("\n"), "server label preserves ampersands and removes control characters");
+        menu.Update("dark", "connected", "Test & node\nwith control", true);
+        string statusText = menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "status").Text ?? "";
+        Check(statusText.Contains("Test & node") && !statusText.Contains("\n"), "server label preserves ampersands and removes control characters");
         Check(power.Enabled && power.Text == "Отключить", "tray connection action follows state");
         power.PerformClick(); Check(toggled == 1, "tray action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "open").PerformClick(); Check(opened == 1, "open action executes once");
         menu.Items.Cast<ToolStripItem>().Single(i => (string?)i.Tag == "logs").PerformClick(); Check(page == "logs", "tray opens the logs page");
-        menu.Update("dark", "lime", "waiting", "Авто", true); Check(power.Text == "Отменить подключение", "reconnect can be cancelled from tray");
+        menu.Update("dark", "waiting", "Авто", true); Check(power.Text == "Отменить подключение", "reconnect can be cancelled from tray");
         string folder = args.Length > 0 ? args[0] : "artifacts/window-ui"; Directory.CreateDirectory(folder);
         foreach (string theme in new[] { "dark", "light" })
         {
-            menu.Update(theme, "lime", "connected", "Германия · Frankfurt", true);
+            menu.Update(theme, "connected", "Германия · Frankfurt", true);
             menu.Show(window, new Point(20, 20)); Application.DoEvents();
             Check(menu.Region != null, "rounded native menu " + theme);
+            Check(menu.Width == menu.Height && Math.Abs(menu.Width - 320 * menu.DeviceDpi / 96f) <= 1, "compact 320-pixel tray menu scales with Windows DPI " + theme);
+            var rows = menu.Items.Cast<ToolStripItem>().ToArray();
+            var commands = rows.OfType<ToolStripMenuItem>().ToArray();
+            Console.WriteLine("Tray geometry " + theme + ": " + string.Join("; ", rows.Select(i => $"{i.Tag ?? "separator"} {i.Bounds}")));
+            Check(commands.Where(i => i.Enabled).All(i => i.Bounds.Width == menu.ClientSize.Width - menu.Padding.Horizontal && Math.Abs(i.Height - 32 * menu.DeviceDpi / 96f) <= 1), "tray commands have equal full-width hit areas " + theme);
+            Check(commands.All(i => i.Bounds.Left >= menu.Padding.Left && i.Bounds.Right <= menu.ClientSize.Width - menu.Padding.Right && i.Bounds.Bottom <= menu.ClientSize.Height - menu.Padding.Bottom), "all tray commands fit within the common padding " + theme);
             using var bitmap = new Bitmap(menu.Width, menu.Height);
             menu.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
             bitmap.Save(Path.Combine(folder, "tray-" + theme + ".png"), ImageFormat.Png);
             menu.Close();
+            using var sourceIcon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+            int minimized = 0, maximized = 0, closed = 0;
+            using var loading = new StartupScreen(theme, sourceIcon, () => minimized++, () => maximized++, () => closed++, () => { });
+            window.ClientSize = new Size(800, 600); window.Controls.Add(loading); Application.DoEvents();
+            var buttons = new[] { "minimize", "maximize", "close" }.Select(name => (Button)loading.Controls.Find(name, true).Single()).ToArray();
+            var title = buttons[0].Parent!;
+            var version = title.Controls.OfType<Label>().Single();
+            Check(version.Right <= buttons[0].Left && buttons.Zip(buttons.Skip(1)).All(pair => pair.First.Right <= pair.Second.Left) && buttons.All(button => button.Visible && button.Width > 0 && button.Bottom <= title.ClientSize.Height && button.Right <= title.ClientSize.Width), "loading title and window buttons have separate visible bounds " + theme);
+            foreach (var button in buttons) button.PerformClick();
+            Check(minimized == 1 && maximized == 1 && closed == 1, "loading screen retains all window actions " + theme);
+            var entrance = Stopwatch.StartNew();
+            while (entrance.ElapsedMilliseconds < 520) { Application.DoEvents(); Thread.Sleep(10); }
+            using var startupBitmap = new Bitmap(loading.Width, loading.Height);
+            loading.DrawToBitmap(startupBitmap, new Rectangle(Point.Empty, startupBitmap.Size));
+            startupBitmap.Save(Path.Combine(folder, "loading-" + theme + ".png"), ImageFormat.Png);
+            Check(startupBitmap.GetPixel(10, 100).ToArgb() == ColorTranslator.FromHtml(theme == "light" ? "#f6f6f2" : "#151718").ToArgb(), "native loading uses the saved theme " + theme);
+            var tile = startupBitmap.GetPixel(370, 299);
+            Check(theme == "light" ? tile.R > 200 && tile.G > 200 && tile.B > 200 : tile.R < 40 && tile.G < 40 && tile.B < 40, "native loading icon matches the saved theme " + theme);
+            window.Controls.Remove(loading);
         }
         window.Hide(); Console.WriteLine("Windows menu and shell checks passed."); return 0;
     }

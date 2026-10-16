@@ -27,6 +27,8 @@ public static class NodeLinks
         {
             if (security == "reality") throw new UserError("Экспорт VMess с Reality не поддерживается.");
             JsonObject value = new() { ["v"] = "2", ["ps"] = node.Name, ["add"] = G("server"), ["port"] = G("server_port"), ["id"] = G("uuid"), ["aid"] = "0", ["scy"] = G("security"), ["net"] = type, ["type"] = "none", ["host"] = transportHost, ["path"] = type == "grpc" ? P("service_name") : path, ["tls"] = security == "tls" ? "tls" : "", ["sni"] = T("server_name"), ["alpn"] = list(tls?["alpn"]), ["fp"] = fp };
+            if (G("packet_encoding").Length > 0) value["packetEncoding"] = G("packet_encoding");
+            if (Xhttp.Uses(node)) { value["mode"] = P("mode"); if (transport?["extra"] != null) value["extra"] = transport["extra"]!.DeepClone(); }
             return "vmess://" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value.ToJsonString()));
         }
         if (node.Protocol == "shadowsocks")
@@ -38,6 +40,7 @@ public static class NodeLinks
         Put("pbk", tls?["reality"]?["public_key"]?.ToString() ?? ""); Put("sid", tls?["reality"]?["short_id"]?.ToString() ?? "");
         if (node.Protocol != "hysteria2") { Put("type", type); Put("host", transportHost); Put("path", path); Put("serviceName", P("service_name")); Put("flow", G("flow")); Put("packetEncoding", G("packet_encoding")); }
         else { Put("obfs", o["obfs"]?["type"]?.ToString() ?? ""); Put("obfs-password", o["obfs"]?["password"]?.ToString() ?? ""); }
+        if (Xhttp.Uses(node)) { Put("type", "xhttp"); Put("mode", P("mode")); Put("extra", transport?["extra"]?.ToJsonString() ?? ""); }
         return node.Protocol + "://" + Uri.EscapeDataString(G(node.Protocol == "vless" ? "uuid" : "password")) + "@" + endpoint + "?" + string.Join('&', q.Select(kv => Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value))) + "#" + Uri.EscapeDataString(node.Name);
     }
 }

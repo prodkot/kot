@@ -25,10 +25,9 @@ public static class CoreDiagnostics
     public static string Redact(string raw, Node? node, params string[] privateValues)
         => RedactMany(raw, node == null ? [] : new[] { node }, privateValues);
     public static string RedactMany(string raw, IEnumerable<Node> nodes, params string[] privateValues)
+        => CreateRedactor(nodes, privateValues)(raw);
+    public static Func<string, string> CreateRedactor(IEnumerable<Node> nodes, params string[] privateValues)
     {
-        string clean = Regex.Replace(raw, @"\x1B\[[0-?]*[ -/]*[@-~]", "");
-        clean = new string(clean.Where(c => !char.IsControl(c) || c is '\n' or '\r' or '\t').ToArray());
-        clean = Regex.Replace(clean, @"\b[a-z][a-z0-9+.-]*://[^\s<>""']+", "[ссылка скрыта]", RegexOptions.IgnoreCase);
         HashSet<string> values = new(StringComparer.OrdinalIgnoreCase);
         void Add(string? text)
         {
@@ -47,10 +46,20 @@ public static class CoreDiagnostics
         }
         foreach (var node in nodes) Walk(node.Outbound);
         foreach (string value in privateValues) Add(value);
-        foreach (string value in values.OrderByDescending(v => v.Length))
-            clean = clean.Replace(value, "[скрыто]", StringComparison.OrdinalIgnoreCase);
-        clean = Regex.Replace(clean, @"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", "[UUID скрыт]", RegexOptions.IgnoreCase);
-        return clean.Trim();
+        // Extract values once. The redactor owns strings, never mutable profile nodes.
+        string[] ordered = values.OrderByDescending(v => v.Length).ToArray();
+        return raw =>
+        {
+            string clean = Regex.Replace(raw, @"\x1B\[[0-?]*[ -/]*[@-~]", "");
+            clean = new string(clean.Where(c => !char.IsControl(c) || c is '\n' or '\r' or '\t').ToArray());
+            clean = Regex.Replace(clean, @"\b[a-z][a-z0-9+.-]*(?:://|%3a%2f%2f)[^\s<>""']+", "[ссылка скрыта]", RegexOptions.IgnoreCase);
+            foreach (string value in ordered) clean = clean.Replace(value, "[скрыто]", StringComparison.OrdinalIgnoreCase);
+            // Generated controller/XHTTP credentials, HWID and Telegram secrets
+            // have fixed hexadecimal formats. This also protects old service log files.
+            clean = Regex.Replace(clean, @"\b(?:dd)?[0-9a-f]{32,64}\b", "[скрыто]", RegexOptions.IgnoreCase);
+            clean = Regex.Replace(clean, @"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", "[UUID скрыт]", RegexOptions.IgnoreCase);
+            return clean.Trim();
+        };
     }
     public static string Tail(string clean, int maxChars = 3000)
     {

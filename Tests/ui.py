@@ -41,12 +41,75 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
 window.fixtureNavigate=(page)=>callback({data:{kind:"navigate",page}});
 window.fixtureSnapshot=(patch)=>{Object.assign(model,patch);callback({data:{kind:'snapshot',data:structuredClone(model)}});};
 })();'''
+
+def open_hwid(page):
+    if not page.locator('#advancedDialog').is_visible():
+        page.locator('#advancedButton').click()
+    page.locator('#hwidButton').click()
+
+def check_startup(browser):
+    for theme, spin, reduced in [('dark',False,False),('light',False,False),('dark',True,False),('light',True,False),('light',True,True)]:
+        page=browser.new_page(viewport={'width':800,'height':600},reduced_motion='reduce' if reduced else 'no-preference')
+        page.on('pageerror',lambda e:errors.append(str(e)))
+        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'spin':spin})+''';(()=>{
+          const send=chrome.webview.postMessage;
+          window.startupReadyCount=0;
+          chrome.webview.postMessage=message=>{
+            if(message.action==='uiReady'){
+              window.startupReadyCount++;
+              window.startupHandoff={visible:!document.getElementById('startupScreen').hidden,
+                inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
+                image:document.querySelector('#startupScreen img').complete};
+            }
+            setTimeout(()=>send(message),message.action==='ready'?1000:message.action==='uiReady'?180:0);
+          };
+        })();''')
+        page.goto((root/'Windows/ui/index.html').as_uri())
+        page.wait_for_function('()=>typeof fixtureSnapshot==="function"')
+        expect(page.locator('#startupScreen')).to_be_visible()
+        # Before any profile snapshot, the saved theme already covers the first paint.
+        assert page.evaluate('document.documentElement.classList.contains("theme-light")')==(theme=='light')
+        assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen")).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
+        assert page.locator('#startupScreen img').get_attribute('src')==('brand-icon-light.svg' if theme=='light' else 'brand-icon.svg')
+        page.wait_for_timeout(520)
+        animations=page.evaluate('document.querySelector("#startupScreen img").getAnimations().map(a=>a.animationName)')
+        assert ('startup-mark-spin' in animations)==(spin and not reduced)
+        if spin and not reduced:
+            assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen img")).rotate') not in ['none','0deg']
+        assert page.evaluate('document.querySelector(".main").inert&&document.querySelector(".sidebar").inert')
+        page.wait_for_function('()=>window.startupHandoff')
+        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
+        if not reduced:
+            page.wait_for_function('()=>document.body.classList.contains("revealing")')
+            assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')!='none'
+            page.evaluate('fixtureSnapshot({});fixtureSnapshot({});')
+        expect(page.locator('#startupScreen')).to_be_hidden()
+        assert page.evaluate('window.startupReadyCount')==1
+        assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert||document.body.classList.contains("revealing")')
+        assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')=='none'
+        assert not page.evaluate('document.querySelector("#startupScreen").getAnimations({subtree:true}).length')
+        assert not page.evaluate('document.documentElement.classList.contains("startup-spin")')
+        page.locator('[data-page=settings]').click();expect(page.locator('#page-settings')).to_be_visible()
+        page.close()
+    # Turning off motion during the reveal must not strand the app behind an inert overlay.
+    page=browser.new_page();page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
+    page.goto((root/'Windows/ui/index.html').as_uri())
+    page.wait_for_function('()=>document.body.classList.contains("revealing")')
+    page.emulate_media(reduced_motion='reduce')
+    expect(page.locator('#startupScreen')).to_be_hidden()
+    assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert')
+    assert not page.evaluate('document.getAnimations().some(a=>a.playState==="running")')
+    page.close()
+
 with sync_playwright() as p:
     browser=p.chromium.launch(args=['--no-sandbox'])
+    check_startup(browser)
     page=browser.new_page(viewport={'width':960,'height':640})
     page.add_init_script(mock);page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto((root/'Windows/ui/index.html').as_uri());expect(page.locator('#powerButton')).to_be_disabled()
     expect(page.locator('#selectedName')).to_have_text('Добавить подписку')
+    word=page.locator('.title-brand .wordmark').bounding_box();dot=page.locator('.title-brand .brand-dot').bounding_box()
+    assert abs(dot['y']+dot['height']/2-word['y']-word['height']/2)<.6, 'title point must sit on the word centre'
     # Only the large wordmark counts; sound occurs exactly at each 443rd activation.
     page.locator('.title-brand .wordmark').evaluate('(e)=>{for(let i=0;i<443;i++)e.click();}')
     page.locator('#brandButton').evaluate('(e)=>{for(let i=0;i<442;i++)e.click();}')
@@ -82,27 +145,29 @@ with sync_playwright() as p:
     page.evaluate("fixtureSnapshot({settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},error:''})")
     for theme in ('light','dark'):
         page.locator(f'[data-theme={theme}]').click()
-        for accent in ('gray','lime','green','purple'):
-            page.locator(f'.accent-choice:has(input[value={accent}])').click();expect(page.locator('body')).to_have_attribute('data-accent',accent)
-            expect(page.locator('#brandButton span')).to_have_text('.')
-            color=page.locator('body').evaluate('(e)=>getComputedStyle(e).getPropertyValue("--accent").trim()')
+        expect(page.locator('.accent-control, input[name=accent]')).to_have_count(0)
+        expect(page.locator('#brandButton span')).to_have_text('.')
+        for old_accent in ('gray','lime','green','purple'):
+            page.evaluate('({theme,accent})=>fixtureSnapshot({settings:{theme,mode:"tun",startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:"",accent}})', {'theme':theme,'accent':old_accent})
+            assert page.locator('body').get_attribute('data-accent') is None
+            color='#cbe991' if theme=='light' else '#d5f88c'
             rgb=', '.join(str(int(color[i:i+2],16)) for i in (1,3,5))
             expect(page.locator('#brandButton span')).to_have_css('color',f'rgb({rgb})')
     page.locator('[data-setting=startup]').click();expect(page.locator('[data-setting=startup]')).to_have_attribute('aria-checked','true')
-    page.locator('#advancedButton').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','false');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('#bypassDomains').fill('https://example.com');page.locator('#saveRules').click();expect(page.locator('#advancedError')).to_have_text('Введите домены без https://');page.locator('#bypassDomains').fill('example.com');page.locator('#saveRules').click();expect(page.locator('#advancedDialog')).not_to_be_visible()
+    page.locator('#advancedButton').click();open_hwid(page);expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','false');page.locator('[data-setting=sendHwid]').click();expect(page.locator('[data-setting=sendHwid]')).to_have_attribute('aria-checked','true');page.locator('#closeDevice').click();page.locator('#bypassDomains').fill('https://example.com');page.locator('#saveRules').click();expect(page.locator('#advancedError')).to_have_text('Введите домены без https://');page.locator('#bypassDomains').fill('example.com');page.locator('#saveRules').click();expect(page.locator('#advancedDialog')).not_to_be_visible()
     # Only explicit HWID read exposes the ID; display/copy works with sending disabled.
     page.evaluate("fixtureSnapshot({settings:{theme:'dark',accent:'lime',startup:true,autoConnect:false,tray:true,sendHwid:false,bypass:'example.com'}})")
     for width,height in [(800,600),(960,640)]:
-        page.set_viewport_size({'width':width,'height':height});page.locator('#hwidButton').click()
+        page.set_viewport_size({'width':width,'height':height});open_hwid(page)
         expect(page.locator('#hwidValue')).to_have_value('A'*64);expect(page.locator('#deviceName')).to_have_value('kot. windows (0.5.8)')
         expect(page.locator('#hwidValue')).to_have_attribute('readonly','');expect(page.locator('#copyHwid')).to_be_enabled()
         box=page.locator('#deviceDialog').bounding_box();assert box['y']>=0 and box['y']+box['height']<=height
         page.locator('#copyHwid').click();expect(page.locator('#toast')).to_have_text('HWID скопирован');assert page.evaluate('window.copiedHwid')=='A'*64
         if width==960:page.screenshot(path=str(root/'Tests/ui-hwid-031.png'),animations='disabled')
         page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible();expect(page.locator('#hwidValue')).to_have_value('')
-    page.evaluate('window.fixtureDeviceError=true');page.locator('#hwidButton').click();expect(page.locator('#hwidError')).to_have_text('Не удалось прочитать HWID.');expect(page.locator('#copyHwid')).to_be_disabled();page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible()
-    page.evaluate('window.fixtureDeviceError=false;window.fixtureClipboardError=true');page.locator('#hwidButton').click();expect(page.locator('#copyHwid')).to_be_enabled();page.locator('#copyHwid').click();expect(page.locator('#hwidError')).to_have_text('Буфер обмена занят.');expect(page.locator('#copyHwid')).to_be_enabled();page.keyboard.press('Escape');expect(page.locator('#deviceDialog')).not_to_be_visible();expect(page.locator('#hwidValue')).to_have_value('')
-    page.evaluate('window.fixtureClipboardError=false;window.fixtureDeviceDelay=400');page.locator('#hwidButton').click();page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible();page.wait_for_timeout(450);expect(page.locator('#hwidValue')).to_have_value('');page.evaluate('window.fixtureDeviceDelay=0')
+    page.evaluate('window.fixtureDeviceError=true');open_hwid(page);expect(page.locator('#hwidError')).to_have_text('Не удалось прочитать HWID.');expect(page.locator('#copyHwid')).to_be_disabled();page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible()
+    page.evaluate('window.fixtureDeviceError=false;window.fixtureClipboardError=true');open_hwid(page);expect(page.locator('#copyHwid')).to_be_enabled();page.locator('#copyHwid').click();expect(page.locator('#hwidError')).to_have_text('Буфер обмена занят.');expect(page.locator('#copyHwid')).to_be_enabled();page.keyboard.press('Escape');expect(page.locator('#deviceDialog')).not_to_be_visible();expect(page.locator('#hwidValue')).to_have_value('')
+    page.evaluate('window.fixtureClipboardError=false;window.fixtureDeviceDelay=400');open_hwid(page);page.locator('#closeDevice').click();expect(page.locator('#deviceDialog')).not_to_be_visible();page.wait_for_timeout(450);expect(page.locator('#hwidValue')).to_have_value('');page.evaluate('window.fixtureDeviceDelay=0');page.locator('#closeAdvanced').click();expect(page.locator('#advancedDialog')).not_to_be_visible()
     for width,height in [(800,600),(960,640),(1200,800)]:
         page.set_viewport_size({'width':width,'height':height});assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.8');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
         assert page.locator('#advancedButton').bounding_box()['y']<height
@@ -110,7 +175,7 @@ with sync_playwright() as p:
         page.evaluate("fixtureNavigate", target);expect(page.locator("#page-"+target)).to_be_visible()
     page.evaluate("fixtureNavigate", "untrusted");expect(page.locator("#page-home")).to_be_visible()
     page.evaluate("fixtureNavigate", "settings")
-    page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('.accent-choice:has(input[value=lime])').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
+    page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
     page.locator('[data-page=servers]').click();page.locator('#subscriptionSelect').click();page.locator('#subscriptionOptions [data-subscription=sub2]').click();expect(page.locator('#subscriptionSelect')).to_have_attribute('data-subscription','sub2')
     page.locator('.favorite-node').first.click();expect(page.locator('.favorite-node').first).to_have_attribute('aria-pressed','true');expect(page.locator('#autoDescription')).to_have_text('Из избранного')
     page.locator('#autoServer').click();expect(page.locator('#selectedName')).to_have_text('Авто')
@@ -134,7 +199,7 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':width,'height':height});box=page.locator('#homeServer').bounding_box();assert box['y']+box['height']<=height
         assert page.evaluate('document.documentElement.scrollWidth===innerWidth');expect(page.locator('#titleVersion')).to_have_text('0.5.8');assert page.locator('#titleVersion').bounding_box()['x']>page.locator('.title-brand .wordmark').bounding_box()['x']
     page.set_viewport_size({'width':960,'height':640});page.wait_for_timeout(300);page.screenshot(path=str(root/'Tests/ui-030-home.png'),animations='disabled')
-    page.locator('[data-page=logs]').click();expect(page.locator('#connectionList details')).to_have_count(2);assert not page.locator('#connectionList img').count();page.wait_for_timeout(30);assert page.evaluate('window.activeView')=='logs'
+    page.locator('[data-page=settings]').click();page.locator('[data-page=logs]').click();expect(page.locator('#connectionList details')).to_have_count(2);assert not page.locator('#connectionList img').count();page.wait_for_timeout(30);assert page.evaluate('window.activeView')=='logs'
     page.locator('#connectionList details').first.locator('summary').click();expect(page.locator('#connectionList details').first).to_have_attribute('open','')
     page.locator('#logSearch').fill('browser');expect(page.locator('#connectionList details')).to_have_count(1);page.locator('#logSearch').fill('');expect(page.locator('#connectionList details')).to_have_count(2)
     page.locator('#pauseLogs').click();page.evaluate('fixtureSnapshot({telemetry:{available:true,count:0,connections:[]}})');expect(page.locator('#connectionList details')).to_have_count(2);page.locator('#pauseLogs').click();expect(page.locator('#connectionList details')).to_have_count(0)
@@ -194,10 +259,10 @@ with sync_playwright() as p:
     # Clean demonstration captures. These are fixture values, never presented as live traffic measurement.
     page.evaluate("fixtureSnapshot({name:'Личная подписка',nodes:[{id:'a',name:'🇳🇱 Нидерланды',code:'NL',protocol:'vless'}],selected:'a',state:'connected',automaticNode:'',error:'',telemetry:{available:true,downloadRate:2097152,uploadRate:524288,downloadTotal:52428800,uploadTotal:1048576,count:2,connections:[{id:'demo-one',destination:'cdn.example.org:443',network:'tcp',inbound:'tun/tun-in',process:'browser.exe',chains:['Нидерланды'],rule:'final',download:52428800,upload:65536,start:'2026-10-07T12:00:00Z'},{id:'demo-two',destination:'192.168.1.1:80',network:'tcp',inbound:'tun/tun-in',process:'browser.exe',chains:['Напрямую'],rule:'ip_is_private => direct',download:4096,upload:1024,start:'2026-10-07T12:00:00Z'}]}})")
     page.locator('[data-page=home]').click();page.wait_for_timeout(450);page.evaluate("document.getElementById('toast').hidden=true;document.activeElement.blur()");page.screenshot(path=str(root/'Tests/ui-030-home.png'),animations='disabled')
-    page.locator('[data-page=logs]').click();page.locator('[data-log-tab=connections]').click();page.wait_for_timeout(450);page.evaluate("document.activeElement.blur()");page.screenshot(path=str(root/'Tests/ui-030-connections.png'),animations='disabled')
+    page.locator('[data-page=settings]').click();page.locator('[data-page=logs]').click();page.locator('[data-log-tab=connections]').click();page.wait_for_timeout(450);page.evaluate("document.activeElement.blur()");page.screenshot(path=str(root/'Tests/ui-030-connections.png'),animations='disabled')
 
     page.emulate_media(reduced_motion='reduce');page.locator('[data-page=settings]').click();page.locator('[data-page=home]').click();assert not page.evaluate('document.getAnimations().some(a=>a.playState==="running")')
     page.locator('[data-page=settings]').click();page.locator('#advancedButton').click();page.locator('#removeSubscription').click();page.locator('#confirmRemove').click();expect(page.locator('#powerButton')).to_be_disabled()
     assert not errors,errors
     browser.close()
-print(json.dumps({'ui':'passed','themes_and_accents':8,'unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))
+print(json.dumps({'ui':'passed','themes':2,'legacy_accents':'ignored','meow':'each 443rd activation','unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))

@@ -1,4 +1,4 @@
-"""Write only payload files with portable paths accepted by the updater."""
+"""Write only payload files with relative paths accepted by the updater."""
 from pathlib import Path
 import argparse
 import zipfile

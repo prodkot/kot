@@ -1,11 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Security.Principal;
 namespace Kot.Windows;
 static class Program
 {
-    public static readonly int ShutdownMessage = (int)RegisterWindowMessage("KotVPN.Shutdown.v1");
-    public static readonly int ActivateMessage = (int)RegisterWindowMessage("KotVPN.ShowWindow.v1");
+    public static readonly int ShutdownMessage = (int)RegisterWindowMessage(AppRuntime.Scope + ".Shutdown.v1");
+    public static readonly int ActivateMessage = (int)RegisterWindowMessage(AppRuntime.Scope + ".ShowWindow.v1");
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string name);
     [DllImport("user32.dll")] static extern bool SendNotifyMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [STAThread]
@@ -21,7 +20,7 @@ static class Program
             if (args.Contains("--shutdown"))
             {
                 SendNotifyMessage((IntPtr)0xffff, (uint)ShutdownMessage, IntPtr.Zero, IntPtr.Zero);
-                using var running = new Mutex(false, "Local\\KotVPN-" + WindowsIdentity.GetCurrent().User!.Value);
+                using var running = new Mutex(false, AppRuntime.InstanceMutex);
                 bool closed; try { closed = running.WaitOne(30000); } catch (AbandonedMutexException) { closed = true; }
                 if (!closed) { Environment.ExitCode = 1; return; } running.ReleaseMutex(); SystemProxy.Restore(); return;
             }
@@ -48,8 +47,7 @@ static class Program
                 try { using var previous = Process.GetProcessById(pid); if (!previous.WaitForExit(60000)) throw new Kot.Core.UserError("Предыдущая версия не закрылась. Закройте её и снова запустите kot."); }
                 catch (ArgumentException) { }
             }
-            string sid = WindowsIdentity.GetCurrent().User!.Value;
-            using Mutex mutex = new(true, "Local\\KotVPN-" + sid, out bool first);
+            using Mutex mutex = new(true, AppRuntime.InstanceMutex, out bool first);
             if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
             SystemProxy.Restore();
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
@@ -71,7 +69,7 @@ static class Program
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }
                 return;
             }
-            MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(Store.Friendly(ex), AppRuntime.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

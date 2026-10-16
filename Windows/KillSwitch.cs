@@ -12,6 +12,9 @@ public static class KillSwitch
     static readonly Guid AppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971"), Flags = new("632ce23b-5167-435c-86d7-e903684aa80c"), Interface = new("4cd62a49-59c3-4969-b7f3-bda5d32890a4");
     static readonly Guid Protocol = new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7"), RemotePort = new("c35a604d-d22b-4e1a-91b4-68f674ee674b");
     static Guid Key(int n) => new($"da3e55f0-f72b-4ee7-b67b-8a74560a{n + 1:x4}");
+    static readonly object Sync = new();
+    static string? connectionCore, probeCore;
+    static int probes;
     public static bool Active { get; private set; }
     public static bool Detect()
     {
@@ -19,25 +22,76 @@ public static class KillSwitch
         if (result == 0) FwpmFreeMemory0(ref pointer); else if (result != 0x80320003) Error(result);
         return Active = result == 0;
     }
-    public static void Arm(ulong tun = 0) => Configure(true, tun);
-    public static void Release() => Configure(false, 0);
+    public static void Arm(ulong tun = 0, bool xhttp = false)
+    {
+        lock (Sync)
+        {
+            string? next = xhttp ? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe") : null;
+            Configure(true, tun, extraAllowed: next ?? probeCore); connectionCore = next;
+        }
+    }
+    public static void Release() { lock (Sync) { Configure(false, 0); connectionCore = null; } }
+    internal static IDisposable AllowXhttpProbe(string executable)
+    {
+        executable = Path.GetFullPath(executable);
+        lock (Sync)
+        {
+            if (probeCore != null && !probeCore.Equals(executable, StringComparison.OrdinalIgnoreCase)) throw new UserError("Проверки XHTTP должны использовать одно комплектное ядро.");
+            if (Active && connectionCore == null && probes == 0) UpdateCorePermit(executable);
+            probeCore = executable; probes++; return new ProbePermit();
+        }
+    }
+    sealed class ProbePermit : IDisposable
+    {
+        bool disposed;
+        public void Dispose()
+        {
+            lock (Sync)
+            {
+                if (disposed) return;
+                if (Active && connectionCore == null && probes == 1) UpdateCorePermit(null);
+                disposed = true; if (--probes == 0) probeCore = null;
+            }
+        }
+    }
+    static void UpdateCorePermit(string? executable)
+    {
+        using var engine = new Engine(); Error(FwpmTransactionBegin0(engine.Handle, 0));
+        try
+        {
+            for (int i = 0; i < Layers.Length; i++) { var key = Key(12 + i); uint result = FwpmFilterDeleteByKey0(engine.Handle, ref key); if (result != 0 && result != 0x80320003) Error(result); }
+            AddCorePermit(engine.Handle, executable); Error(FwpmTransactionCommit0(engine.Handle));
+        }
+        catch { FwpmTransactionAbort0(engine.Handle); throw; }
+    }
+    static void AddCorePermit(IntPtr engine, string? executable)
+    {
+        if (executable == null) return;
+        Error(FwpmGetAppIdFromFileName0(executable, out var extra));
+        try { for (int i = 0; i < Layers.Length; i++) Add(engine, Key(12 + i), Layers[i], true, [new(AppId, 0, Value.Pointer(12, extra))]); }
+        finally { FwpmFreeMemory0(ref extra); }
+    }
     public static ulong TunnelInterface()
     {
         uint result = ConvertInterfaceAliasToLuid("kot-tun", out ulong luid);
         if (result != 0) throw new UserError("Kill switch: сетевой интерфейс kot-tun не появился.");
         return luid;
     }
-    internal static void ArmForTests(string application, string allowed, ulong tun = 0) => Configure(true, tun, application, allowed);
-    static void Configure(bool enabled, ulong tun, string? testApplication = null, string? testAllowed = null)
+    internal static void ArmForTests(string application, string allowed, ulong tun = 0, string? extraAllowed = null)
+    {
+        lock (Sync) { Configure(true, tun, application, allowed, extraAllowed ?? probeCore); connectionCore = extraAllowed; }
+    }
+    static void Configure(bool enabled, ulong tun, string? testApplication = null, string? testAllowed = null, string? extraAllowed = null)
     {
         using var engine = new Engine(); Error(FwpmTransactionBegin0(engine.Handle, 0));
         try
         {
-            for (int n = 0; n < 12; n++) { var key = Key(n); uint r = FwpmFilterDeleteByKey0(engine.Handle, ref key); if (r != 0 && r != 0x80320003) Error(r); }
+            for (int n = 0; n < 16; n++) { var key = Key(n); uint r = FwpmFilterDeleteByKey0(engine.Handle, ref key); if (r != 0 && r != 0x80320003) Error(r); }
             if (enabled)
             {
                 var layer = new SubLayer { Key = Sublayer, Display = new() { Name = "kot. kill switch" }, Flags = 1, Weight = 0x7fff };
                 uint r = FwpmSubLayerAdd0(engine.Handle, ref layer, IntPtr.Zero); if (r != 0 && r != 0x80320009) Error(r);
+                AddCorePermit(engine.Handle, extraAllowed);
                 Error(FwpmGetAppIdFromFileName0(testAllowed ?? Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe"), out var core));
                 try
                 {
@@ -84,7 +138,7 @@ public static class KillSwitch
     {
         public IntPtr Handle;
         public Engine() { Error(FwpmEngineOpen0(null, 10, IntPtr.Zero, IntPtr.Zero, out Handle)); }
-        public void Dispose() { if (Handle != IntPtr.Zero) FwpmEngineClose0(Handle); }
+        public void Dispose() { if (Handle != IntPtr.Zero) { Error(FwpmEngineClose0(Handle)); Handle = IntPtr.Zero; } }
     }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct Display { [MarshalAs(UnmanagedType.LPWStr)] public string? Name; [MarshalAs(UnmanagedType.LPWStr)] public string? Description; }
     [StructLayout(LayoutKind.Sequential)] struct Blob { public uint Size; public IntPtr Data; }

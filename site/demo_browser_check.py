@@ -15,6 +15,12 @@ class Handler(SimpleHTTPRequestHandler):
         pass
 
 
+def open_hwid(frame):
+    if not frame.locator('#advancedDialog').is_visible():
+        frame.locator('#advancedButton').click()
+    frame.locator('#hwidButton').click()
+
+
 def check():
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -52,6 +58,7 @@ def check():
                 expect(frame.locator('#downloadRate')).not_to_have_text('0 Б/с')
                 frame.locator('[data-mode=proxy]').click()
                 expect(frame.locator('[data-mode=proxy]')).to_have_attribute('aria-pressed', 'true')
+                frame.locator('[data-page=settings]').click()
                 frame.locator('[data-page=logs]').click()
                 frame.locator('#connectionList summary').first.click()
                 expect(frame.locator('.connection-detail').first).to_contain_text('mixed/system-in')
@@ -69,6 +76,7 @@ def check():
                 expect(frame.locator('#serverList .server-card')).to_have_count(1)
                 frame.locator('#serverList .server-card').click()
                 expect(frame.locator('#selectedName')).to_have_text('Латвия')
+                frame.locator('[data-page=settings]').click()
                 frame.locator('[data-page=logs]').click()
                 expect(frame.locator('#connectionList details')).to_have_count(3)
                 frame.locator('#connectionList summary').first.click()
@@ -87,12 +95,14 @@ def check():
 
                 frame.locator('[data-page=settings]').click()
                 frame.locator('[data-theme=light]').click()
-                frame.locator('.accent-choice:has(input[value=purple])').click()
                 expect(frame.locator('body')).to_have_class('theme-light')
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('input[name=accent]')).to_have_count(0)
+                assert frame.locator('body').get_attribute('data-accent') is None
+                expect(frame.locator('#brandButton span')).to_have_css('color', 'rgb(203, 233, 145)')
                 frame.locator('[data-setting=killSwitch]').click()
                 frame.locator('#demo-failure').click()
                 expect(frame.locator('#connectionError')).to_contain_text('Kill switch')
+                frame.locator('[data-page=settings]').click()
                 frame.locator('[data-page=logs]').click()
                 frame.locator('[data-log-tab=journal]').click()
                 frame.locator('#logLevel').select_option('error')
@@ -100,18 +110,28 @@ def check():
                 expect(frame.locator('#journalText')).not_to_contain_text('INFO')
                 frame.locator('[data-page=settings]').click()
                 frame.locator('[data-setting=killSwitch]').click()
-                frame.locator('#hwidButton').click()
+                open_hwid(frame)
                 expect(frame.locator('#hwidValue')).to_have_value('DEMO-DEVICE-ID')
                 frame.locator('#copyHwid').click()
                 expect(frame.locator('#hwidError')).to_contain_text('Это пример')
                 frame.locator('#closeDevice').click()
                 expect(frame.locator('#deviceDialog')).not_to_be_visible()
+                frame.locator('#closeAdvanced').click()
                 frame.locator('#onlineUpdateButton').click()
                 expect(frame.locator('#updateStatus')).to_contain_text('Настоящие обновления доступны в программе.')
                 frame.locator('#closeOnlineUpdate').click()
                 expect(frame.locator('#onlineUpdateDialog')).not_to_be_visible()
 
                 # Native networking, files and QR stay unavailable in the isolated demo.
+                frame.locator('[data-page=services]').click()
+                expect(frame.locator('#page-services')).to_be_visible()
+                frame.locator('#zapretInstall').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('[data-service-tab=telegram]').click()
+                frame.locator('#telegramInstall').click()
+                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                frame.locator('[data-service-tab=zapret]').click()
+                frame.locator('[data-page=settings]').click()
                 frame.locator('[data-page=diagnostics]').click()
                 expect(frame.locator('#page-diagnostics')).to_be_visible()
                 frame.locator('#runDiagnostics').click()
@@ -146,16 +166,19 @@ def check():
                 # Fullscreen keeps the same document and state; Escape works inside it.
                 page.locator('#expand-demo').click()
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('body')).to_have_class('theme-light')
                 page.evaluate("window.postMessage({kind:'kot-demo',close:true}, '*')")
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
-                frame.locator('#hwidButton').click()
+                open_hwid(frame)
                 frame.locator('#hwidValue').press('Escape')
                 expect(frame.locator('#deviceDialog')).not_to_be_visible()
                 assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
                 frame.locator('#hwidButton').press('Escape')
+                expect(frame.locator('#advancedDialog')).not_to_be_visible()
+                assert page.locator('#demo-window').evaluate("el => el.matches(':modal')")
+                frame.locator('#advancedButton').press('Escape')
                 expect(page.locator('#expand-demo')).to_have_attribute('aria-expanded', 'false')
-                expect(frame.locator('body')).to_have_attribute('data-accent', 'purple')
+                expect(frame.locator('body')).to_have_class('theme-light')
 
                 # Reset during a pending operation discards the old frame and timers.
                 frame.locator('[data-page=home]').click()
@@ -195,20 +218,27 @@ def check():
                 for width in [320, 375, 390, 600, 700, 1000, 1440]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth === innerWidth'), width
-                    for section in ['servers', 'statistics', 'diagnostics', 'logs', 'settings', 'home']:
-                        frame.locator('[data-page=' + section + ']').click()
+                    for section in ['servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings', 'home']:
+                        if section in ['statistics', 'diagnostics', 'logs']:
+                            frame.locator('.nav-button[data-page=settings]').click()
+                            frame.locator('[data-page='+section+']').click()
+                            expect(frame.locator('.nav-button[data-page=settings]')).to_have_attribute('aria-current', 'page')
+                            expect(frame.locator('.nav-button[data-page=statistics]')).to_have_count(0)
+                        else:
+                            frame.locator('.nav-button[data-page=' + section + ']').click()
                         expect(frame.locator('#page-' + section)).to_be_visible()
                         assert frame.locator('body').evaluate('() => document.documentElement.scrollWidth === innerWidth'), (width, section)
                     if width <= 390:
                         assert frame.locator('[data-page=servers]').bounding_box()['width'] >= 44
                         page.locator('#expand-demo').click()
                         frame.locator('[data-page=settings]').click()
-                        frame.locator('#hwidButton').click()
+                        open_hwid(frame)
                         bounds = frame.locator('#deviceDialog').bounding_box()
                         iframe = page.locator('#client-demo').bounding_box()
                         assert bounds['x'] >= iframe['x'] and bounds['x'] + bounds['width'] <= iframe['x'] + iframe['width'] + 1
                         frame.locator('#closeDevice').click()
                         expect(frame.locator('#deviceDialog')).not_to_be_visible()
+                        frame.locator('#closeAdvanced').click()
                         page.locator('#close-demo').click()
                 assert not errors, errors
                 page.emulate_media(reduced_motion='reduce')

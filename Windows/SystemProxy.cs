@@ -15,7 +15,11 @@ public static class SystemProxy
     sealed record Receipt(string Token, Settings Original, Settings Applied);
     static string ReceiptPath => Path.Combine(Store.Folder, "system-proxy.bin");
     static readonly byte[] Entropy = "KotVPN.system-proxy.v1"u8.ToArray();
-    static Mutex Lock() => new(false, "Local\\KotVPN-SystemProxy-" + WindowsIdentity.GetCurrent().User!.Value);
+    static Mutex Lock()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new(false, "Local\\KotVPN-SystemProxy-" + identity.User!.Value);
+    }
     static void Enter(Mutex mutex) { try { if (!mutex.WaitOne(15000)) throw new UserError("Настройки прокси Windows заняты."); } catch (AbandonedMutexException) { } }
     public static void Enable(int port)
     {

@@ -1,6 +1,6 @@
 # Сборка
 
-Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.10+ и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужен NSIS 3. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
+Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.10+ и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
 
 Из корня репозитория:
 

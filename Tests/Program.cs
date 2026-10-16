@@ -9,6 +9,9 @@ if (args.Length >= 2 && args[0] == "geoip-core")
 string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
+Kot.Tests.LogTests.Run(Check);
+Kot.Tests.XhttpTests.Run(Check);
+Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);
 var a = Subscriptions.Parse(vless + "\r\n" + vless + "\nvless://broken@example.com:443\n");
 Check(a.Nodes.Count == 1 && a.Warnings.Count == 1 && a.Nodes[0].Name == "Мой сервер", "unicode, CRLF, deduplication, bad-node report");
@@ -21,7 +24,7 @@ var ss = Subscriptions.ParseNode("ss://" + Convert.ToBase64String(Encoding.UTF8.
 Check(ss.Outbound["password"]?.ToString() == "p@ss:word", "SIP002 password preserved");
 var vm = Subscriptions.ParseNode("vmess://" + Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { v = "2", ps = "VM", add = "example.com", port = 443, id = uuid, aid = 0, scy = "auto", net = "ws", path = "/ws", host = "example.com", tls = "tls" }))));
 Check(vm.Outbound["transport"]?["type"]?.ToString() == "ws", "VMess JSON");
-foreach (string invalid in new[] { $"vless://{uuid}@example.com:443?type=xhttp", "ss://YWVzLTEyOC1nY206cHc=@example.com:8388?plugin=v2ray-plugin", "<html>login</html>" })
+foreach (string invalid in new[] { $"vless://{uuid}@example.com:443?type=unknown", "ss://YWVzLTEyOC1nY206cHc=@example.com:8388?plugin=v2ray-plugin", "<html>login</html>" })
 { bool rejected = false; try { Subscriptions.Parse(invalid); } catch(UserError) { rejected = true; } Check(rejected, "unsupported format rejected"); }
 var domains = Configuration.Domains("example.com\n.example.org\nexample.com");
 Check(domains.SequenceEqual(new[] { "example.com", "example.org" }), "rules normalization");
@@ -224,7 +227,13 @@ var otherNode = Subscriptions.ParseNode("trojan://second-secret@other.example:44
 string manyClean = CoreDiagnostics.RedactMany("a@b:secret second-secret other.example example.com at NativeCore.cs:line 42", new[] { privateNode, otherNode });
 Check(!manyClean.Contains("secret") && !manyClean.Contains("example") && manyClean.Contains("NativeCore.cs:line 42"), "full log redacts secrets of all tested servers while keeping stack location");
 
-var oldProfile = new Profile { Name = "Old", Address = "https://subscription.example/sub", Nodes = a.Nodes, Selected = a.Nodes[0].Id, Theme = "light", Accent = "purple" };
+var oldProfile = new Profile { Name = "Old", Address = "https://subscription.example/sub", Nodes = a.Nodes, Selected = a.Nodes[0].Id, Theme = "light" };
+var legacyJson = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+string legacyAccentJson = JsonSerializer.Serialize(oldProfile, legacyJson).Replace("\"theme\":\"light\"", "\"theme\":\"light\",\"accent\":\"purple\"");
+oldProfile = JsonSerializer.Deserialize<Profile>(legacyAccentJson, legacyJson)!;
+oldProfile.Validate();
+Check(oldProfile.Theme == "light" && oldProfile.Nodes.Single().Id == a.Nodes[0].Id, "legacy accent setting is ignored without losing theme or subscriptions");
+Check(!JsonSerializer.Serialize(oldProfile, legacyJson).Contains("\"accent\""), "removed accent setting is not persisted again");
 oldProfile.Normalize(); string firstSubscription = oldProfile.ActiveSubscription;
 Check(oldProfile.Subscriptions.Count == 1 && oldProfile.Nodes.Count == 1 && oldProfile.Selected == a.Nodes[0].Id, "legacy profile migration preserves nodes and selection");
 oldProfile.Normalize(); Check(oldProfile.Subscriptions.Count == 1 && oldProfile.ActiveSubscription == firstSubscription, "profile migration is idempotent");
@@ -236,7 +245,7 @@ oldProfile.DeferredUpdateVersion = "0.5.9";
 var encrypted = Backup.Export(oldProfile, "correct-password");
 Check(!Encoding.UTF8.GetString(encrypted).Contains(uuid) && !Encoding.UTF8.GetString(encrypted).Contains("subscription.example"), "backup contains no plaintext credentials");
 var restoredProfile = Backup.Import(encrypted, "correct-password");
-Check(restoredProfile.Subscriptions.Count == 2 && restoredProfile.Selected == "auto" && restoredProfile.Theme == "light" && restoredProfile.Accent == "purple", "encrypted backup restores all providers and preferences");
+Check(restoredProfile.Subscriptions.Count == 2 && restoredProfile.Selected == "auto" && restoredProfile.Theme == "light", "encrypted backup restores all providers and preferences");
 Check(restoredProfile.DeferredUpdateVersion == "0.5.9", "declined update survives encrypted profile persistence");
 Check(JsonSerializer.Deserialize<Profile>("{}")!.DeferredUpdateVersion == "", "legacy profiles default to no declined update");
 bool badPassword = false; try { Backup.Import(encrypted, "wrong-password"); } catch(UserError) { badPassword = true; } Check(badPassword, "backup rejects wrong password");
@@ -246,10 +255,15 @@ var badOptions = new AutomationOptions { AutoMinutes = 0 }; bool badAutomation =
 var policy = new ReconnectPolicy(); var moment = DateTimeOffset.UtcNow;
 policy.Start(moment); Check(policy.Due(moment, true) && !policy.Due(moment, false), "reconnect waits for network");
 policy.Retry(moment); Check(!policy.Due(moment.AddSeconds(1), true) && policy.Due(moment.AddSeconds(2), true), "reconnect initial delay");
+policy.Retry(moment); policy.Retry(moment);
+Check(!policy.Desired && policy.Failures == 3 && !policy.Due(moment.AddDays(10), true), "a server that never connected stops after three failed attempts");
+policy.Start(moment); policy.Healthy(); policy.ResetDelay(moment);
 for (int i = 0; i < 20; i++) policy.Retry(moment);
 Check(policy.Failures == 10 && policy.Next == moment.AddSeconds(60), "reconnect backoff is bounded");
+Check(policy.Desired, "established connections keep recovering after a network change");
 policy.Healthy(); Check(policy.Failures == 0, "healthy connection resets retry failures");
 policy.Stop(); Check(!policy.Due(moment.AddDays(10), true), "manual stop never reconnects");
+policy.Retry(moment); Check(!policy.Desired && policy.Failures == 0, "a late failure cannot revive a stopped connection");
 var automatic = Configuration.BuildAutomatic([a.Nodes[0], ws, ss], 19223, false, [], new(), 19224, "test-secret-012345678901234567890123456789");
 var autoOutbounds = automatic["outbounds"]!.AsArray();
 Check(autoOutbounds.Count == 5 && autoOutbounds[3]?["type"]?.ToString() == "urltest" && autoOutbounds[3]?["outbounds"]?.AsArray().Count == 3, "Auto configuration delegates full proxy checks to URLtest");
@@ -290,8 +304,10 @@ using (var rsa = System.Security.Cryptography.RSA.Create(2048))
         Check(invalidRelease, "update rejects " + kind);
     }
 }
+await Kot.Tests.ServicesTests.Run(Check, fixtureFolder);
 await Kot.Tests.BodyTests.Run(Check);
 Kot.Tests.SetupTests.Run(Check);
+Kot.Tests.InstallerTests.Run(Check, fixtureFolder);
 Kot.Tests.InstallationTests.Run(Check, fixtureFolder);
 await SecurityTests.Run(Check, vless, uuid);
 await Kot.Tests.UpdateTests.Run(Check, fixtureFolder);

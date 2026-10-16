@@ -45,7 +45,7 @@ public sealed partial class MainWindow
     async Task RefreshRouting(RoutingProfile saved, CancellationToken ct)
     {
         if (saved.SourceUrl.Length == 0) throw new UserError("У профиля нет источника обновлений.");
-        AppLog.Secret(saved.SourceUrl); routingAttempts[saved.Id] = DateTimeOffset.UtcNow;
+        routingAttempts[saved.Id] = DateTimeOffset.UtcNow;
         var rules = await RoutingProfiles.Download(saved.SourceUrl, ct);
         ct.ThrowIfCancellationRequested();
         if (exiting) return;
@@ -78,7 +78,7 @@ public sealed partial class MainWindow
                 candidate.Validate();
                 if (source.Length > 0 && source != saved?.SourceUrl)
                 {
-                    AppLog.Secret(source); candidate.Rules = await RoutingProfiles.Download(source, lifetime.Token); candidate.Updated = DateTimeOffset.UtcNow;
+                    candidate.Rules = await RoutingProfiles.Download(source, lifetime.Token); candidate.Updated = DateTimeOffset.UtcNow;
                     lifetime.Token.ThrowIfCancellationRequested();
                 }
                 if (!exiting) await PutRouting(candidate, true);
@@ -88,7 +88,7 @@ public sealed partial class MainWindow
                 string url = content.StartsWith('{') ? "" : content;
                 RoutingRules imported;
                 if (url.Length == 0) imported = RoutingProfiles.Parse(content);
-                else { RoutingProfiles.Source(url); AppLog.Secret(url); imported = await RoutingProfiles.Download(url, lifetime.Token); }
+                else { RoutingProfiles.Source(url); imported = await RoutingProfiles.Download(url, lifetime.Token); }
                 lifetime.Token.ThrowIfCancellationRequested();
                 var existing = url.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.SourceUrl == url);
                 if (!exiting) await PutRouting(new RoutingProfile { Id = existing?.Id ?? Guid.NewGuid().ToString("N"), Rules = imported, SourceUrl = url, RefreshHours = 24, Updated = DateTimeOffset.UtcNow }, true);
@@ -107,6 +107,7 @@ public sealed partial class MainWindow
                 try { Store.Save(profile); }
                 catch { profile.RoutingProfiles.Insert(oldIndex, removing); if (active) { profile.ActiveRoutingProfile = removing.Id; ResumeDesired(); } throw; }
                 routingAttempts.Remove(removing.Id); routingErrors.Remove(removing.Id);
+                AppLog.Register(profile);
                 if (GeoIpCountries().Length == 0) { geoIpError = ""; geoIpAttempt = null; }
                 if (active) ResumeDesired();
                 break;

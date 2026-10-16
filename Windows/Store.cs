@@ -5,7 +5,7 @@ using Kot.Core;
 namespace Kot.Windows;
 public static class Store
 {
-    public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KotVPN");
+    public static readonly string Folder = AppRuntime.DataFolder;
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     static readonly byte[] Entropy = Encoding.UTF8.GetBytes("KotVPN.profile.v1");
     public static Profile Load()
@@ -22,6 +22,7 @@ public static class Store
     }
     public static void Save(Profile profile)
     {
+        Directory.CreateDirectory(Folder);
         profile.CaptureActive();
         byte[] plain = JsonSerializer.SerializeToUtf8Bytes(profile, Json);
         byte[] encrypted;

@@ -76,7 +76,8 @@ def check():
     for name in ("LICENSE.txt", "THIRD-PARTY.txt", "SECURITY.md", "licenses/GPL-3.0.txt",
                  "licenses/Manrope-OFL.txt", "licenses/flag-icons-MIT.txt", "licenses/sing-box-Go-NOTICES.txt",
                  "licenses/YamlDotNet-MIT.txt", "licenses/ZXing-Net-Apache-2.0.txt",
-                 "upstream/sing-box-1.14.2-source.tar.gz"):
+                 "upstream/sing-box-1.14.2-source.tar.gz", "licenses/Xray-MPL-2.0.txt",
+                 "licenses/Xray-Go-NOTICES.txt", "upstream/Xray-core-26.3.27-source.tar.gz"):
         require((ROOT / name).is_file(), f"Required notice or corresponding source missing: {name}")
     require(not (ROOT / "site/assets/Manrope.ttf").exists(), "Site must use the canonical client font")
     if errors:

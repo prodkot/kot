@@ -9,8 +9,10 @@ public sealed partial class MainWindow : WindowChrome
 {
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(21, 23, 24) };
     readonly NotifyIcon tray;
-    readonly Icon trayIcon;
+    readonly ThemeIcons icons = new();
     readonly TrayMenu trayMenu;
+    readonly StartupScreen loading;
+    readonly bool startupSpin = Random.Shared.Next(100) == 0;
     string? pendingTrayPage;
     readonly Tunnel tunnel = new();
     readonly PingService ping = new();
@@ -29,18 +31,24 @@ public sealed partial class MainWindow : WindowChrome
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
-        InitAutomation(); InitTelemetry();
+        InitAutomation();
+        services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token);
+        InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
-        Text = "kot."; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(21, 23, 24); Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
+        BackColor = ColorTranslator.FromHtml(profile.Theme == "light" ? "#f6f6f2" : "#151718");
+        web.DefaultBackgroundColor = BackColor;
+        Icon = icons.Window(profile.Theme);
         Controls.Add(web);
+        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSpin);
+        Controls.Add(loading); loading.BringToFront();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
-        trayIcon = new Icon(Icon, SystemInformation.SmallIconSize);
-        tray = new NotifyIcon { Icon = trayIcon, Text = "kot. · Не подключено", Visible = true, ContextMenuStrip = trayMenu };
+        tray = new NotifyIcon { Text = AppRuntime.DisplayName + " · Не подключено", ContextMenuStrip = trayMenu };
+        icons.Apply(this, tray, profile.Theme); tray.Visible = true;
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Restore(); };
-        FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); trayIcon.Dispose(); };
-        tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = tunnel.State == "connected" ? "kot. · Подключено" : "kot. · Не подключено"; Snapshot(); }); };
+        FormClosed += (_, _) => { tray.Dispose(); trayMenu.Dispose(); Icon = null; icons.Dispose(); };
+        tunnel.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { tray.Text = AppRuntime.DisplayName + (tunnel.State == "connected" ? " · Подключено" : " · Не подключено"); Snapshot(); }); };
         ping.Changed += () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(Snapshot); };
         Shown += async (_, _) => await Initialize();
         FormClosing += async (_, e) =>
@@ -71,16 +79,17 @@ public sealed partial class MainWindow : WindowChrome
     void Restore() => RestoreWindow();
     void OpenTrayPage(string page)
     {
-        if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) return;
+        if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) return;
         Restore();
         if (bridgeReady) Send(new { kind = "navigate", page }); else pendingTrayPage = page;
     }
     void UpdateTray()
     {
+        icons.Apply(this, tray, profile.Theme);
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
-        trayMenu.Update(profile.Theme, profile.Accent, state, name, profile.Nodes.Count > 0);
-        tray.Text = state switch { "connected" => "kot. · Подключено", "connecting" => "kot. · Подключение", "waiting" => "kot. · Ожидание сети", _ => "kot. · Не подключено" };
+        trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
+        tray.Text = AppRuntime.DisplayName + (state switch { "connected" => " · Подключено", "connecting" => " · Подключение", "waiting" => " · Ожидание сети", _ => " · Не подключено" });
     }
     async Task Initialize()
     {
@@ -89,6 +98,7 @@ public sealed partial class MainWindow : WindowChrome
             try
             {
                 bool enabled = await Startup.IsEnabled();
+                if (exiting || IsDisposed) return;
                 if (profile.Startup != enabled) { profile.Startup = enabled; Store.Save(profile); }
             }
             catch (Exception ex) { AppLog.Error("startup state", ex); }
@@ -101,9 +111,12 @@ public sealed partial class MainWindow : WindowChrome
                 MessageBox.Show("Для интерфейса нужен Microsoft WebView2. Сейчас откроется официальный установщик.", "kot.");
                 var installInfo = new ProcessStartInfo(installer) { UseShellExecute = true }; installInfo.ArgumentList.Add("/install");
                 using var install = Process.Start(installInfo); if (install != null) await install.WaitForExitAsync();
+                if (exiting || IsDisposed) return;
                 env = await WebViewHost.CreateEnvironment(Path.Combine(Store.Folder, "WebView"));
             }
+            if (exiting || IsDisposed) return;
             await web.EnsureCoreWebView2Async(env);
+            if (exiting || IsDisposed) return;
             var c = web.CoreWebView2;
             c.Settings.AreDefaultContextMenusEnabled = false; c.Settings.AreDevToolsEnabled = false; c.Settings.IsStatusBarEnabled = false; c.Settings.IsZoomControlEnabled = false;
             c.Settings.IsGeneralAutofillEnabled = false; c.Settings.IsPasswordAutosaveEnabled = false;
@@ -115,6 +128,9 @@ public sealed partial class MainWindow : WindowChrome
             c.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             c.DownloadStarting += (_, e) => e.Cancel = true;
             c.WebMessageReceived += async (_, e) => await Message(e);
+            // Bootstrap contains only appearance, available before the first HTML paint.
+            await c.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup=" + JsonSerializer.Serialize(new { theme = profile.Theme, spin = startupSpin }) + ";");
+            if (exiting || IsDisposed) return;
             c.Navigate("https://kot.local/index.html"); initialized = true;
             if (startup && profile.Tray) Hide();
         }
@@ -126,11 +142,11 @@ public sealed partial class MainWindow : WindowChrome
         name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
         nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, ping = ping.Get(n.Id), code = n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
-        telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
+        services = services.Model(visiblePage == "services"), telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
         routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
-        settings = new { profile.Theme, profile.Accent, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
+        settings = new { profile.Theme, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version
     };
@@ -150,13 +166,16 @@ public sealed partial class MainWindow : WindowChrome
             {
                 bool first = !bridgeReady; bridgeReady = true; Snapshot(); Send(new { kind = "reply", id, ok = true });
                 if (pendingTrayPage is { } page) { Send(new { kind = "navigate", page }); pendingTrayPage = null; }
+                bool autoConnect = first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0;
                 if (first) UpdateInstaller.Ready();
-                if (first && (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+                if (autoConnect) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+                if (first) _ = services.AutoStart(startZapret: !autoConnect);
                 return;
             }
             if (!bridgeReady) return;
             switch (action)
             {
+                case "uiReady": loading.Hide(); break;
                 case "drag": if (data.GetProperty("double").GetBoolean()) ToggleMaximize(); else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
                 case "resize":
                     var hit = data.GetProperty("edge").GetString() switch { "w" => 10, "e" => 11, "n" => 12, "nw" => 13, "ne" => 14, "s" => 15, "sw" => 16, "se" => 17, _ => 0 };
@@ -166,7 +185,10 @@ public sealed partial class MainWindow : WindowChrome
                 case "close": Close(); break;
                 case "toggle": _ = ToggleConnection(); break;
                 case "view":
-                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                case "serviceAction": case "serviceCancel": case "serviceSettings": case "serviceUpdateSettings": case "serviceRotateSecret":
+                case "serviceSource": case "serviceCopyLink": case "serviceOpenTelegram": case "serviceCopyResults": case "serviceExportResults": case "serviceClearLog": case "serviceSelectTest":
+                    await ServiceMessage(action, data); break;
                 case "runDiagnostics": StartTools("diagnostics", data); break;
                 case "testQuality": StartTools("quality", data); break;
                 case "cancelTools": toolsAttempt?.Cancel(); break;
@@ -216,13 +238,13 @@ public sealed partial class MainWindow : WindowChrome
                 if (action == "refresh" && profile.Local) throw new UserError("Локальный профиль обновляется повторным импортом файла.");
                 string address = action == "import" ? data.GetProperty("url").GetString()?.Trim() ?? "" : profile.Address;
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
-                AppLog.Secret(address); AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
+                AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
                 if (name.Length > 60) throw new UserError("Название слишком длинное.");
                 SubscriptionResult result;
                 using (var fetchCancellation = new CancellationTokenSource())
                 {
                     importAttempt = fetchCancellation;
-                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; if (device != null) AppLog.Secret(device.Hwid); result = await Subscriptions.Download(address, fetchCancellation.Token, device: device); }
+                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; result = await Subscriptions.Download(address, fetchCancellation.Token, device: device); }
                     finally { if (importAttempt == fetchCancellation) importAttempt = null; }
                 }
                 if (exiting) return;
@@ -243,7 +265,6 @@ public sealed partial class MainWindow : WindowChrome
                 switch (key)
                 {
                     case "theme": string theme = value.GetString()!; if (theme is not ("dark" or "light")) throw new UserError("Неизвестная тема."); profile.Theme = theme; break;
-                    case "accent": string accent = value.GetString()!; if (accent is not ("lime" or "gray" or "green" or "purple")) throw new UserError("Неизвестный акцент."); profile.Accent = accent; break;
                     case "mode": string mode = value.GetString()!; if (mode is not ("tun" or "proxy")) throw new UserError("Неизвестный режим."); restart = mode != profile.ConnectionMode; if (restart) await tunnel.Stop(); profile.ConnectionMode = mode; break;
                     case "bypass": var domains = Configuration.Domains(value.GetString() ?? ""); restart = !domains.SequenceEqual(profile.Bypass) || profile.Mode != "smart"; if (restart) await tunnel.Stop(); profile.Bypass = domains; profile.Mode = "smart"; break;
                     case "startup": bool enabled = value.GetBoolean(); await Startup.Set(enabled); profile.Startup = enabled; break;
@@ -251,7 +272,7 @@ public sealed partial class MainWindow : WindowChrome
                     case "tray": profile.Tray = value.GetBoolean(); break;
                     case "killSwitch":
                         bool protect = value.GetBoolean();
-                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
+                        if (protect && tunnel.State != "idle") KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, tunnel.UsesXhttp);
                         if (!protect) KillSwitch.Release();
                         profile.KillSwitch = protect; break;
                     case "sendHwid": profile.SendHwid = value.GetBoolean(); break;
@@ -277,11 +298,14 @@ public sealed partial class MainWindow : WindowChrome
             case "downloadUpdate": await DownloadUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "deferUpdate": DeferUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "remove":
+                string removedSubscription = data.GetProperty("id").GetString() ?? "";
+                if (removedSubscription.Length == 0 || removedSubscription != profile.ActiveSubscription || profile.Subscriptions.All(s => s.Id != removedSubscription))
+                    throw new UserError("Подписка уже удалена или выбрана другая подписка.");
                 await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
-                profile.Subscriptions.RemoveAll(s => s.Id == profile.ActiveSubscription);
+                profile.Subscriptions.RemoveAll(s => s.Id == removedSubscription);
                 profile.ActiveSubscription = ""; profile.Address = ""; profile.Local = false; profile.SubscriptionUsage = null; profile.Nodes = []; profile.Selected = ""; profile.Name = "Подписка"; profile.Updated = null; profile.Favorites = []; warnings = [];
                 if (profile.Subscriptions.Count > 0) profile.Activate(profile.Subscriptions[0].Id); else reconnect.Stop();
-                Store.Save(profile); ResumeDesired(); break;
+                Store.Save(profile); refreshAttempts.Remove(removedSubscription); AppLog.Register(profile); ResumeDesired(); break;
             default: throw new UserError("Неизвестная команда.");
         }
     }
@@ -306,7 +330,11 @@ public sealed partial class MainWindow : WindowChrome
     {
         if (exiting) return;
         exiting = true; DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
-        try { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
+        try
+        {
+            try { await services.StopAll(exit: true); }
+            finally { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
+        }
         finally { allowClose = true; Close(); }
     }
     [DllImport("user32.dll")] static extern bool ReleaseCapture();

@@ -7,7 +7,6 @@ using System.Text.Json.Nodes;
 namespace Kot.Core;
 public sealed record Node(string Id, string Name, string Protocol, JsonObject Outbound);
 public sealed record SubscriptionResult(List<Node> Nodes, List<string> Warnings, SubscriptionUsage? Usage = null);
-public sealed class UserError(string message) : Exception(message);
 
 public static class Subscriptions
 {
@@ -97,7 +96,7 @@ public static class Subscriptions
         }
         else
         {
-            var transport = Transport(kind, Get("host"), Get("path"), Get("serviceName"));
+            var transport = kind is "xhttp" or "splithttp" ? Xhttp.Transport(Get("host"), Get("path"), Get("mode"), Get("extra")) : Transport(kind, Get("host"), Get("path"), Get("serviceName"));
             if (transport != null) o["transport"] = transport;
             if (kind == "tcp" && Get("headerType", "none") != "none") throw new UserError("TCP HTTP header пока не поддерживается.");
             if (Get("packetEncoding").Length > 0) o["packet_encoding"] = Get("packetEncoding");
@@ -138,8 +137,9 @@ public static class Subscriptions
         if (!Guid.TryParse(G("id"), out _) || !int.TryParse(G("port"), out int port) || port < 1 || port > 65535 || G("add").Length == 0) throw new UserError("Неверный VMess сервер.");
         if (G("aid", "0") != "0") throw new UserError("Устаревший VMess alterId не поддерживается.");
         JsonObject o = new() { ["type"] = "vmess", ["tag"] = "proxy", ["server"] = G("add"), ["server_port"] = port, ["uuid"] = G("id"), ["security"] = G("scy", "auto") };
+        if (G("packetEncoding").Length > 0) o["packet_encoding"] = G("packetEncoding");
         string net = G("net", "tcp"); if (net == "tcp" && G("type", "none") != "none") throw new UserError("VMess TCP header пока не поддерживается.");
-        var t = Transport(net, G("host"), G("path"), G("path")); if (t != null) o["transport"] = t;
+        var t = net is "xhttp" or "splithttp" ? Xhttp.Transport(G("host"), G("path"), G("mode"), G("extra")) : Transport(net, G("host"), G("path"), G("path")); if (t != null) o["transport"] = t;
         string tls = G("tls"); if (tls.Length > 0 && tls != "none")
         {
             if (tls != "tls") throw new UserError("Неподдерживаемая защита VMess.");
@@ -168,7 +168,8 @@ public static class Subscriptions
     {
         name = string.Concat(name.Where(c => !char.IsControl(c))); if (name.Length > 140) name = name[..140];
         string protocol = o["type"]!.GetValue<string>();
-        return new(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant(), name.Length > 0 ? name : protocol.ToUpperInvariant() + " · " + o["server"], protocol, o);
+        var node = new Node(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant(), name.Length > 0 ? name : protocol.ToUpperInvariant() + " · " + o["server"], protocol, o);
+        NodeSecurity.Validate(node); return node;
     }
     static Dictionary<string, string> Query(string query)
     {

@@ -68,13 +68,19 @@ public sealed partial class MainWindow
             catch (Exception ex) { if (telemetryError.Length == 0) AppLog.Error("telemetry", ex); TelemetryFailure(); }
             finally
             {
-                readingTelemetry = false;
-                if (!exiting)
+                try
                 {
-                    if (tunnel.State == "connected") usage.Observe(tunnel.Session, Tunnel.MonotonicMilliseconds, DateTimeOffset.UtcNow);
-                    if (tunnel.State == "connected") { speedHistory.Enqueue(new(DateTimeOffset.UtcNow, traffic.DownloadRate, traffic.UploadRate)); while (speedHistory.Count > 90) speedHistory.Dequeue(); }
-                    SaveStatistics(); Snapshot(); ScheduleUpdateCheck();
+                    if (!exiting)
+                    {
+                        if (tunnel.State == "connected") usage.Observe(tunnel.Session, Tunnel.MonotonicMilliseconds, DateTimeOffset.UtcNow);
+                        if (tunnel.State == "connected") { speedHistory.Enqueue(new(DateTimeOffset.UtcNow, traffic.DownloadRate, traffic.UploadRate)); while (speedHistory.Count > 90) speedHistory.Dequeue(); }
+                        SaveStatistics(); await services.Tick();
+                        if (!exiting) { Snapshot(); ScheduleUpdateCheck(); }
+                    }
                 }
+                catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+                catch (Exception ex) { AppLog.Error("background services", ex); }
+                finally { readingTelemetry = false; }
             }
         };
         telemetryTimer.Start();

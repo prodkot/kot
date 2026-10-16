@@ -1,4 +1,4 @@
-"""Check release provenance, packaged assets and portable relative URLs."""
+"""Check release provenance, packaged assets and relative URLs."""
 from copy import deepcopy
 from html.parser import HTMLParser
 from pathlib import Path
@@ -30,7 +30,7 @@ class SiteTests(unittest.TestCase):
                 release_metadata(RELEASE | patch)
         for patch in ({"browser_download_url": "https://example.org/setup.exe"},
                       {"browser_download_url": URL.replace("prodkot/kot", "someone/kot")},
-                      {"size": -1}, {"size": True}, {"size": 0}, {"name": "portable.zip"}):
+                      {"size": -1}, {"size": True}, {"size": 0}, {"name": "unsupported.zip"}):
             release = deepcopy(RELEASE)
             release["assets"][0].update(patch)
             with self.subTest(patch=patch), self.assertRaises(ValueError):
@@ -81,6 +81,7 @@ class SiteTests(unittest.TestCase):
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
             self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
             self.assertEqual((dest / "demo/client-tools.js").read_bytes(), (ROOT.parent / "Windows/ui/client-tools.js").read_bytes())
+            self.assertEqual((dest / "demo/services.js").read_bytes(), (ROOT.parent / "Windows/ui/services.js").read_bytes())
             self.assertTrue((dest / "demo/demo.css").is_file())
             self.assertTrue((dest / "demo/bridge.js").is_file())
             self.assertEqual((dest / "demo/flags/de.svg").read_bytes(), (ROOT.parent / "Windows/ui/flags/de.svg").read_bytes())

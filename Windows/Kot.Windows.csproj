@@ -9,7 +9,7 @@
     <AssemblyName>Kot</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>kot.ico</ApplicationIcon>
-    <Version>0.6.1</Version>
+    <Version>0.7.0</Version>
     <Product>kot.</Product>
     <Title>kot.</Title>
     <Description>kot. VPN client</Description>
@@ -25,6 +25,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31"/>
     <Content Include="ui/**" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
     <Content Include="kot.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
+    <Content Include="kot-light.ico" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true"/>
   </ItemGroup>
   <!-- Keep the native WebView2 loader next to Kot.exe so its normal DLL lookup is unchanged. -->
   <Target Name="KeepWebViewLoaderExternal" BeforeTargets="_ComputeFilesToBundle">

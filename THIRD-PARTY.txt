@@ -18,6 +18,16 @@ Wintun встроен upstream в sing-tun; отдельная DLL не треб
 Chromium / Cronet:
 https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 
+Xray 26.3.27
+
+Отдельный процесс для транспорта XHTTP; используется официальный xray.exe
+без изменений. Геобазы Xray и дополнительные инструменты не включены.
+Лицензия MPL-2.0: licenses/Xray-MPL-2.0.txt.
+Уведомления зависимостей и точные архивы: licenses/Xray-Go-NOTICES.txt.
+Релиз: https://github.com/XTLS/Xray-core/releases/tag/v26.3.27
+Исходники: https://github.com/XTLS/Xray-core/archive/refs/tags/v26.3.27.tar.gz
+Точные исходники включены в upstream/Xray-core-26.3.27-source.tar.gz.
+
 WebView2
 
 SDK Microsoft.Web.WebView2 1.0.4258.31:
@@ -56,10 +66,8 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 Go module dependencies of sing-box 1.14.2:
 - Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt
 
-Звук мяу: Maullido de gata hembra, George Miquilena (2012).
-Источник: https://commons.wikimedia.org/wiki/File:Maullido_de_gata_hembra.ogg
-Лицензия CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
-Оригинальная запись без изменений: ui/sounds/meow.ogg.
+Звук мяу: запись meow-1.mp3, предоставленная пользователем для kot.
+Перекодирована в Ogg Vorbis: ui/sounds/meow.ogg.
 
 YamlDotNet 18.1.0
 
@@ -75,3 +83,15 @@ ZXing.Net; исходная библиотека ZXing: ZXing authors.
 Лицензия Apache-2.0: licenses/ZXing-Net-Apache-2.0.txt.
 Пакет: https://www.nuget.org/packages/ZXing.Net/0.16.11
 Исходники: https://github.com/micjahn/ZXing.Net
+
+Дополнительно устанавливаемые сервисы (не включены в Setup)
+
+zapret-discord-youtube: Flowseal и участники проекта.
+Официальные Windows-пакеты: https://github.com/Flowseal/zapret-discord-youtube
+В пакете остаются исходные уведомления и лицензии winws, WinDivert и компонентов.
+kot запускает winws с параметрами выбранной стратегии без исполнения BAT.
+
+tg-ws-proxy: Copyright (c) 2026 Flowseal, MIT License.
+Официальные Windows-пакеты: https://github.com/Flowseal/tg-ws-proxy
+Полный текст MIT встроен в Core/TelegramProxyLicense.txt и сохраняется как
+LICENSE.txt рядом с каждой управляемой копией TgWsProxy_windows.exe.

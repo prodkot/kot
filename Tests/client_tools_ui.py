@@ -58,6 +58,7 @@ with sync_playwright() as p:
         page.evaluate('fixtureStatistics({localSubscription:false})')
         expect(page.locator('#refreshButton')).to_be_enabled()
 
+        page.locator('[data-page=settings]').click()
         page.locator('[data-page=diagnostics]').click()
         expect(page.locator('#toolsNode')).to_be_disabled()
         expect(page.locator('#toolsConnectionNote')).to_contain_text('текущее VPN-соединение')
@@ -125,7 +126,8 @@ with sync_playwright() as p:
         assert page.evaluate("statisticsRequests.some(r=>r.action==='importText'&&r.data.text.startsWith('proxies:'))")
         expect(page.locator('#refreshButton')).to_be_disabled()
 
-        page.locator('[data-page=statistics]').click()
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('#statisticsButton').click()
         expect(page.locator('#trafficApps')).to_contain_text('browser.exe')
         expect(page.locator('#trafficRouteTotals')).to_contain_text('Через VPN: 1 МиБ')
         expect(page.locator('#trafficRouteTotals')).to_contain_text('Напрямую:')
@@ -153,6 +155,7 @@ with sync_playwright() as p:
             page.wait_for_timeout(250); page.screenshot(path=str(ROOT / f'Tests/ui-client-statistics-{theme}.png'), animations='disabled')
         page.set_viewport_size({'width':800,'height':600})
         for section in ('statistics', 'diagnostics', 'servers'):
+            if section in ('statistics', 'diagnostics'): page.locator('.nav-button[data-page=settings]').click()
             page.locator(f'[data-page={section}]').click()
             assert page.locator('#page-' + section).evaluate('(e)=>e.scrollWidth<=e.clientWidth'), section
         page.set_viewport_size({'width':1080,'height':770})

@@ -50,13 +50,13 @@ public sealed partial class MainWindow
     Node QrNode(JsonElement data) => profile.Nodes.FirstOrDefault(n => n.Id == data.GetProperty("id").GetString()) ?? throw new UserError("Сервер уже удалён.");
     object ReadShareQr(JsonElement data)
     {
-        var node = QrNode(data); string link = NodeLinks.Export(node); AppLog.Secret(link);
+        var node = QrNode(data); string link = NodeLinks.Export(node);
         using var bitmap = QrImages.Encode(link); using var stream = new MemoryStream(); bitmap.Save(stream, ImageFormat.Png);
         return new { node.Name, link, image = "data:image/png;base64," + Convert.ToBase64String(stream.ToArray()) };
     }
     void ExportShareQr(JsonElement data, string action)
     {
-        string link = NodeLinks.Export(QrNode(data)); AppLog.Secret(link);
+        string link = NodeLinks.Export(QrNode(data));
         if (action == "copyNodeLink") { Clipboard.SetText(link); return; }
         using var bitmap = QrImages.Encode(link);
         if (action == "copyNodeQr") { Clipboard.SetImage(bitmap); return; }

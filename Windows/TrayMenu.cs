@@ -19,8 +19,8 @@ public sealed class TrayMenu : ContextMenuStrip
         string path = Path.Combine(AppContext.BaseDirectory, "ui", "fonts", "Manrope.ttf");
         if (File.Exists(path)) fonts.AddFontFile(path);
         var family = fonts.Families.FirstOrDefault() ?? SystemFonts.MenuFont!.FontFamily;
-        regular = new Font(family, 10); bold = new Font(family, 10, FontStyle.Bold); Font = regular;
-        ShowImageMargin = false; ShowCheckMargin = false; Padding = new Padding(7);
+        regular = new Font(family, 9.5f); bold = new Font(family, 11, FontStyle.Bold); Font = regular;
+        ShowImageMargin = false; ShowCheckMargin = false; AutoSize = false;
         Renderer = new MenuRenderer(this); AccessibleName = "Меню kot.";
         heading = Label("kot. " + ClientIdentity.Version, "heading"); heading.Font = bold;
         status = Label("Не подключено", "status");
@@ -33,16 +33,16 @@ public sealed class TrayMenu : ContextMenuStrip
         Add("Настройки", "settings", () => this.navigate("settings"));
         Items.Add(new ToolStripSeparator());
         Add("Выйти из приложения", "exit", () => _ = Run(this.exit));
-        Update("dark", "lime", "idle", "", false);
+        Update("dark", "idle", "", false);
     }
     ToolStripMenuItem Label(string text, string tag)
     {
-        var item = new ToolStripMenuItem(text) { Enabled = false, Tag = tag, AutoSize = false };
+        var item = new MenuItem(text) { Enabled = false, Tag = tag, AutoSize = false };
         Items.Add(item); return item;
     }
     ToolStripMenuItem Add(string text, string tag, Action action)
     {
-        var item = new ToolStripMenuItem(text) { Tag = tag, AutoSize = false };
+        var item = new MenuItem(text) { Tag = tag, AutoSize = false };
         item.Click += (_, _) => action(); Items.Add(item); return item;
     }
     async Task Run(Func<Task> action)
@@ -53,15 +53,15 @@ public sealed class TrayMenu : ContextMenuStrip
         catch (Exception ex) { AppLog.Error("tray action", ex); MessageBox.Show(Store.Friendly(ex), "kot.", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { busy = false; }
     }
-    public void Update(string theme, string color, string state, string server, bool hasNodes)
+    public void Update(string theme, string state, string server, bool hasNodes)
     {
         bool light = theme == "light";
-        background = ColorTranslator.FromHtml(light ? "#f5f6ef" : "#171b1c");
-        foreground = ColorTranslator.FromHtml(light ? "#202822" : "#f1f3ed");
-        muted = ColorTranslator.FromHtml(light ? "#69716a" : "#989f9b");
-        line = ColorTranslator.FromHtml(light ? "#dce0d5" : "#333b37");
-        hover = ColorTranslator.FromHtml(light ? "#e7ebdf" : "#272e2a");
-        accent = ColorTranslator.FromHtml(color switch { "gray" => light ? "#53605b" : "#b2beb7", "green" => light ? "#357052" : "#8cdaa7", "purple" => light ? "#7661a8" : "#c8b6f4", _ => light ? "#61772b" : "#d2f58a" });
+        background = ColorTranslator.FromHtml(light ? "#efefeb" : "#191c1d");
+        foreground = ColorTranslator.FromHtml(light ? "#252a23" : "#f2f4ed");
+        muted = ColorTranslator.FromHtml(light ? "#757d73" : "#969e9f");
+        line = ColorTranslator.FromHtml(light ? "#dadcd5" : "#303536");
+        hover = ColorTranslator.FromHtml(light ? "#e6e8e0" : "#282d2e");
+        accent = ColorTranslator.FromHtml(light ? "#55752a" : "#d4f58a");
         BackColor = background; ForeColor = foreground;
         string label = state switch { "connected" => "Подключено", "connecting" => "Подключение", "disconnecting" => "Отключение", "waiting" => "Ожидание сети", _ => "Не подключено" };
         string safe = new(server.Where(c => !char.IsControl(c)).Take(100).ToArray());
@@ -69,15 +69,33 @@ public sealed class TrayMenu : ContextMenuStrip
         status.AccessibleName = status.Text;
         toggle.Text = state switch { "connected" => "Отключить", "connecting" or "waiting" => "Отменить подключение", "disconnecting" => "Отключение…", _ => "Подключить" };
         toggle.Enabled = !busy && state != "disconnecting" && (hasNodes || state != "idle");
-        float scale = DeviceDpi / 96f;
-        foreach (ToolStripItem item in Items)
-            if (item is not ToolStripSeparator) item.Size = new Size((int)(286 * scale), (int)((item == heading ? 29 : item == status ? 38 : 38) * scale));
+        LayoutMenu();
         Invalidate();
+    }
+    // WinForms recalculates menu padding when its font and text metrics change.
+    protected override Padding DefaultPadding => new((int)Math.Round(12 * DeviceDpi / 96f));
+    void LayoutMenu()
+    {
+        float scale = DeviceDpi / 96f;
+        int Px(int value) => (int)Math.Round(value * scale);
+        SuspendLayout();
+        Padding = new Padding(Px(12));
+        ClientSize = new Size(Px(320), Px(320));
+        foreach (ToolStripItem item in Items)
+        {
+            item.AutoSize = false; item.Margin = System.Windows.Forms.Padding.Empty;
+            item.Size = new Size(ClientSize.Width - Padding.Horizontal, Px(item is ToolStripSeparator ? 8 : item == heading ? 24 : 32));
+        }
+        ResumeLayout();
+    }
+    protected override void OnOpening(System.ComponentModel.CancelEventArgs e)
+    {
+        LayoutMenu(); base.OnOpening(e);
     }
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        using var shape = Rounded(new Rectangle(0, 0, Width - 1, Height - 1), 10 * DeviceDpi / 96f);
+        using var shape = Rounded(new Rectangle(0, 0, Width - 1, Height - 1), 18 * DeviceDpi / 96f);
         Region?.Dispose(); Region = new Region(shape);
     }
     internal static GraphicsPath Rounded(Rectangle bounds, float radius)
@@ -91,31 +109,44 @@ public sealed class TrayMenu : ContextMenuStrip
         base.Dispose(disposing);
         if (disposing) { regular.Dispose(); bold.Dispose(); fonts.Dispose(); }
     }
+    sealed class MenuItem(string text) : ToolStripMenuItem(text)
+    {
+        protected override void SetBounds(Rectangle bounds)
+        {
+            if (Owner is TrayMenu menu)
+            {
+                // The built-in menu item subtracts the left padding from its flow position.
+                bounds.X = menu.Padding.Left * 2;
+                bounds.Width = Math.Max(0, menu.ClientSize.Width - menu.Padding.Horizontal);
+            }
+            base.SetBounds(bounds);
+        }
+    }
     sealed class MenuRenderer(TrayMenu menu) : ToolStripRenderer
     {
         protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) => e.Graphics.Clear(menu.background);
         protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var shape = Rounded(new Rectangle(0, 0, menu.Width - 1, menu.Height - 1), 10 * menu.DeviceDpi / 96f);
+            using var shape = Rounded(new Rectangle(0, 0, menu.Width - 1, menu.Height - 1), 18 * menu.DeviceDpi / 96f);
             using var pen = new Pen(menu.line); e.Graphics.DrawPath(pen, shape);
         }
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             if (!e.Item.Selected || !e.Item.Enabled) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var shape = Rounded(new Rectangle(0, 1, e.Item.Width - 1, e.Item.Height - 2), 6 * menu.DeviceDpi / 96f);
+            using var shape = Rounded(new Rectangle(0, 1, e.Item.Width - 1, e.Item.Height - 2), 9 * menu.DeviceDpi / 96f);
             using var brush = new SolidBrush(menu.hover); e.Graphics.FillPath(brush, shape);
         }
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             float scale = menu.DeviceDpi / 96f; string tag = e.Item.Tag as string ?? "";
             bool header = tag is "heading" or "status";
-            Rectangle bounds = new((int)((header ? 11 : 39) * scale), 0, e.Item.Width - (int)((header ? 22 : 50) * scale), e.Item.Height);
+            Rectangle bounds = new((int)((header ? 12 : 42) * scale), 0, e.Item.Width - (int)((header ? 24 : 54) * scale), e.Item.Height);
             Color ink = tag == "status" || !header && !e.Item.Enabled ? menu.muted : tag == "heading" ? menu.accent : menu.foreground;
             TextRenderer.DrawText(e.Graphics, e.Item.Text, e.Item.Font, bounds, ink, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             if (header) return;
-            var g = e.Graphics; var saved = g.Save(); g.TranslateTransform(11 * scale, e.Item.Height / 2f - 8 * scale); g.ScaleTransform(scale, scale); g.SmoothingMode = SmoothingMode.AntiAlias;
+            var g = e.Graphics; var saved = g.Save(); g.TranslateTransform(12 * scale, e.Item.Height / 2f - 8 * scale); g.ScaleTransform(scale, scale); g.SmoothingMode = SmoothingMode.AntiAlias;
             using var pen = new Pen(e.Item.Enabled ? tag == "power" ? menu.accent : menu.muted : menu.muted, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             switch (tag)
             {
@@ -131,7 +162,11 @@ public sealed class TrayMenu : ContextMenuStrip
         }
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
-            using var pen = new Pen(menu.line); int inset = (int)(11 * menu.DeviceDpi / 96f); e.Graphics.DrawLine(pen, inset, e.Item.Height / 2, e.Item.Width - inset, e.Item.Height / 2);
+            // Native separators span the window; align the visible line with the row icons.
+            using var pen = new Pen(menu.line); int inset = (int)(12 * menu.DeviceDpi / 96f);
+            int left = menu.Padding.Left + inset - e.Item.Bounds.Left;
+            int right = menu.ClientSize.Width - menu.Padding.Right - inset - e.Item.Bounds.Left;
+            e.Graphics.DrawLine(pen, left, e.Item.Height / 2, right, e.Item.Height / 2);
         }
         protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { }
     }

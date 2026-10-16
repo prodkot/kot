@@ -3,7 +3,7 @@
   // Browser-only stand-in for WebView. All state stays in this frame's memory.
   // No subscriptions, hardware IDs, system settings or network connections are read.
   const version = document.body.dataset.demoVersion;
-  const pages = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'settings'];
+  const pages = ['home', 'servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings'];
   const listeners = new Set();
   const timers = new Map();
   let model, tick = 0, subscriptionSequence = 1, routingSequence = 0;
@@ -71,7 +71,7 @@
     model = {
       version, name: 'Личная подписка', hasSubscription: true, nodes: samples(), selected: 'nl', automaticNode: 'nl',
       state: 'idle', error: '', warnings: [], backgroundError: '', favorites: [], updated: null,
-      settings: { theme: 'dark', accent: 'lime', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
+      settings: { theme: 'dark', mode: 'tun', startup: false, autoConnect: false, tray: true, sendHwid: false, killSwitch: false, killSwitchActive: false, bypass: '' },
       subscriptions: [{ id: 'sample-1', name: 'Личная подписка', count: 4 }], activeSubscription: 'sample-1',
       automation: { reconnect: true, refreshHours: 6, pingMinutes: 0, autoMinutes: 3, autoToleranceMs: 50 },
       routing: { active: '', profiles: [], errors: {} },
@@ -109,6 +109,7 @@
   async function action(name, data) {
     switch (name) {
       case 'ready': notify({ ready: true, page: 'home' }); break;
+      case 'uiReady': break;
       case 'view': notify({ page: data.page }); break;
       case 'toggle':
         stop('connect'); model.error = '';

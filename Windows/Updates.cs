@@ -36,7 +36,10 @@ internal sealed record UpdateRequest(string Version, int ParentPid, long ParentS
 internal static class UpdateInstaller
 {
     public static string? Receipt;
-    public static string MutexName => "Local\\KotVPN-Update-" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+    public static string MutexName
+    {
+        get { using var identity = System.Security.Principal.WindowsIdentity.GetCurrent(); return "Local\\KotVPN-Update-" + identity.User!.Value; }
+    }
     public static void Ready()
     {
         if (Receipt == null) return;

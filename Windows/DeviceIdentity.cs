@@ -51,7 +51,6 @@ public static class DeviceIdentity
                 cached = id;
             }
         }
-        AppLog.Secret(cached);
         return new SubscriptionDevice(cached, "Windows", Environment.OSVersion.Version.ToString(), ClientIdentity.DeviceName);
     }
 }

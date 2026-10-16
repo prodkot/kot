@@ -23,10 +23,13 @@ static class WebViewTests
         string folder = Path.Combine(Path.GetTempPath(), "kot-webview-" + Guid.NewGuid().ToString("N"));
         using var form = new Form { ClientSize = new Size(960, 640), ShowInTaskbar = false };
         using var web = new WebView2 { Dock = DockStyle.Fill };
+        using var icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
+        using var loading = new StartupScreen("light", icon, () => { }, () => { }, () => { }, () => { }, spin: true);
         Process? browser = null;
         try
         {
-            form.Controls.Add(web); form.Show();
+            form.Controls.Add(web); form.Controls.Add(loading); loading.BringToFront(); form.Show();
+            check(loading.Visible, "native loading screen is visible before WebView2 initialization");
             var env = Complete(WebViewHost.CreateEnvironment(folder));
             Complete(web.EnsureCoreWebView2Async(env));
             var core = web.CoreWebView2;
@@ -34,7 +37,7 @@ static class WebViewTests
             check(ProcessParent.Id(browser.Handle) == Environment.ProcessId, "private WebView2 browser remains a child of the kot host");
             core.SetVirtualHostNameToFolderMapping("kot.local", Path.Combine(AppContext.BaseDirectory, "ui"), CoreWebView2HostResourceAccessKind.DenyCors);
             string? readyError = null, result = null; bool ready = false;
-            core.WebMessageReceived += (_, e) =>
+            core.WebMessageReceived += async (_, e) =>
             {
                 using var message = JsonDocument.Parse(e.WebMessageAsJson);
                 var root = message.RootElement;
@@ -42,6 +45,7 @@ static class WebViewTests
                 string? action = root.GetProperty("action").GetString();
                 try
                 {
+                    if (action == "uiReady") loading.Hide();
                     if (action == "readHwid")
                     {
                         core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "reply", id = root.GetProperty("id").GetInt32(), ok = true, data = new { hwid = new string('A', 64), name = "kot fixture" } }));
@@ -49,13 +53,21 @@ static class WebViewTests
                     }
                     core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "reply", id = root.GetProperty("id").GetInt32(), ok = true }));
                     if (action != "ready") return;
+                    string firstPaint = await core.ExecuteScriptAsync("""
+                    (()=>document.documentElement.classList.contains('theme-light')&&
+                      getComputedStyle(document.getElementById('startupScreen')).backgroundColor==='rgb(246, 246, 242)'&&
+                      document.querySelector('#startupScreen img').getAttribute('src')==='brand-icon-light.svg'&&
+                      (matchMedia('(prefers-reduced-motion: reduce)').matches||document.querySelector('#startupScreen img').getAnimations().some(a=>a.animationName==='startup-mark-spin')))()
+                    """);
+                    check(firstPaint == "true", "saved light theme and shared spinning choice apply before the first snapshot in native WebView2");
                     core.PostWebMessageAsJson("""
-                    {"kind":"snapshot","data":{"nodes":[],"selected":"","state":"idle","hasSubscription":false,"settings":{"theme":"dark","accent":"lime","mode":"tun","tray":true},"version":"fixture"}}
+                    {"kind":"snapshot","data":{"nodes":[],"selected":"","state":"idle","hasSubscription":false,"settings":{"theme":"light","accent":"lime","mode":"tun","tray":true},"version":"fixture"}}
                     """);
                     ready = true;
                 }
                 catch (Exception error) { readyError = error.Message; ready = true; }
             };
+            Complete(core.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup={theme:'light',spin:true};"));
             core.Navigate("https://kot.local/index.html");
             PumpUntil(() => ready, "production UI did not establish its WebView2 bridge");
             check(readyError == null, "production bridge delivers a snapshot in native WebView2");
@@ -63,14 +75,26 @@ static class WebViewTests
             Complete(core.ExecuteScriptAsync("""
             (async()=>{
               const $=id=>document.getElementById(id),pause=ms=>new Promise(r=>setTimeout(r,ms));
-              await pause(100);await document.fonts.ready;
+              await document.fonts.ready;
+              let sawReveal=false;
+              for(let i=0;i<150&&!$('startupScreen').hidden;i++){
+                if(document.body.classList.contains('revealing')){
+                  if(!document.querySelector('.main').inert||!document.querySelector('.sidebar').inert)throw Error('startup input released early');
+                  sawReveal ||= getComputedStyle(document.querySelector('.main')).filter!=='none';
+                }
+                await pause(20);
+              }
+              if(!$('startupScreen').hidden||document.querySelector('.main').inert||document.querySelector('.sidebar').inert)throw Error('startup overlay');
+              if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!sawReveal)throw Error('startup transition missing');
+              if(document.body.classList.contains('revealing')||getComputedStyle(document.querySelector('.main')).filter!=='none')throw Error('startup blur retained');
               if($('selectedName').textContent!=='Добавить подписку'||!document.fonts.check('600 14px Manrope','Соединение'))throw Error('UI/font');
               document.querySelector('[data-page=settings]').click();$('advancedButton').click();
               await pause(35);const before=Number(getComputedStyle($('advancedDialog')).opacity);
               $('closeAdvanced').click();const motion=$('advancedDialog').getAnimations()[0];
               if(motion&&Math.abs(Number(motion.effect.getKeyframes()[0].opacity)-before)>.03)throw Error('interrupted animation');
               await pause(300);if($('advancedDialog').open)throw Error('dialog stuck');
-              $('hwidButton').click();
+              $('advancedButton').click();$('hwidButton').click();
+              if($('deviceDialog').closest('dialog')!==$('advancedDialog')||!$('advancedDialog').open||!$('advancedContent').hidden)throw Error('nested HWID');
               for(let i=0;i<100&&!$('hwidValue').value;i++)await pause(20);
               if($('hwidValue').value!=='A'.repeat(64))throw Error('HWID bridge');
               $('copyHwid').click();$('hwidValue').focus();await pause(300);
@@ -78,11 +102,33 @@ static class WebViewTests
               const r=$('toast').getBoundingClientRect();
               if(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('#toast')!==$('toast'))throw Error('popover layer');
               $('closeDevice').click();
+              if(!$('deviceDialog').hidden||$('advancedContent').hidden||!$('advancedDialog').open)throw Error('HWID back');
+              $('closeAdvanced').click();
               await pause(300);return 'ok';
             })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
             """));
             PumpUntil(() => result != null, "native UI regression did not complete");
             check(result == "ok", "production page, modal popover, font and interrupted animation work in Windows WebView2: " + result);
+            check(!loading.Visible, "first rendered profile snapshot dismisses the native loading screen");
+            foreach (string theme in new[] { "dark", "light" })
+                foreach (string state in new[] { "idle", "waiting", "connecting", "connected", "disconnecting", "idle" })
+                {
+                    result = null;
+                    core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "snapshot", data = new { nodes = Array.Empty<object>(), selected = "", state, hasSubscription = false, settings = new { theme, mode = "tun", tray = true }, version = "fixture" } }));
+                    Complete(core.ExecuteScriptAsync($$"""
+                    (async()=>{
+                      const state={{JsonSerializer.Serialize(state)}},light={{(theme == "light" ? "true" : "false")}},title=document.querySelector('.title-brand');
+                      for(let i=0;i<100&&(title.dataset.state!==state||document.body.classList.contains('theme-light')!==light);i++)await new Promise(r=>setTimeout(r,20));
+                      if(title.dataset.state!==state||document.body.classList.contains('theme-light')!==light)throw Error('snapshot not applied');
+                      const expected=document.createElement('span');expected.style.color=state==='connected'?'var(--accent)':'var(--muted)';document.body.append(expected);
+                      const matches=getComputedStyle(title.querySelector('.brand-dot')).backgroundColor===getComputedStyle(expected).color;expected.remove();
+                      if(!matches||document.querySelector('#page-home [data-open-add]'))throw Error('connection title or home add button');
+                      return 'ok';
+                    })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
+                    """));
+                    PumpUntil(() => result != null, "native title state check did not complete");
+                    check(result == "ok", "title dot reflects VPN state without a home plus button in native WebView2: " + theme + " " + state + " " + result);
+                }
         }
         finally
         {

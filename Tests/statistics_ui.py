@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = r'''(() => {
 let listener;
-const model={version:'0.5.9',name:'Личная подписка',hasSubscription:true,
+const model={version:'0.7.0',name:'Личная подписка',hasSubscription:true,
  nodes:[{id:'nl',name:'Нидерланды',countryCode:'NL',protocol:'vless',code:'VL'}],selected:'nl',state:'connected',error:'',warnings:[],favorites:[],
  settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:false,killSwitch:false,bypass:''},
  subscriptions:[{id:'s',name:'Личная подписка',count:1}],activeSubscription:'s',
@@ -38,15 +38,18 @@ with sync_playwright() as p:
         page.clock.install(time=datetime(2026, 10, 11, 15, tzinfo=timezone.utc))
         page.goto((ROOT / 'Windows/ui/index.html').as_uri())
         expect(page.locator('#stateLabel')).to_have_text('Подключено')
+        expect(page.locator('#startupScreen')).to_be_hidden()
         page.clock.pause_at(datetime(2026, 10, 11, 15, 0, 5, tzinfo=timezone.utc))
         page.evaluate('fixtureStatistics()')
-        # The home page retains its original connection controls and contains no history or timer.
+        # Home shares the confirmed session clock, while history stays on Statistics.
         expect(page.locator('#page-home')).to_be_visible()
         expect(page.locator('#statistics')).not_to_be_visible()
         expect(page.locator('#connectionTime')).not_to_be_visible()
         assert page.locator('#page-home #statistics, #page-home #connectionTime').count() == 0
+        expect(page.locator('#homeSessionTime')).to_have_text('00:19:34')
         assert page.locator('#page-home .power-zone').bounding_box()['width'] == 208
-        page.locator('[data-page=statistics]').click()
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('#statisticsButton').click()
         page.clock.run_for(20)
         page.evaluate('fixtureStatistics()')
         expect(page.locator('#page-statistics')).to_be_visible()
@@ -78,6 +81,7 @@ with sync_playwright() as p:
         page.clock.run_for(20)
         page.evaluate("const s=fixtureStatisticsData();s.elapsedSeconds=1180;fixtureStatistics({statistics:s})")
         page.clock.run_for(1500)
+        expect(page.locator('#homeSessionTime')).to_have_text('00:19:41')
         expect(page.locator('#connectionTime')).not_to_be_visible()
         page.evaluate("fixtureNavigate('statistics')")
         expect(page.locator('#connectionTime')).to_have_text('00:19:41')
@@ -119,10 +123,24 @@ with sync_playwright() as p:
                 page.set_viewport_size({'width': width, 'height': height})
                 page.evaluate("document.querySelector('.main').scrollTop=0")
                 assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
-                for selector in ['#page-statistics h1', '#statisticsSession', '#connectionTime', '#statistics', '#statisticsSummary']:
+                for selector in ['#statisticsBack', '#page-statistics h1', '#statisticsSession', '#connectionTime', '#statistics', '#statisticsSummary']:
                     box = page.locator(selector).bounding_box()
                     assert box['y'] >= 38 and box['y'] + box['height'] <= height, (theme, width, height, selector, box)
+                back = page.locator('#statisticsBack').bounding_box()
+                title = page.locator('#page-statistics h1').bounding_box()
+                assert title['x'] + title['width'] < back['x'], (back, title)
+                assert abs(back['y'] + back['height']/2 - title['y'] - title['height']/2) < 1, (back, title)
+                summary = page.locator('#statistics').bounding_box()
+                details = page.locator('#statisticsDetails').bounding_box()
+                assert abs(details['y'] - summary['y'] - summary['height'] - 20) < 1, (summary, details)
+                expect(page.locator('#statisticsBack')).to_have_text('Назад')
                 expect(page.locator('#powerButton')).not_to_be_visible()
+            for key in ['Enter', 'Space']:
+                page.locator('#statisticsBack').focus()
+                page.locator('#statisticsBack').press(key)
+                expect(page.locator('#page-settings')).to_be_visible()
+                page.locator('#statisticsButton').click()
+                expect(page.locator('#page-statistics')).to_be_visible()
             page.set_viewport_size({'width': 960, 'height': 640})
             page.evaluate("document.activeElement.blur();document.querySelector('.main').scrollTop=0")
             page.evaluate('document.fonts.ready')
@@ -141,7 +159,8 @@ with sync_playwright() as p:
             for selector in ['#powerButton','#homeServer','#page-home .mode']:
                 box=page.locator(selector).bounding_box()
                 assert box['y']>=38 and box['y']+box['height']<=height,(width,height,selector,box)
-        page.locator('[data-page=statistics]').click()
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('#statisticsButton').click()
         page.clock.run_for(20)
         page.evaluate('fixtureStatistics({statistics:null})')
         expect(page.locator('#connectionTime')).not_to_be_visible()

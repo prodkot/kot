@@ -36,7 +36,7 @@ public static class ReleasePackage
         using var rsa = RSA.Create(); rsa.ImportFromPem(publicKey ?? ReleaseKey.Public);
         if (!rsa.VerifyData(manifestData, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new UserError("Подпись обновления не прошла проверку.");
         ReleaseManifest manifest;
-        try { manifest = JsonSerializer.Deserialize<ReleaseManifest>(manifestData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new UserError("Пустой манифест."); }
+        try { manifest = JsonSerializer.Deserialize(manifestData, PackageJsonContext.Default.ReleaseManifest) ?? throw new UserError("Пустой манифест."); }
         catch (JsonException) { throw new UserError("Некорректный манифест обновления."); }
         if (!Version.TryParse(manifest.Version, out var version) || (current != null && version <= current)) throw new UserError("В архиве нет более новой версии kot.");
         if (manifest.Files == null || !manifest.Files.ContainsKey("Kot.exe") || !manifest.Files.ContainsKey("core/sing-box.exe") || entries.Count != manifest.Files.Count + 2)
