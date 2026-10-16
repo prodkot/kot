@@ -70,7 +70,7 @@ public sealed class UpdateTransaction
         Directory.CreateDirectory(work); string staged = Path.Combine(work, "staged"), backup = Path.Combine(work, "backup");
         Directory.CreateDirectory(staged); Directory.CreateDirectory(backup);
         // Validate all destination paths before the first write.
-        foreach (var e in archive.Entries) { Target(e.FullName); var p = Path.Combine(staged, e.FullName.Replace('/', Path.DirectorySeparatorChar)); Directory.CreateDirectory(Path.GetDirectoryName(p)!); using var input = e.Open(); using var output = new FileStream(p, FileMode.CreateNew, FileAccess.Write, FileShare.None); input.CopyTo(output); }
+        foreach (var e in archive.Entries) { Target(e.FullName); var p = Path.Combine(staged, e.FullName.Replace('/', Path.DirectorySeparatorChar)); Directory.CreateDirectory(Path.GetDirectoryName(p)!); using var input = e.Open(); using var output = new FileStream(p, FileMode.CreateNew, FileAccess.Write, FileShare.None); input.CopyTo(output); output.Flush(true); }
         try
         {
             foreach (var e in archive.Entries.OrderBy(e => e.FullName.Equals("Kot.exe", StringComparison.OrdinalIgnoreCase) ? 1 : 0))

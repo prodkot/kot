@@ -33,6 +33,7 @@ jobs:
           python3 Tests/client_tools_ui.py
           python3 Tests/services_ui.py
           python3 Tests/ui_polish.py
+          python3 Tests/ui_resilience.py
   integration:
     timeout-minutes: 10
     runs-on: ubuntu-latest

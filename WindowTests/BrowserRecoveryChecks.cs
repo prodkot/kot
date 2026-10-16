@@ -36,7 +36,7 @@ static class BrowserRecoveryChecks
             {
                 Script(app, "document.querySelector('[data-page=settings]').click()");
                 Pump(() => Script(app, "document.getElementById('page-settings').hidden") == "false", "settings page did not open");
-                int old = checked((int)app.BrowserProcessId);
+                int old = checked((int)app.BrowserProcessId), generation = app.InterfaceGeneration;
                 using var process = Process.GetProcessById(old);
                 check(ProcessParent.Id(process.Handle) == Environment.ProcessId, "crash fixture owns its WebView2 browser");
                 if (i == 0)
@@ -47,7 +47,7 @@ static class BrowserRecoveryChecks
                 else { process.Kill(entireProcessTree: true); process.WaitForExit(5000); }
                 if (i < 3)
                 {
-                    Pump(() => app.InterfaceReady && app.BrowserProcessId != old, "UI did not recover from process termination");
+                    Pump(() => app.InterfaceGeneration > generation && app.InterfaceReady && app.BrowserProcessId != old, "UI did not recover from process termination");
                     owned.Add(Process.GetProcessById(checked((int)app.BrowserProcessId)));
                     check(Script(app, "document.getElementById('page-settings').hidden") == "false", "renderer/browser recovery restores the last page " + i);
                 }

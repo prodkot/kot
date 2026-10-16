@@ -6,10 +6,10 @@ namespace Kot.Windows;
 internal sealed class ProfileRecovery : Form
 {
     readonly ProfilePersistence store;
-    readonly Label error = new() { AutoSize = true, MaximumSize = new Size(500, 0), ForeColor = Color.FromArgb(240, 165, 155) };
+    readonly Label error = new() { AutoSize = true, MaximumSize = new Size(480, 0), ForeColor = Color.FromArgb(240, 165, 155) };
     readonly TextBox password = new() { UseSystemPasswordChar = true, PlaceholderText = "Пароль резервной копии", Width = 480, AccessibleName = "Пароль резервной копии" };
     Profile? result;
-    ProfileRecovery(ProfilePersistence store, Exception reason)
+    internal ProfileRecovery(ProfilePersistence store, Exception reason)
     {
         this.store = store;
         Text = "Восстановление kot."; StartPosition = FormStartPosition.CenterScreen;
@@ -19,7 +19,7 @@ internal sealed class ProfileRecovery : Form
         Font = new Font("Segoe UI", 10);
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(24) };
         layout.Controls.Add(new Label { Text = "Не удалось открыть профиль", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(3, 0, 3, 12) });
-        layout.Controls.Add(new Label { Text = "Подписки и настройки сохранены на диске. Выберите способ восстановления. Старые файлы останутся в папке данных.", AutoSize = true, MaximumSize = new Size(490, 0), Margin = new Padding(3, 0, 3, 14) });
+        layout.Controls.Add(new Label { Text = "Подписки и настройки сохранены на диске. Выберите способ восстановления. Старые файлы останутся в папке данных.", AutoSize = true, MaximumSize = new Size(480, 0), Margin = new Padding(3, 0, 3, 14) });
         error.Text = Store.Friendly(reason); layout.Controls.Add(error);
         bool backup = false; try { store.LoadBackup(); backup = true; } catch { }
         Button Add(string text, Func<Task> action)

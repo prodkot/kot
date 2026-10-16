@@ -7,22 +7,25 @@ public sealed partial class MainWindow
     readonly System.Windows.Forms.Timer browserWatch = new() { Interval = 1000 };
     readonly Queue<DateTimeOffset> browserFailures = new();
     TaskCompletionSource? browserExited;
-    DateTimeOffset browserDeadline;
-    bool browserRecovering, applicationStarted, interfaceStarted, updateReceiptAcknowledged;
+    DateTimeOffset browserDeadline, browserHeartbeat;
+    bool browserRecovering, browserLoaded, applicationStarted, interfaceStarted, updateReceiptAcknowledged;
     int unresponsiveEvents, browserGeneration;
     DateTimeOffset lastUnresponsive;
-    internal bool InterfaceReady => bridgeReady && !loading.Visible;
+    internal bool InterfaceReady => bridgeReady && browserLoaded && !web.IsDisposed && web.CoreWebView2 != null;
+    internal int InterfaceGeneration => browserGeneration;
     internal uint BrowserProcessId => web.CoreWebView2?.BrowserProcessId ?? 0;
     internal CoreWebView2 InterfaceCore => web.CoreWebView2;
     internal Task CloseForTests() => ExitApp();
 
     void WatchBrowser(CoreWebView2Environment environment, CoreWebView2 core)
     {
+        var owner = web;
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); browserExited = exited;
         environment.BrowserProcessExited += (_, _) => exited.TrySetResult();
         core.ProcessFailed += (_, e) =>
         {
-            if (exiting || web.IsDisposed || web.CoreWebView2 != core) return;
+            // WebView2 clears CoreWebView2 on browser exit before this event.
+            if (exiting || owner.IsDisposed || !ReferenceEquals(web, owner)) return;
             if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
             {
                 if (DateTimeOffset.UtcNow - lastUnresponsive > TimeSpan.FromSeconds(40)) unresponsiveEvents = 0;
@@ -34,7 +37,7 @@ public sealed partial class MainWindow
         };
         core.NavigationCompleted += (_, e) =>
         {
-            if (!e.IsSuccess && e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled && !exiting && !web.IsDisposed && web.CoreWebView2 == core)
+            if (!e.IsSuccess && e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled && !exiting && !owner.IsDisposed && ReferenceEquals(web, owner))
                 RecoverBrowser("Не загружен интерфейс: " + e.WebErrorStatus);
         };
         browserDeadline = DateTimeOffset.UtcNow.AddSeconds(30); browserWatch.Start();
@@ -43,17 +46,21 @@ public sealed partial class MainWindow
     {
         browserWatch.Tick += (_, _) =>
         {
-            if (!exiting && !browserRecovering && DateTimeOffset.UtcNow >= browserDeadline) RecoverBrowser("Интерфейс не ответил за 30 секунд.");
+            if (exiting || browserRecovering) return;
+            if (DateTimeOffset.UtcNow >= browserDeadline) { RecoverBrowser("Интерфейс перестал отвечать."); return; }
+            if (browserLoaded && DateTimeOffset.UtcNow >= browserHeartbeat)
+            { browserHeartbeat = DateTimeOffset.UtcNow.AddSeconds(15); Send(new { kind = "heartbeat" }); }
         };
     }
     void BrowserReady()
     {
         if (!updateReceiptAcknowledged) { UpdateInstaller.Ready(); updateReceiptAcknowledged = true; }
-        browserWatch.Stop(); unresponsiveEvents = 0; loading.ClearFailure(); loading.Hide();
+        browserLoaded = true; browserDeadline = DateTimeOffset.UtcNow.AddSeconds(45); browserHeartbeat = DateTimeOffset.UtcNow.AddSeconds(15);
+        browserWatch.Start(); unresponsiveEvents = 0; loading.ClearFailure(); loading.Hide();
     }
     void BrowserFailure(Exception error)
     {
-        AppLog.Error("interface", error); bridgeReady = false; browserWatch.Stop();
+        AppLog.Error("interface", error); bridgeReady = false; browserLoaded = false; browserWatch.Stop();
         if (exiting || IsDisposed) return;
         loading.ShowFailure("Не удалось открыть интерфейс. Соединением можно управлять через меню kot. в трее.", () =>
         {
@@ -64,7 +71,7 @@ public sealed partial class MainWindow
     void RecoverBrowser(string reason)
     {
         if (exiting || IsDisposed || browserRecovering) return;
-        browserGeneration++; bridgeReady = false; browserWatch.Stop(); AppLog.Write("interface", reason);
+        browserGeneration++; bridgeReady = false; browserLoaded = false; browserWatch.Stop(); AppLog.Write("interface", reason);
         while (browserFailures.TryPeek(out var old) && DateTimeOffset.UtcNow - old > TimeSpan.FromMinutes(2)) browserFailures.Dequeue();
         if (browserFailures.Count >= 3) { BrowserFailure(new Kot.Core.UserError("Интерфейс несколько раз завершился с ошибкой.")); return; }
         browserFailures.Enqueue(DateTimeOffset.UtcNow);

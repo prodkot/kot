@@ -51,7 +51,7 @@ DIALOGS = [
  ('serviceSettingsDialog-telegram', 'services', ['[data-service-tab=telegram]', '#telegramSettings']),
  ('zapretTestDialog', 'services', ['[data-service-tab=zapret]', '#zapretTest']),
  ('serviceRemoveDialog', 'services', ['[data-service-tab=telegram]', '#telegramRemove']),
- ('serviceSecretDialog', 'services', ['[data-service-tab=telegram]', '#telegramRotate']),
+ ('serviceSecretDialog', 'services', ['[data-service-tab=telegram]', '#telegramSettings', '#telegramRotate']),
 ]
 
 def close_all(page):
@@ -72,10 +72,40 @@ def snapshot(page, name, enabled):
     if OUTPUT and enabled:
         page.screenshot(path=str(Path(OUTPUT)/(name+'.png')), animations='disabled')
 
+def delayed_service_actions(browser):
+    page=browser.new_page(viewport={'width':960,'height':640},reduced_motion='reduce')
+    page.add_init_script(MOCK)
+    try:
+        page.goto((ROOT/'Windows/ui/index.html').as_uri())
+        expect(page.locator('#startupScreen')).to_be_hidden()
+        page.evaluate("fixtureNavigate('services');window.fixtureDelay=700")
+        page.locator('[data-service-tab=telegram]').click();page.locator('#telegramSettings').click();page.locator('#telegramRotate').click()
+        page.locator('#serviceSecretConfirm').evaluate('e=>{e.click();e.click();e.click()}')
+        expect(page.locator('#serviceSecretConfirm')).to_be_disabled()
+        page.wait_for_timeout(800)
+        assert page.evaluate("fixtureRequests.filter(r=>r.action==='serviceRotateSecret').length") == 1, 'repeated clicks rotate the secret more than once'
+        close_all(page)
+        for reject in [False,True]:
+            page.evaluate('reject=>window.fixtureReject=reject?"serviceSettings":""',reject)
+            page.locator('[data-service-tab=telegram]').click();page.locator('#telegramSettings').click()
+            page.locator('#serviceSettingsSave').click()
+            page.keyboard.press('Escape');page.wait_for_timeout(160)
+            page.locator('[data-service-tab=zapret]').click();page.locator('#zapretSettings').click()
+            page.locator('#zapretDomains').fill('draft.example.org')
+            page.wait_for_timeout(800)
+            expect(page.locator('#serviceSettingsDialog')).to_be_visible()
+            expect(page.locator('#zapretDomains')).to_have_value('draft.example.org')
+            expect(page.locator('#serviceSettingsError')).to_have_text('')
+            close_all(page)
+        print('PASS delayed replies preserve a newly opened form; secret rotation executes once',flush=True)
+    finally:
+        page.close()
+
 failures=[]
 with sync_playwright() as pw:
     browser=pw.chromium.launch(args=['--no-sandbox'])
     try:
+        delayed_service_actions(browser)
         for width,height,scale in [(800,600,1),(960,640,1.25),(960,640,1.5),(1280,800,2)]:
             for theme in ['dark','light']:
                 page=browser.new_page(viewport={'width':width,'height':height},device_scale_factor=scale,reduced_motion='reduce')
@@ -105,10 +135,13 @@ with sync_playwright() as pw:
                         dialog=page.locator('#'+id).evaluate('e=>e.closest("dialog").id')
                         box=geometry(page,'#'+dialog)
                         assert box['horizontal'] and box['left']>=-1 and box['right']<=width+1 and box['top']>=-1 and box['bottom']<=height+1,(label,box)
-                        for button in page.locator('#'+id+' button:visible').all():
-                            button.scroll_into_view_if_needed()
-                            bounds=button.bounding_box()
-                            assert bounds['x']>=box['left']-1 and bounds['x']+bounds['width']<=box['right']+1,(label,button.get_attribute('id'),bounds)
+                        overflow = page.locator('#'+id).evaluate('''(e,b)=>[...e.querySelectorAll('button')].filter(x=>x.getClientRects().length).filter(x=>{const r=x.getBoundingClientRect();return r.left<b.left-1||r.right>b.right+1}).map(x=>x.id)''',box)
+                        assert not overflow,(label,overflow)
+                        actions=page.locator('#'+id+' .dialog-actions button:visible')
+                        if actions.count():
+                            actions.last.scroll_into_view_if_needed()
+                            b=actions.last.bounding_box()
+                            assert b['y']>=0 and b['y']+b['height']<=height+1,(label,'unreachable action',b)
                         page.locator('#'+dialog).evaluate('e=>{e.scrollTop=0;e.querySelectorAll("form").forEach(f=>f.scrollTop=0)}')
                         snapshot(page,f'{theme}-{label}',scale==1)
                     close_all(page)
@@ -123,7 +156,7 @@ with sync_playwright() as pw:
                     expect(page.locator('#telegramSettings')).to_be_disabled()
                     snapshot(page,f'{theme}-service-busy',scale==1)
                     page.evaluate('text=>fixtureServiceItem("telegram",{busy:false,error:text,phase:""})',LONG)
-                    assert geometry(page,'.main')['horizontal']
+                    assert geometry(page,'.main')['horizontal'], 'long service error expands the page'
                     snapshot(page,f'{theme}-service-error',scale==1)
                     page.evaluate('fixtureSnapshot({nodes:[],selected:"",hasSubscription:false,subscriptions:[],activeSubscription:"",state:"idle",error:""})')
                     for section in ['home','servers','diagnostics']:

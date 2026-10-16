@@ -181,6 +181,7 @@ public sealed partial class MainWindow : WindowChrome
             if (!bridgeReady) return;
             switch (action)
             {
+                case "heartbeat": browserDeadline = DateTimeOffset.UtcNow.AddSeconds(45); Reply(new { kind = "reply", id, ok = true }); return;
                 case "uiReady": BrowserReady(); break;
                 case "drag": if (data.GetProperty("double").GetBoolean()) ToggleMaximize(); else { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } break;
                 case "resize":

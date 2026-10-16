@@ -1,4 +1,4 @@
-# Сервисы в версии 0.7.0
+# Сервисы
 
 Статистика находится в **Настройки → Статистика**. Раздел **Сервисы** в левом меню управляет [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube) и [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy). Пакеты устанавливаются отдельно по кнопке, в Setup они не включены.
 

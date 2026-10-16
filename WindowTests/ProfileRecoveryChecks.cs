@@ -2,11 +2,12 @@ using Kot.Core;
 using Kot.Windows;
 using System.Security.Cryptography;
 using System.Text;
+using System.Drawing.Imaging;
 namespace Kot.WindowTests;
 
 static class ProfileRecoveryChecks
 {
-    public static void Run(Action<bool, string> check)
+    public static void Run(Action<bool, string> check, string screenshots)
     {
         string folder = Path.Combine(Path.GetTempPath(), "kot-profile-recovery-" + Guid.NewGuid().ToString("N"));
         try
@@ -24,6 +25,17 @@ static class ProfileRecoveryChecks
                 check(failed && store.Load().Theme == "light" && store.LoadBackup().Theme == "light", "Windows file lock leaves both valid encrypted copies untouched");
             }
             check(!Directory.EnumerateFiles(folder, "*.tmp").Any(), "failed DPAPI profile replacement removes its temporary file");
+            using var recovery = new ProfileRecovery(store, new CryptographicException());
+            recovery.Show(); Application.DoEvents();
+            var layout = recovery.Controls.OfType<FlowLayoutPanel>().Single();
+            check(!layout.HorizontalScroll.Visible, "native profile recovery fits without horizontal scrolling");
+            Directory.CreateDirectory(screenshots);
+            using var bitmap = new Bitmap(recovery.Width, recovery.Height); recovery.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+            bitmap.Save(Path.Combine(screenshots, "profile-recovery.png"), ImageFormat.Png);
+            var close = layout.Controls.OfType<Button>().Single(b => b.Text == "Закрыть");
+            layout.ScrollControlIntoView(close); Application.DoEvents();
+            check(close.Top >= 0 && close.Bottom <= layout.ClientSize.Height, "native recovery close action remains reachable in a small window");
+            recovery.Close();
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }
