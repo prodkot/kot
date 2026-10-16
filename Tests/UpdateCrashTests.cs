@@ -16,7 +16,7 @@ public static class UpdateCrashTests
     public static async Task Interrupt(string root, string package, string key, int count)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath), "dotnet", StringComparison.OrdinalIgnoreCase))
             start.ArgumentList.Add(typeof(UpdateCrashTests).Assembly.Location);
         foreach (string arg in new[] { "--crash-update", root, package, key, count.ToString() }) start.ArgumentList.Add(arg);
         using var process = Process.Start(start)!;

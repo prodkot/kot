@@ -16,6 +16,7 @@ public sealed partial class MainWindow
     int RequestProxyPort => 0;
     bool DownloadsAvailable => true;
     void Snapshot() { }
+    void SaveProfile(Action<Profile> edit) { edit(profile); Store.Save(profile); }
     void BeginInvoke(Action action) => action();
     Task InstallPackage(string path, string version, CancellationToken ct)
     { ct.ThrowIfCancellationRequested(); installs++; return Task.CompletedTask; }
