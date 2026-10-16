@@ -10,9 +10,22 @@ public sealed partial class MainWindow
     readonly CancellationTokenSource lifetime = new();
     readonly Dictionary<string, DateTimeOffset> refreshAttempts = [];
     DateTimeOffset lastPing = DateTimeOffset.MinValue, lastHealth = DateTimeOffset.MinValue;
-    bool ticking, connecting, networkChanged;
+    bool ticking, connecting, toggling, networkChanged;
     int failedHealth;
     string backgroundError = "", networkSignature = "", connectionNotice = "";
+    void StartApplication()
+    {
+        if (applicationStarted || exiting) return;
+        applicationStarted = true;
+        bool autoConnect = (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0;
+        if (autoConnect) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+        _ = StartServices(autoConnect);
+    }
+    async Task StartServices(bool autoConnect)
+    {
+        try { await services.AutoStart(startZapret: !autoConnect); }
+        catch (Exception ex) { if (!exiting) { AppLog.Error("service startup", ex); backgroundError = Store.Friendly(ex); Snapshot(); } }
+    }
     void InitAutomation()
     {
         networkSignature = PhysicalNetwork();
@@ -33,7 +46,10 @@ public sealed partial class MainWindow
     }
     async Task ToggleConnection()
     {
-        if (exiting) return;
+        if (exiting || toggling) return;
+        toggling = true;
+        try
+        {
         if (services.Testing) { connectionNotice = "Завершите подбор zapret перед подключением VPN."; Snapshot(); return; }
         connectionNotice = "";
         if (reconnect.Desired || tunnel.State != "idle")
@@ -41,10 +57,12 @@ public sealed partial class MainWindow
             reconnect.Stop(); importAttempt?.Cancel(); await StopTools(); await tunnel.Stop(); KillSwitch.Release(); Snapshot();
         }
         else if (profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); Snapshot(); }
+        }
+        finally { toggling = false; }
     }
     void ResumeDesired()
     {
-        if (reconnect.Desired && !exiting && profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
+        if (reconnect.Desired && !exiting && profile.Nodes.Count > 0) { reconnect.ResetDelay(DateTimeOffset.UtcNow); StartConnection(); }
     }
     async void StartConnection()
     {
@@ -69,7 +87,7 @@ public sealed partial class MainWindow
     }
     async Task TickAutomation()
     {
-        if (ticking || exiting || !bridgeReady) return;
+        if (ticking || exiting || !applicationStarted) return;
         ticking = true;
         try
         {
@@ -95,7 +113,7 @@ public sealed partial class MainWindow
             }
             if (online && operations.CurrentCount > 0 && !connecting && !ping.Busy && profile.Nodes.Count > 0 && profile.Automation.PingMinutes > 0 && now - lastPing >= TimeSpan.FromMinutes(profile.Automation.PingMinutes))
             { lastPing = now; ping.Start(profile.Nodes.ToList(), profile.Ping); }
-            if (online && !connecting && profile.Automation.RefreshHours > 0 && await operations.WaitAsync(0))
+            if (online && DownloadsAvailable && !connecting && profile.Automation.RefreshHours > 0 && await operations.WaitAsync(0))
             {
                 try
                 {
@@ -108,10 +126,20 @@ public sealed partial class MainWindow
                         try
                         {
                             var device = profile.SendHwid ? DeviceIdentity.Get() : null;
-                            var result = await Subscriptions.Download(due.Address, ct.Token, device: device);
+                            var result = await Subscriptions.Download(due.Address, ct.Token, device: device, proxyPort: RequestProxyPort);
                             if (exiting) return;
                             if (due.Id == profile.ActiveSubscription) await ApplySubscription(due.Address, due.Name, result, false);
-                            else { due.Nodes = result.Nodes; due.Usage = result.Usage; due.Updated = DateTimeOffset.UtcNow; if (due.Selected != "auto" && due.Nodes.All(n => n.Id != due.Selected)) due.Selected = due.Nodes[0].Id; Store.Save(profile); AppLog.Register(profile); }
+                            else
+                            {
+                                SaveProfile(p =>
+                                {
+                                    var updated = p.Subscriptions.Single(s => s.Id == due.Id);
+                                    updated.Nodes = result.Nodes; updated.Usage = result.Usage; updated.Updated = DateTimeOffset.UtcNow;
+                                    if (updated.Selected != "auto" && updated.Nodes.All(n => n.Id != updated.Selected)) updated.Selected = updated.Nodes[0].Id;
+                                    updated.Favorites.RemoveAll(id => updated.Nodes.All(n => n.Id != id));
+                                });
+                                AppLog.Register(profile);
+                            }
                             backgroundError = ""; AppLog.Write("automation", "subscription updated: " + result.Nodes.Count + " nodes");
                         }
                         catch (OperationCanceledException) { }
@@ -121,8 +149,8 @@ public sealed partial class MainWindow
                 }
                 finally { operations.Release(); }
             }
-            await TickRouting(now, online);
-            await TickGeoIp(now, online);
+            await TickRouting(now, online && DownloadsAvailable);
+            await TickGeoIp(now, online && DownloadsAvailable);
             Snapshot();
         }
         catch (OperationCanceledException) { }
@@ -135,26 +163,30 @@ public sealed partial class MainWindow
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
         if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
         await StopTools();
-        profile.CaptureActive();
         bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(n => n.Id).Order().SequenceEqual(result.Nodes.Select(n => n.Id).Order()) : result.Nodes.All(n => n.Id != profile.Selected));
         if (restart) await tunnel.Stop(); await ping.Stop(clear: true);
-        if (switchProfile)
+        try
         {
-            if (saved == null)
+            SaveProfile(p =>
             {
-                saved = new SavedSubscription { Address = address, Name = name.Length > 0 ? name : "Подписка" }; profile.Subscriptions.Add(saved);
-            }
-            saved.Nodes = result.Nodes; saved.Usage = result.Usage; saved.Updated = DateTimeOffset.UtcNow; if (saved.Selected != "auto" && saved.Nodes.All(n => n.Id != saved.Selected)) saved.Selected = result.Nodes[0].Id;
-            profile.Activate(saved.Id);
+                if (switchProfile)
+                {
+                    var candidate = p.Subscriptions.FirstOrDefault(s => s.Id == saved?.Id);
+                    if (candidate == null) { candidate = new SavedSubscription { Address = address, Name = name.Length > 0 ? name : "Подписка" }; p.Subscriptions.Add(candidate); }
+                    candidate.Nodes = result.Nodes; candidate.Usage = result.Usage; candidate.Updated = DateTimeOffset.UtcNow;
+                    if (candidate.Selected != "auto" && candidate.Nodes.All(n => n.Id != candidate.Selected)) candidate.Selected = result.Nodes[0].Id;
+                    p.Activate(candidate.Id);
+                }
+                else
+                {
+                    p.Address = address; p.Local = false; p.SubscriptionUsage = result.Usage; p.Name = name.Length > 0 ? name : "Подписка"; p.Nodes = result.Nodes; p.Updated = DateTimeOffset.UtcNow;
+                    if (p.Selected != "auto" && result.Nodes.All(n => n.Id != p.Selected)) p.Selected = result.Nodes[0].Id;
+                }
+                p.Favorites.RemoveAll(id => p.Nodes.All(n => n.Id != id));
+            });
+            warnings = result.Warnings; AppLog.Register(profile); AppLog.Write("subscription", "saved: " + result.Nodes.Count + " nodes; skipped=" + warnings.Count);
         }
-        else
-        {
-            profile.Address = address; profile.Local = false; profile.SubscriptionUsage = result.Usage; profile.Name = name.Length > 0 ? name : "Подписка"; profile.Nodes = result.Nodes; profile.Updated = DateTimeOffset.UtcNow;
-            if (profile.Selected != "auto" && result.Nodes.All(n => n.Id != profile.Selected)) profile.Selected = result.Nodes[0].Id;
-        }
-        profile.Favorites.RemoveAll(id => profile.Nodes.All(n => n.Id != id)); warnings = result.Warnings;
-        Store.Save(profile); AppLog.Register(profile); AppLog.Write("subscription", "saved: " + result.Nodes.Count + " nodes; skipped=" + warnings.Count);
-        if (restart) ResumeDesired();
+        finally { if (restart) ResumeDesired(); }
     }
     async Task ExportBackup(string password)
     {

@@ -26,7 +26,8 @@ internal sealed class ManagedServices
     }
     readonly Entry[] entries = [new("zapret"), new("telegram")];
     readonly Func<ServiceOptions> options;
-    readonly Func<bool> networkBusy;
+    readonly Func<bool> networkBusy, downloadsAvailable;
+    readonly Func<int> proxyPort;
     readonly Action changed;
     readonly string folder;
     readonly CancellationToken lifetime;
@@ -37,9 +38,10 @@ internal sealed class ManagedServices
     Task vpnPreparation = Task.CompletedTask;
     DateTimeOffset nextCheck = DateTimeOffset.UtcNow.AddSeconds(20);
     public bool Testing { get; private set; }
-    public ManagedServices(Func<ServiceOptions> options, Func<bool> networkBusy, Action changed, CancellationToken lifetime, string? folder = null)
+    public ManagedServices(Func<ServiceOptions> options, Func<bool> networkBusy, Action changed, CancellationToken lifetime, string? folder = null, Func<int>? proxyPort = null, Func<bool>? downloadsAvailable = null)
     {
         this.options = options; this.networkBusy = networkBusy; this.changed = changed; this.lifetime = lifetime;
+        this.proxyPort = proxyPort ?? (() => 0); this.downloadsAvailable = downloadsAvailable ?? (() => true);
         this.folder = folder ?? Path.Combine(Store.Folder, "services"); Directory.CreateDirectory(this.folder);
         foreach (var entry in entries)
         {
@@ -166,7 +168,7 @@ internal sealed class ManagedServices
     }
     async Task Check(Entry entry, CancellationToken ct)
     {
-        entry.Latest = await ServicePackages.Latest(entry.Id, ct); entry.Checked = DateTimeOffset.UtcNow;
+        entry.Latest = await ServicePackages.Latest(entry.Id, ct, proxyPort: proxyPort()); entry.Checked = DateTimeOffset.UtcNow;
         AddLog(entry, "Последняя стабильная версия: " + entry.Latest.Version);
     }
     async Task Install(Entry entry, CancellationToken ct)
@@ -179,7 +181,7 @@ internal sealed class ManagedServices
         string? package = null; var old = entry.Installed; bool running = entry.Process != null && !entry.Process.HasExited, committed = false, applying = false;
         try
         {
-            await ServicePackages.Download(release, download, new Progress<double>(p => { entry.Progress = p; }), ct);
+            await ServicePackages.Download(release, download, new Progress<double>(p => { entry.Progress = p; }), ct, proxyPort: proxyPort());
             entry.Phase = "Проверка и подготовка"; changed();
             string executable;
             if (entry.Id == "zapret")
@@ -420,7 +422,7 @@ internal sealed class ManagedServices
                 entry.Error = "Сервис завершился. Проверьте журнал и запустите его снова."; await Stop(entry); changed();
             }
             if (shuttingDown || lifetime.IsCancellationRequested) return;
-            if (DateTimeOffset.UtcNow >= nextCheck && options().CheckUpdates && !Testing)
+            if (downloadsAvailable() && DateTimeOffset.UtcNow >= nextCheck && options().CheckUpdates && !Testing)
             {
                 nextCheck = DateTimeOffset.UtcNow.AddHours(24);
                 foreach (var entry in entries) if (!IsBusy(entry)) Begin(entry.Id, "check");

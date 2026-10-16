@@ -65,6 +65,7 @@ static class ProfileUpgradeChecks
             check(archive.AllTime == totals && archive.Days.Single().Totals == totals,
                 "0.6.1 traffic history retains its bytes, session duration and sessions");
             owned.Add(Path.Combine(folder, "profile.bin.tmp"));
+            owned.Add(Path.Combine(folder, "profile.previous.bin"));
             Store.Save(profile); profile = Store.Load();
             check(profile.Startup && profile.ActiveSubscription == "legacy-subscription" && !profile.SendHwid
                 && DeviceIdentity.Get().Hwid == hwid && UsageFile.Load(Path.Combine(folder, "traffic-history.json")).AllTime == totals,

@@ -17,6 +17,7 @@ public static class SetupExtraction
 
         // Authenticate before creating anything in the target. Stage all files before
         // replacement, preserving a crash-recovery journal and copies of old files.
+        UpdateTransaction.RecoverPending(root);
         string work = Path.Combine(root, ".kot-update-" + Guid.NewGuid().ToString("N"));
         var transaction = new UpdateTransaction(root, work);
         try

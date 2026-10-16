@@ -33,7 +33,7 @@ public sealed partial class MainWindow
     }
 }
 internal sealed record UpdateRequest(string Version, int ParentPid, long ParentStarted, bool Resume, bool Startup);
-internal static class UpdateInstaller
+internal static partial class UpdateInstaller
 {
     public static string? Receipt;
     public static string MutexName

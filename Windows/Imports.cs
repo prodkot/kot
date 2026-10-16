@@ -17,10 +17,17 @@ public sealed partial class MainWindow
             attempt.Token.ThrowIfCancellationRequested();
             if (profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
             await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
-            attempt.Token.ThrowIfCancellationRequested(); profile.CaptureActive();
-            var saved = new SavedSubscription { Local = true, Name = name.Length == 0 ? "Локальные серверы" : name, Nodes = result.Nodes, Updated = DateTimeOffset.UtcNow, Selected = result.Nodes[0].Id };
-            profile.Subscriptions.Add(saved); profile.Activate(saved.Id); warnings = result.Warnings;
-            Store.Save(profile); AppLog.Register(profile); AppLog.Write("import", "local nodes=" + result.Nodes.Count); ResumeDesired();
+            try
+            {
+                attempt.Token.ThrowIfCancellationRequested();
+                SaveProfile(p =>
+                {
+                    var saved = new SavedSubscription { Local = true, Name = name.Length == 0 ? "Локальные серверы" : name, Nodes = result.Nodes, Updated = DateTimeOffset.UtcNow, Selected = result.Nodes[0].Id };
+                    p.Subscriptions.Add(saved); p.Activate(saved.Id);
+                });
+                warnings = result.Warnings; AppLog.Register(profile); AppLog.Write("import", "local nodes=" + result.Nodes.Count);
+            }
+            finally { ResumeDesired(); }
         }
         finally { if (importAttempt == attempt) importAttempt = null; }
     }

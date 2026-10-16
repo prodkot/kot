@@ -13,6 +13,8 @@ public sealed partial class MainWindow
     bool IsDisposed => false;
     bool IsHandleCreated => true;
     int installs;
+    int RequestProxyPort => 0;
+    bool DownloadsAvailable => true;
     void Snapshot() { }
     void BeginInvoke(Action action) => action();
     Task InstallPackage(string path, string version, CancellationToken ct)
@@ -56,8 +58,8 @@ internal static class RemoteUpdates
     internal static UpdateRelease? Release;
     internal static int Downloads;
     internal static TaskCompletionSource? Hold;
-    internal static Task<UpdateRelease?> Check(Version current, CancellationToken ct) => Task.FromResult(Release);
-    internal static async Task Download(UpdateRelease release, Stream output, CancellationToken ct, Action<long> progress)
+    internal static Task<UpdateRelease?> Check(Version current, CancellationToken ct, int proxyPort = 0) => Task.FromResult(Release);
+    internal static async Task Download(UpdateRelease release, Stream output, CancellationToken ct, Action<long> progress, int proxyPort = 0)
     { Downloads++; if (Hold != null) await Hold.Task.WaitAsync(ct); ct.ThrowIfCancellationRequested(); }
 }
 internal static class Store
