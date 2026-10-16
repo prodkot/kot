@@ -9,6 +9,7 @@ namespace Kot.WindowTests;
 static class BrowserRecoveryChecks
 {
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
     static void Pump(Func<bool> done, string message, int seconds = 45)
     {
         var clock = Stopwatch.StartNew();
@@ -60,7 +61,11 @@ static class BrowserRecoveryChecks
                     check(retry.Enabled && app.Controls.Find("close", true).Single().Visible, "native recovery retains retry and window controls");
                     app.Activate(); Application.DoEvents();
                     check(WindowFromPoint(retry.PointToScreen(new Point(retry.Width / 2, retry.Height / 2))) == retry.Handle, "failed browser does not obscure the native retry button");
-                    using var bitmap = new Bitmap(app.Width, app.Height); app.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+                    var close = app.Controls.Find("close", true).Single();
+                    check(WindowFromPoint(close.PointToScreen(new Point(close.Width / 2, close.Height / 2))) == close.Handle, "native close button remains above the failure panel");
+                    app.Refresh(); Application.DoEvents(); DwmFlush();
+                    using var bitmap = new Bitmap(app.Width, app.Height);
+                    using (var graphics = Graphics.FromImage(bitmap)) graphics.CopyFromScreen(app.Location, Point.Empty, bitmap.Size);
                     bitmap.Save(Path.Combine(screenshots, "interface-recovery.png"), ImageFormat.Png);
                     int failedGeneration = app.InterfaceGeneration;
                     retry.PerformClick();
