@@ -22,12 +22,6 @@ UUID = '11111111-1111-4111-8111-111111111111'
 BODY = b'kot-xhttp-fixture-ok'
 
 
-def port():
-    with socket.socket() as sock:
-        sock.bind(('127.0.0.1', 0))
-        return sock.getsockname()[1]
-
-
 def recv(sock, size):
     result = b''
     while len(result) < size:
@@ -152,6 +146,25 @@ class DnsFixture(http.server.BaseHTTPRequestHandler):
 class Processes:
     def __init__(self, directory):
         self.directory, self.children, self.logs = directory, [], []
+        self.reservations = {}
+
+    def reserve(self):
+        for _ in range(128):
+            tcp, udp = socket.socket(), socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                tcp.bind(('127.0.0.1', 0)); tcp.listen()
+                address = tcp.getsockname(); udp.bind(address)
+                self.reservations[address[1]] = (tcp, udp)
+                return address[1]
+            except OSError as error:
+                tcp.close(); udp.close()
+                if error.errno not in (errno.EADDRINUSE, errno.EACCES):
+                    raise
+        raise AssertionError('No available TCP/UDP loopback port for the fixture')
+
+    def release(self, port):
+        for sock in self.reservations.pop(port, ()):
+            sock.close()
 
     def start(self, exe, config, listener, xray=False, udp_listener=False, trust_cert=None):
         name = f'{len(self.children)}-{exe.name}'
@@ -161,6 +174,10 @@ class Processes:
         test = subprocess.run(validation, capture_output=True, timeout=15)
         assert test.returncode == 0, test.stderr.decode(errors='replace')
         log = open(self.directory / (name + '.log'), 'wb'); self.logs.append(log)
+        # Keep every future listener reserved while earlier cores start and
+        # open outbound sockets. Release only the ports this process will own.
+        for inbound in config.get('inbounds', []):
+            self.release(inbound.get('listen_port', inbound.get('port')))
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, env={'SSL_CERT_FILE': str(trust_cert)} if trust_cert else None)
         self.children.append(child)
         deadline = time.monotonic() + 8
@@ -186,6 +203,8 @@ class Processes:
         raise AssertionError('Core listener startup timeout')
 
     def close(self):
+        for port in list(self.reservations):
+            self.release(port)
         for child in self.children:
             if child.poll() is None:
                 child.terminate()
@@ -204,46 +223,46 @@ def chain(core, xray, directory, protocol, mode, web_port, udp_port, cert, key, 
     generated = ROOT / 'Tests/generated/xhttp'
     client = json.loads((generated / f'{protocol}{"-h3" if h3 else ""}-{mode}-client.json').read_text())
     bridge = json.loads((generated / f'{protocol}{"-h3" if h3 else ""}-{mode}-xray.json').read_text())
-    server_port, bridge_port, proxy_port, egress_port = port(), port(), port(), port()
-    egress = client['inbounds'][-1]
-    egress['listen_port'] = egress_port
-    bridge['outbounds'][-1]['settings']['servers'][0]['port'] = egress_port
-    client['inbounds'][0]['listen_port'] = proxy_port
-    client['outbounds'][0]['server_port'] = bridge_port
-    client['route']['auto_detect_interface'] = False
-    bridge['inbounds'][0]['port'] = bridge_port
-    outbound = bridge['outbounds'][1]
-    outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['port'] = server_port
-    stream = outbound['streamSettings']
-    stream['tlsSettings']['certificates'] = [{'certificateFile': str(cert), 'usage': 'verify'}]
-    if negative_tls:
-        stream['tlsSettings']['serverName'] = 'wrong.fixture.test'
-    settings = {'clients': [{'password': 'fixture-password'}]} if protocol == 'trojan' else {'clients': [{'id': UUID}], **({'decryption': 'none'} if protocol == 'vless' else {})}
-    server_stream = {'network': 'xhttp', 'security': 'tls', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}, 'tlsSettings': {'alpn': ['h3' if h3 else 'h2'], 'certificates': [{'certificateFile': str(cert), 'keyFile': str(key)}]}}
-    if reality_port:
-        stream.pop('tlsSettings'); stream['security'] = 'reality'
-        stream['realitySettings'] = {'serverName': 'fixture.test', 'fingerprint': 'chrome', 'publicKey': 'j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8', 'shortId': '0123456789abcdef'}
-        server_stream.pop('tlsSettings'); server_stream['security'] = 'reality'
-        server_stream['realitySettings'] = {'target': f'127.0.0.1:{reality_port}', 'serverNames': ['fixture.test'], 'privateKey': 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHl8', 'shortIds': ['0123456789abcdef']}
-    if extra:
-        stream['xhttpSettings']['extra'] = {'xPaddingBytes': '100-200', 'noSSEHeader': True, 'headers': {'X-Fixture': 'kot'}, 'xmux': {'maxConnections': 2, 'maxConcurrency': 0}, 'downloadSettings': {'address': '127.0.0.1', 'port': server_port, 'network': 'xhttp', 'security': 'tls', 'tlsSettings': stream['tlsSettings'], 'xhttpSettings': {'path': '/fixture', 'mode': 'stream-one'}}}
-    if domain:
-        # These reserved names cannot resolve in system DNS. Only Xray's own
-        # resolver knows the endpoints, including the separate download stream.
-        outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['address'] = 'xhttp-endpoint.fixture.invalid'
-        if dns_port:
-            bridge['dns']['servers'] = [f'https://127.0.0.1:{dns_port}/dns-query']
-        else:
-            bridge['dns']['hosts'] = {'xhttp-endpoint.fixture.invalid': '127.0.0.1', 'xhttp-download.fixture.invalid': '127.0.0.1'}
-        if extra:
-            stream['xhttpSettings']['extra']['downloadSettings']['address'] = 'xhttp-download.fixture.invalid'
-        if legacy_dns:
-            stream.pop('sockopt')
-    if xudp:
-        outbound['mux'] = {'enabled': True, 'concurrency': -1, 'xudpConcurrency': 8, 'xudpProxyUDP443': 'allow'}
-    server = {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': server_port, 'protocol': protocol, 'settings': settings, 'streamSettings': server_stream}], 'outbounds': [{'protocol': 'freedom'}]}
     processes = Processes(directory)
     try:
+        server_port, bridge_port, proxy_port, egress_port = (processes.reserve() for _ in range(4))
+        egress = client['inbounds'][-1]
+        egress['listen_port'] = egress_port
+        bridge['outbounds'][-1]['settings']['servers'][0]['port'] = egress_port
+        client['inbounds'][0]['listen_port'] = proxy_port
+        client['outbounds'][0]['server_port'] = bridge_port
+        client['route']['auto_detect_interface'] = False
+        bridge['inbounds'][0]['port'] = bridge_port
+        outbound = bridge['outbounds'][1]
+        outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['port'] = server_port
+        stream = outbound['streamSettings']
+        stream['tlsSettings']['certificates'] = [{'certificateFile': str(cert), 'usage': 'verify'}]
+        if negative_tls:
+            stream['tlsSettings']['serverName'] = 'wrong.fixture.test'
+        settings = {'clients': [{'password': 'fixture-password'}]} if protocol == 'trojan' else {'clients': [{'id': UUID}], **({'decryption': 'none'} if protocol == 'vless' else {})}
+        server_stream = {'network': 'xhttp', 'security': 'tls', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}, 'tlsSettings': {'alpn': ['h3' if h3 else 'h2'], 'certificates': [{'certificateFile': str(cert), 'keyFile': str(key)}]}}
+        if reality_port:
+            stream.pop('tlsSettings'); stream['security'] = 'reality'
+            stream['realitySettings'] = {'serverName': 'fixture.test', 'fingerprint': 'chrome', 'publicKey': 'j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8', 'shortId': '0123456789abcdef'}
+            server_stream.pop('tlsSettings'); server_stream['security'] = 'reality'
+            server_stream['realitySettings'] = {'target': f'127.0.0.1:{reality_port}', 'serverNames': ['fixture.test'], 'privateKey': 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHl8', 'shortIds': ['0123456789abcdef']}
+        if extra:
+            stream['xhttpSettings']['extra'] = {'xPaddingBytes': '100-200', 'noSSEHeader': True, 'headers': {'X-Fixture': 'kot'}, 'xmux': {'maxConnections': 2, 'maxConcurrency': 0}, 'downloadSettings': {'address': '127.0.0.1', 'port': server_port, 'network': 'xhttp', 'security': 'tls', 'tlsSettings': stream['tlsSettings'], 'xhttpSettings': {'path': '/fixture', 'mode': 'stream-one'}}}
+        if domain:
+            # These reserved names cannot resolve in system DNS. Only Xray's own
+            # resolver knows the endpoints, including the separate download stream.
+            outbound['settings']['servers' if protocol == 'trojan' else 'vnext'][0]['address'] = 'xhttp-endpoint.fixture.invalid'
+            if dns_port:
+                bridge['dns']['servers'] = [f'https://127.0.0.1:{dns_port}/dns-query']
+            else:
+                bridge['dns']['hosts'] = {'xhttp-endpoint.fixture.invalid': '127.0.0.1', 'xhttp-download.fixture.invalid': '127.0.0.1'}
+            if extra:
+                stream['xhttpSettings']['extra']['downloadSettings']['address'] = 'xhttp-download.fixture.invalid'
+            if legacy_dns:
+                stream.pop('sockopt')
+        if xudp:
+            outbound['mux'] = {'enabled': True, 'concurrency': -1, 'xudpConcurrency': 8, 'xudpProxyUDP443': 'allow'}
+        server = {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': server_port, 'protocol': protocol, 'settings': settings, 'streamSettings': server_stream}], 'outbounds': [{'protocol': 'freedom'}]}
         upstream = processes.start(xray, server, server_port, True, udp_listener=h3)
         if bridge_only:
             # Restricted hosts cannot start sing-box's interface monitor. Still
