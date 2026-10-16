@@ -50,6 +50,8 @@ jobs:
       - name: Official zapret and Telegram managed services
         timeout-minutes: 5
         shell: pwsh
+        env:
+          KOT_TEST_GITHUB_TOKEN: ${{ github.token }}
         run: |
           ./artifacts/window-tests/Kot.WindowTests.exe --services-test
           if ($LASTEXITCODE -ne 0) { throw 'Managed service lifecycle or package checks failed.' }

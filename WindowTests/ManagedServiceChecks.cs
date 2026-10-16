@@ -7,6 +7,24 @@ namespace Kot.WindowTests;
 
 internal static class ManagedServiceChecks
 {
+    // CI shares anonymous GitHub quotas with other runners. Only release metadata
+    // uses its short-lived token; asset downloads keep the production transport.
+    static HttpMessageHandler ReleaseTransport()
+    {
+        var handler = NetworkRequests.Handler();
+        string? token = Environment.GetEnvironmentVariable("KOT_TEST_GITHUB_TOKEN");
+        return string.IsNullOrWhiteSpace(token) ? handler : new GitHubMetadata(handler, token);
+    }
+    sealed class GitHubMetadata(HttpMessageHandler inner, string token) : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri is not { Scheme: "https", Host: "api.github.com", Port: 443 })
+                throw new InvalidOperationException("CI metadata authorization requires the GitHub API origin.");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            return base.SendAsync(request, ct);
+        }
+    }
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     static JsonElement Item(ManagedServices manager, string id) => JsonSerializer.SerializeToElement(manager.Model(true), Json).GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == id);
     public static async Task Run(Action<bool, string> check)
@@ -16,7 +34,7 @@ internal static class ManagedServiceChecks
         using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(limit.Token);
         var options = new ServiceOptions { CheckUpdates = false }; bool networkBusy = false;
         using (var reserve = new TcpListener(IPAddress.Loopback, 0)) { reserve.Start(); options.Telegram.Port = ((IPEndPoint)reserve.LocalEndpoint).Port; }
-        var manager = new ManagedServices(() => options, () => networkBusy, () => { }, lifecycle.Token, folder);
+        var manager = new ManagedServices(() => options, () => networkBusy, () => { }, lifecycle.Token, folder, metadataTransport: ReleaseTransport);
         async Task Action(string id, string action, string[]? selected = null)
         {
             manager.Begin(id, action, selected); await manager.Wait(id).WaitAsync(limit.Token);
@@ -77,7 +95,7 @@ internal static class ManagedServiceChecks
             await Action("zapret", "test", ["general.bat"]);
             var run = JsonSerializer.Deserialize<StrategyTestRun>(manager.Export(), Json)!;
             check(run.Results.Count == 1 && run.Baseline.Count == 1 && !manager.Testing && !manager.IsRunning("zapret"), "completed strategy selection records actual HTTPS probes and preserves the stopped state");
-            var restored = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder);
+            var restored = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder, metadataTransport: ReleaseTransport);
             check(JsonSerializer.Deserialize<StrategyTestRun>(restored.Export(), Json)!.Started == run.Started, "saved strategy history reloads after restarting the manager");
             await restored.StopAll(true);
             await Action("telegram", "install");
@@ -124,7 +142,7 @@ internal static class ManagedServiceChecks
             await pendingPreparation;
             check(!manager.IsRunning("telegram") && !manager.IsRunning("zapret") && !await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "application shutdown leaves neither managed service nor a loopback listener");
             // Installed builds may queue a loaded WinDivert file for reboot cleanup.
-            manager = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder);
+            manager = new ManagedServices(() => options, () => false, () => { }, limit.Token, folder, metadataTransport: ReleaseTransport);
             await Action("zapret", "remove"); await Action("telegram", "remove");
             check(Item(manager,"zapret").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && Item(manager,"telegram").GetProperty("installedVersion").ValueKind == JsonValueKind.Null && !File.Exists(Path.Combine(folder,"zapret","current.json")) && !File.Exists(Path.Combine(folder,"telegram","current.json")), "removal clears both installed packages and their manifests despite the loaded WinDivert driver");
             check(File.Exists(Path.Combine(folder,"tests.json")) && options.Zapret.Strategy == "general.bat", "package removal preserves saved strategy history and user settings");

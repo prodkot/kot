@@ -28,6 +28,7 @@ internal sealed class ManagedServices
     readonly Func<ServiceOptions> options;
     readonly Func<bool> networkBusy, downloadsAvailable;
     readonly Func<int> proxyPort;
+    readonly Func<HttpMessageHandler>? metadataTransport;
     readonly Action changed;
     readonly string folder;
     readonly CancellationToken lifetime;
@@ -38,10 +39,11 @@ internal sealed class ManagedServices
     Task vpnPreparation = Task.CompletedTask;
     DateTimeOffset nextCheck = DateTimeOffset.UtcNow.AddSeconds(20);
     public bool Testing { get; private set; }
-    public ManagedServices(Func<ServiceOptions> options, Func<bool> networkBusy, Action changed, CancellationToken lifetime, string? folder = null, Func<int>? proxyPort = null, Func<bool>? downloadsAvailable = null)
+    public ManagedServices(Func<ServiceOptions> options, Func<bool> networkBusy, Action changed, CancellationToken lifetime, string? folder = null, Func<int>? proxyPort = null, Func<bool>? downloadsAvailable = null, Func<HttpMessageHandler>? metadataTransport = null)
     {
         this.options = options; this.networkBusy = networkBusy; this.changed = changed; this.lifetime = lifetime;
         this.proxyPort = proxyPort ?? (() => 0); this.downloadsAvailable = downloadsAvailable ?? (() => true);
+        this.metadataTransport = metadataTransport;
         this.folder = folder ?? Path.Combine(Store.Folder, "services"); Directory.CreateDirectory(this.folder);
         foreach (var entry in entries)
         {
@@ -168,7 +170,7 @@ internal sealed class ManagedServices
     }
     async Task Check(Entry entry, CancellationToken ct)
     {
-        entry.Latest = await ServicePackages.Latest(entry.Id, ct, proxyPort: proxyPort()); entry.Checked = DateTimeOffset.UtcNow;
+        entry.Latest = await ServicePackages.Latest(entry.Id, ct, transport: metadataTransport?.Invoke(), proxyPort: proxyPort()); entry.Checked = DateTimeOffset.UtcNow;
         AddLog(entry, "Последняя стабильная версия: " + entry.Latest.Version);
     }
     async Task Install(Entry entry, CancellationToken ct)
