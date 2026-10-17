@@ -10,6 +10,7 @@ public sealed class Tunnel
     public bool HasCore => core != null;
     CancellationTokenSource? attempt;
     bool cancelled;
+    bool usesTun;
     int stopGeneration;
     static readonly string[] DefaultHealthTargets = ["https://www.gstatic.com/generate_204", "https://www.cloudflare.com/cdn-cgi/trace"];
     readonly string[] healthTargets;
@@ -35,12 +36,13 @@ public sealed class Tunnel
     public string AutomaticNode { get; private set; } = "";
     public async Task<bool> Probe(CancellationToken ct)
     {
-        int port = ProxyPort; if (State != "connected" || port == 0) return false;
+        int port = ProxyPort, session = Session; bool tun = usesTun;
+        if (State != "connected" || port == 0) return false;
         using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
         {
-            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode) return true; }
+            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelDns.Probe(target, ct))) return State == "connected" && Session == session; }
             catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException && !ct.IsCancellationRequested) { AppLog.Write("health", e.GetType().Name); }
         }
         return false;
@@ -161,6 +163,7 @@ public sealed class Tunnel
             var routing = profile.ActiveRoutingProfile.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules ?? throw new UserError("Профиль маршрутизации удалён.");
             var config = XrayRuntime.Build(node, port, profile.ConnectionMode == "tun", systemPort, apiPort, apiSecret,
                 profile.Mode == "smart", profile.Bypass, routing, GeoIpStore.Cache.Paths(countries));
+            usesTun = profile.ConnectionMode == "tun";
             ProxyPort = port; AutomaticNode = automatic ? node.Id : "";
             Directory.CreateDirectory(Store.Folder);
             File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -171,7 +174,7 @@ public sealed class Tunnel
             AppLog.Write("tunnel", "waiting for proxy health");
             using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            bool healthy = false; int healthIndex = 0;
+            bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
             while (!healthDeadline.IsCancellationRequested)
             {
@@ -181,10 +184,21 @@ public sealed class Tunnel
                 {
                     string target = healthTargets[healthIndex++ % healthTargets.Length];
                     using var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, healthDeadline.Token);
-                    if (response.IsSuccessStatusCode) { healthy = true; break; }
+                    if (response.IsSuccessStatusCode)
+                    {
+                        proxyHealthy = true;
+                        if (usesTun)
+                        {
+                            // DNS Client runs outside Xray. Allow the verified TUN
+                            // interface before checking resolution with the guard on.
+                            if (profile.KillSwitch && !tunPermitted) { KillSwitch.Arm(KillSwitch.TunnelInterface()); tunPermitted = true; }
+                            if (!await TunnelDns.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
+                        }
+                        healthy = true; break;
+                    }
                 }
                 catch (HttpRequestException ex) { AppLog.Error("health", ex); }
-                catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }
+                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }
                 await Task.Delay(500, ct);
             }
             ct.ThrowIfCancellationRequested();
@@ -192,6 +206,7 @@ public sealed class Tunnel
             if (!healthy)
             {
                 CoreDetails = CoreDiagnostics.Tail(Clean(await core.ReadRecentOutput(false)));
+                if (usesTun && proxyHealthy) throw new UserError("Сервер доступен, но DNS Windows через туннель не отвечает. Переподключитесь или проверьте настройки DNS.");
                 throw new UserError("Сервер не ответил на проверку соединения. " + (CoreDetails.Length > 0 ? CoreDiagnostics.Summary(CoreDetails) : "Попробуйте другой сервер."));
             }
             ct.ThrowIfCancellationRequested();
@@ -244,7 +259,7 @@ public sealed class Tunnel
             statisticsStarted = false;
             SessionEnded?.Invoke(Session, ended, utc, final);
         }
-        Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = "";
+        Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = ""; usesTun = false;
         try
         {
             try { SystemProxy.Restore(); }

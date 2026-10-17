@@ -52,7 +52,9 @@ public static class XrayRuntime
             {
                 ["name"] = "kot-tun", ["desc"] = "kot. Xray", ["mtu"] = 1500,
                 ["gateway"] = new JsonArray("172.28.231.1/30", "fdfe:dcba:231::1/126"),
-                ["dns"] = new JsonArray("172.28.231.1", "fdfe:dcba:231::1"),
+                // gateway is the Windows adapter's own address. DNS must use the
+                // peer address so queries enter Wintun instead of local delivery.
+                ["dns"] = new JsonArray("172.28.231.2", "fdfe:dcba:231::2"),
                 ["autoSystemRoutingTable"] = new JsonArray("0.0.0.0/0", "::/0"), ["autoOutboundsInterface"] = "auto",
                 ["autoSystemWfpBlockLeak"] = new JsonArray("dns", "misconfigtun")
             },

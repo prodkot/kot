@@ -37,6 +37,11 @@ public static class XrayRuntimeTests
         var bound = XrayRuntime.Build(Subscriptions.ParseNode(links[1]), 19442, physicalInterface: "Ethernet");
         check(bound["outbounds"]!.AsArray().First(o => o?["protocol"]?.ToString() == "vless")!["streamSettings"]!["sockopt"]!["interface"]!.ToString() == "Ethernet", "temporary native probe keeps remote transports outside the active TUN");
         var tun = XrayRuntime.Build(node, 19442, true);
+        var tunSettings = tun["inbounds"]!.AsArray().Single(o => o?["protocol"]?.ToString() == "tun")!["settings"]!;
+        var localAddresses = tunSettings["gateway"]!.AsArray().Select(v => System.Net.IPAddress.Parse(v!.ToString().Split('/')[0])).ToArray();
+        var resolvers = tunSettings["dns"]!.AsArray().Select(v => System.Net.IPAddress.Parse(v!.ToString())).ToArray();
+        check(resolvers.Length == 2 && resolvers.All(r => !localAddresses.Contains(r)), "TUN DNS uses peer addresses, never the Windows adapter's local addresses");
+        check(resolvers.All(r => new[] { System.Net.IPNetwork.Parse("172.28.231.0/30"), System.Net.IPNetwork.Parse("fdfe:dcba:231::/126") }.Any(network => network.Contains(r))), "both DNS peers remain inside their directly connected TUN subnets");
         check(tun["inbounds"]!.AsArray().Single(o => o?["protocol"]?.ToString() == "tun")!["settings"]!["autoOutboundsInterface"]!.ToString() == "auto", "native TUN installs both routes with physical socket binding");
         File.WriteAllText(Path.Combine(dir, "tun.json"), tun.ToJsonString());
         var saved = JsonNode.Parse("""

@@ -53,12 +53,17 @@ public static class XhttpChecks
         }, ct);
         PhysicalNetwork.Capture();
         const string uuid = "11111111-1111-4111-8111-111111111111";
+        string healthHost = "healthy-" + Guid.NewGuid().ToString("N") + ".invalid";
+        string brokenDnsHost = "broken-" + Guid.NewGuid().ToString("N") + ".invalid";
         int serverPort = Port(); string file = Path.Combine(Path.GetTempPath(), "kot-xhttp-server-" + Guid.NewGuid().ToString("N") + ".json");
         var config = JsonNode.Parse($$$$"""{"log":{"loglevel":"warning"},"inbounds":[{"listen":"127.0.0.1","port":{{{{serverPort}}}},"protocol":"vless","settings":{"clients":[{"id":"{{{{uuid}}}}"}],"decryption":"none"},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/fixture","mode":"auto"}}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""")!;
         config["outbounds"]![0]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["interface"] = PhysicalNetwork.Interface } };
         config["outbounds"]![0]!["tag"] = "external";
         config["outbounds"]!.AsArray().Add(new JsonObject { ["protocol"] = "freedom", ["tag"] = "local", ["settings"] = new JsonObject { ["finalRules"] = new JsonArray(new JsonObject { ["action"] = "allow", ["ip"] = new JsonArray("127.0.0.0/8", "::1/128") }) } });
         config["routing"] = new JsonObject { ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("127.0.0.0/8", "::1/128"), ["outboundTag"] = "local" }) };
+        config["dns"] = new JsonObject { ["hosts"] = new JsonObject { [healthHost] = "127.0.0.1", [brokenDnsHost] = "127.0.0.1" }, ["servers"] = new JsonArray("localhost") };
+        config["routing"]!["rules"]!.AsArray().Insert(0, new JsonObject { ["type"] = "field", ["domain"] = new JsonArray("full:" + healthHost, "full:" + brokenDnsHost), ["outboundTag"] = "local" });
+        config["outbounds"]![1]!["settings"]!["domainStrategy"] = "UseIP";
         File.WriteAllText(file, config.ToJsonString());
         var node = Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{serverPort}?type=xhttp&path=%2Ffixture&mode=packet-up&security=none#XHTTP");
         Directory.CreateDirectory(Store.Folder);
@@ -85,13 +90,14 @@ public static class XhttpChecks
             string bundled = Path.Combine(AppContext.BaseDirectory, "core"); Directory.CreateDirectory(bundled);
             File.Copy(xray, Path.Combine(bundled, "xray.exe"), true);
             File.Copy(Path.Combine(Path.GetDirectoryName(xray)!, "wintun.dll"), Path.Combine(bundled, "wintun.dll"), true);
-            var profile = new Profile { Nodes = [node], Selected = node.Id, ConnectionMode = "tun", KillSwitch = true };
-            var connection = new Tunnel([$"http://127.0.0.1:{webPort}/"], TimeSpan.FromSeconds(5));
+            var dnsNode = node with { FullConfig = new JsonObject { ["outbounds"] = new JsonArray(XrayConfig.Outbound(node)), ["dns"] = new JsonObject { ["hosts"] = new JsonObject { [healthHost] = "192.0.2.123" }, ["servers"] = new JsonArray("https://1.1.1.1/dns-query") } } };
+            var profile = new Profile { Nodes = [dnsNode], Selected = dnsNode.Id, ConnectionMode = "tun", KillSwitch = true };
+            var connection = new Tunnel([$"http://{healthHost}:{webPort}/"], TimeSpan.FromSeconds(10));
             try
             {
                 await connection.Connect(profile).WaitAsync(TimeSpan.FromSeconds(25), ct);
                 if (connection.State != "connected") Console.WriteLine(connection.Error + "\n" + connection.CoreDetails);
-                check(connection.State == "connected" && connection.HasCore && KillSwitch.Detect(), "production native Tunnel.Connect completes XHTTP health checks with global WFP armed");
+                check(connection.State == "connected" && connection.HasCore && KillSwitch.Detect(), "production Tunnel.Connect completes XHTTP and uncached Windows DNS health with global WFP armed");
                 check(await connection.Probe(ct), "connected native session carries a real forced-proxy HTTP response");
                 check(await Exchange(ct), "real Windows TUN exchanges HTTPS via native XHTTP without transport recursion");
                 var sample = await connection.ReadConnections(ct);
@@ -106,6 +112,17 @@ public static class XhttpChecks
                 check(!await Exchange(ct), "after native TUN shutdown the guard prevents direct HTTPS leakage");
             }
             finally { await connection.Stop(); KillSwitch.Release(); }
+            var dnsFailureNode = dnsNode with { FullConfig = (JsonObject)dnsNode.FullConfig!.DeepClone() };
+            dnsFailureNode.FullConfig["dns"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = Port() }) };
+            var dnsFailure = new Tunnel([$"http://{brokenDnsHost}:{webPort}/"], TimeSpan.FromSeconds(5));
+            try
+            {
+                var dnsProfile = new Profile { Nodes = [dnsFailureNode], Selected = dnsFailureNode.Id, ConnectionMode = "tun", KillSwitch = true };
+                await dnsFailure.Connect(dnsProfile).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                check(dnsFailure.State == "idle" && dnsFailure.Error.Contains("DNS Windows"), "working XHTTP with broken Windows DNS never reports connected and explains DNS failure");
+                check(!dnsFailure.HasCore && dnsFailure.ProxyPort == 0 && KillSwitch.Detect(), "DNS startup failure stops the core and retains leak protection");
+            }
+            finally { await dnsFailure.Stop(); KillSwitch.Release(); }
             var unreachable = node with { Outbound = (JsonObject)node.Outbound.DeepClone() };
             unreachable.Outbound["server_port"] = Port();
             var failedProfile = new Profile { Nodes = [unreachable], Selected = unreachable.Id, ConnectionMode = "tun", KillSwitch = true };

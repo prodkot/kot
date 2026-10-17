@@ -106,7 +106,8 @@ internal static class Program
         if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
         if (args.Length == 2 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
-        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.XhttpChecks.Run(core, Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--dns-test") { Kot.WindowTests.TunnelDnsChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.TunnelDnsChecks.Run(core, Check).GetAwaiter().GetResult(); Kot.WindowTests.XhttpChecks.Run(core, Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return 0; }
         if (args.Length == 3 && args[0] == "--proxy-owner") { SystemProxy.Enable(int.Parse(args[1])); File.WriteAllText(args[2], "ready"); Thread.Sleep(60000); return 0; }
         Kot.WindowTests.ProfileUpgradeChecks.Run(Check);
