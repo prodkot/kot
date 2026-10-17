@@ -18,6 +18,7 @@ static class ProviderRoutingTests
         check(config!.ToJsonString().Contains("domain:xn--p1ai") && config.ToJsonString().Contains("domain:ru"), "provider .ru and .рф are suffix rules with IDN normalization");
         var dns = (JsonArray)config["dns"]!["servers"]!;
         check(dns[0]!["domains"]!.ToJsonString().Contains("xn--p1ai") && dns[0]!["tag"]!.ToString() == "provider-direct-dns", "provider direct domains use domestic DNS with an explicit direct route");
+        check(config["dns"]!["disableFallbackIfMatch"]!.GetValue<bool>(), "empty IPv6 answers cannot send matched direct domains to the remote resolver");
         var again = Subscriptions.Parse(Encode(Link + "\n#routing: " + Encode(ProfileJson)));
         check(JsonNode.DeepEquals(again.Nodes[0].FullConfig, config), "metadata inside base64 subscriptions is recognized");
         using var overrideHandler = new Handler((request, i) =>

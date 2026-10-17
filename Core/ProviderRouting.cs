@@ -157,7 +157,7 @@ public static class ProviderRouting
                 outbounds.Add(new JsonObject { ["protocol"] = "blackhole", ["tag"] = "block" });
                 JsonArray servers = global == "true" ? (directDomains.Count > 0 ? new JsonArray(directDns.DeepClone(), remoteDns.DeepClone()) : new JsonArray(remoteDns.DeepClone()))
                     : (proxyDomains.Count > 0 ? new JsonArray(remoteDns.DeepClone(), directDns.DeepClone()) : new JsonArray(directDns.DeepClone()));
-                var config = new JsonObject { ["inbounds"] = new JsonArray(), ["outbounds"] = outbounds, ["routing"] = new JsonObject { ["domainStrategy"] = strategy, ["rules"] = rules.DeepClone() }, ["dns"] = new JsonObject { ["servers"] = servers, ["hosts"] = hosts.DeepClone(), ["queryStrategy"] = "UseIP" } };
+                var config = new JsonObject { ["inbounds"] = new JsonArray(), ["outbounds"] = outbounds, ["routing"] = new JsonObject { ["domainStrategy"] = strategy, ["rules"] = rules.DeepClone() }, ["dns"] = new JsonObject { ["servers"] = servers, ["hosts"] = hosts.DeepClone(), ["queryStrategy"] = "UseIP", ["disableFallbackIfMatch"] = true } };
                 XrayConfig.Validate(config);
                 return node with { FullConfig = config, GeoIpUrl = geoIp, GeoSiteUrl = geoSite };
             }).ToList();
