@@ -39,7 +39,8 @@ class Dns(socketserver.BaseRequestHandler):
             size = data[index]; index += 1
             labels.append(data[index:index + size].decode()); index += size
         end = index + 5
-        name = '.'.join(labels)
+        # DNS names are case-insensitive; resolvers may randomize question case.
+        name = '.'.join(labels).lower()
         self.server.queries.append(name)
         qtype = struct.unpack('!H', data[index + 1:index + 3])[0]
         answer = b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\x7f\x00\x00\x01' if qtype == 1 else b''
@@ -140,7 +141,7 @@ def run(core, xray, directory, bridge_only):
             assert blocked, 'Provider block rule ignored'
             query(public_port, 'domestic-dns.ru', credentials)
             query(public_port, 'remote-dns.example', credentials)
-            assert 'domestic-dns.ru' in domestic.queries and 'domestic-dns.ru' not in remote.queries
+            assert 'domestic-dns.ru' in domestic.queries and 'domestic-dns.ru' not in remote.queries, (domestic.queries, remote.queries)
             assert 'remote-dns.example' in remote.queries, remote.queries
             with socket.create_connection(('127.0.0.1', bridge_port), 2) as sock:
                 sock.sendall(b'\x05\x01\x00'); assert recv(sock, 2) == b'\x05\xff'
