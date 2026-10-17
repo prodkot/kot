@@ -276,6 +276,9 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
     bool label = _wcsicmp(name,L"Static")==0;
     bool hero = GetPropW(window,L"kot.hero")!=nullptr;
     bool ownerButton=GetPropW(window,L"kot.owner-button")!=nullptr;
+    // The progress track is entirely custom-painted. Some common-control
+    // versions reserve and paint a classic edge even without WS_BORDER.
+    if(progress&&(message==WM_NCCALCSIZE||message==WM_NCPAINT)) return 0;
     if(ownerButton&&message==BM_SETSTYLE) {
         // Dialog focus changes switch the default button style. Keep those
         // semantics without letting Windows restore its stock renderer.

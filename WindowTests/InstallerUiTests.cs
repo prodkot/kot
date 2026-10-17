@@ -374,6 +374,8 @@ static class InstallerUiTests
             check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"desktop option survives Back and Next");
             SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); ButtonStates(window,folder,"setup-options",check); Capture(window,folder,"setup-options",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"progress"); Capture(window,folder,"setup-progress",check);
+            var progress=ById(window,1004); GetWindowRect(progress,out var progressWindow); GetClientRect(progress,out var progressClient);
+            check(progressClient.Right==progressWindow.Right-progressWindow.Left&&progressClient.Bottom==progressWindow.Bottom-progressWindow.Top,"progress track fills its window without a native non-client outline");
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
             Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка завершена")!=IntPtr.Zero,"finish");
             ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
