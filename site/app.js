@@ -1,10 +1,5 @@
 'use strict';
 (() => {
-  const descriptions = [
-    'Проверь задержку и сохрани любимые серверы. Режим «Авто» сам выберет быстрый доступный сервер.',
-    'Адреса, процессы и маршруты текущих соединений. Тут же можно открыть журнал и скопировать полный лог.',
-    'Светлая или тёмная тема, акцентный цвет, автозапуск и Kill switch. Новые версии приходят с GitHub.'
-  ];
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   function selectTab(index, focus = false) {
     tabs.forEach((tab, i) => {
@@ -13,15 +8,15 @@
       tab.tabIndex = active ? 0 : -1;
       document.getElementById(tab.getAttribute('aria-controls')).hidden = !active;
     });
-    document.getElementById('feature-description').textContent = descriptions[index];
+    document.getElementById('feature-description').textContent = tabs[index].dataset.description;
     if (focus) tabs[index].focus();
   }
   tabs.forEach((tab, index) => {
     tab.addEventListener('click', () => selectTab(index));
     tab.addEventListener('keydown', event => {
       let next;
-      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      if (['ArrowRight', 'ArrowDown'].includes(event.key)) next = (index + 1) % tabs.length;
+      if (['ArrowLeft', 'ArrowUp'].includes(event.key)) next = (index + tabs.length - 1) % tabs.length;
       if (event.key === 'Home') next = 0;
       if (event.key === 'End') next = tabs.length - 1;
       if (next !== undefined) { event.preventDefault(); selectTab(next, true); }
@@ -34,6 +29,7 @@
   document.getElementById('reset-demo').addEventListener('click', () => control('reset'));
   // The same dialog stays in place, so its iframe never reloads on expand/close.
   expandButton.addEventListener('click', () => {
+    demoWindow.parentElement.style.height = `${demoWindow.getBoundingClientRect().height}px`;
     demoWindow.close(); demoWindow.showModal();
     document.body.classList.add('demo-open');
     expandButton.setAttribute('aria-expanded', 'true');
@@ -42,6 +38,7 @@
   function closeExpanded() {
     if (!demoWindow.matches(':modal')) return;
     demoWindow.close(); demoWindow.show();
+    demoWindow.parentElement.style.removeProperty('height');
     document.body.classList.remove('demo-open');
     expandButton.setAttribute('aria-expanded', 'false'); expandButton.focus({ preventScroll: true });
   }
