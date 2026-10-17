@@ -9,6 +9,7 @@ static class InstallerUiTests
 {
     delegate bool EnumWindow(IntPtr window, IntPtr parameter);
     [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct Point { public int X,Y; }
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
@@ -29,6 +30,8 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, int flags);
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr window,IntPtr rect,IntPtr region,uint flags);
     [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool ReadSystemFlag(uint action,uint parameter,out bool value,uint flags);
     [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool SetSystemFlag(uint action,uint parameter,IntPtr value,uint flags);
     static bool Button(IntPtr window) { var name=new StringBuilder(64); GetClassName(window,name,name.Capacity); return name.ToString()=="Button"; }
@@ -101,6 +104,15 @@ static class InstallerUiTests
     {
         SetForegroundWindow(window);
         var next=GetDlgItem(window,1);
+        void Pointer(bool inside)
+        {
+            // TrackMouseEvent uses the physical cursor, even when WM_MOUSEMOVE
+            // was sent by automation. Keep both in agreement throughout capture.
+            GetWindowRect(next,out var rect);
+            if(!SetCursorPos(inside?(rect.Left+rect.Right)/2:rect.Left-40,inside?(rect.Top+rect.Bottom)/2:rect.Top-40))
+                throw new Exception("Installer animation checks require an interactive Windows desktop");
+        }
+        Pointer(false);
         SendMessage(window,0x28,next,(IntPtr)1);
         SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
         Thread.Sleep(250);
@@ -110,7 +122,7 @@ static class InstallerUiTests
         using var idle=ButtonImage(next);
         Color sample(Bitmap bitmap)=>bitmap.GetPixel((int)(12*scale),bitmap.Height/2);
         var initial=sample(idle);
-        SendMessage(next,0x200,IntPtr.Zero,center);
+        Pointer(true); SendMessage(next,0x200,IntPtr.Zero,center);
         HashSet<int> colors=[initial.ToArgb()];
         var watch=Stopwatch.StartNew();
         while(watch.ElapsedMilliseconds<250)
@@ -129,6 +141,7 @@ static class InstallerUiTests
         }
         finally
         {
+            Pointer(false);
             SendMessage(next,0x200,IntPtr.Zero,(IntPtr)(-1)); SendMessage(next,0x202,IntPtr.Zero,(IntPtr)(-1)); SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
         }
         Thread.Sleep(250);
@@ -143,10 +156,10 @@ static class InstallerUiTests
         MotionPreference(window,false);
         try
         {
-            SendMessage(next,0x200,IntPtr.Zero,center);
+            Pointer(true); SendMessage(next,0x200,IntPtr.Zero,center);
             using var immediate=ButtonImage(next);
             check(sample(immediate).ToArgb()==sample(hover).ToArgb(),"Windows reduced motion applies hover immediately");
-            SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
+            Pointer(false); SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
             using var resting=ButtonImage(next);
             check(sample(resting).ToArgb()==initial.ToArgb(),"Windows reduced motion applies mouse leave immediately");
         }
@@ -317,6 +330,7 @@ static class InstallerUiTests
         string target=Path.Combine(Path.GetTempPath(),"kot-setup-ui-"+Guid.NewGuid().ToString("N"),"Проверка kot");
         List<Process> processes=[];
         if(!ReadSystemFlag(0x1042,0,out bool originalAnimations,0)) throw new Exception("Cannot read Windows animation preference");
+        if(!GetCursorPos(out var originalPointer)) throw new Exception("Cannot read Windows cursor position");
         try
         {
             MotionPreference(IntPtr.Zero,true);
@@ -391,6 +405,7 @@ static class InstallerUiTests
         }
         finally
         {
+            SetCursorPos(originalPointer.X,originalPointer.Y);
             MotionPreference(IntPtr.Zero,originalAnimations);
             foreach(var process in processes) {try {if(!process.HasExited){process.Kill(true);process.WaitForExit(10000);}}finally{process.Dispose();}}
             if(Directory.Exists(Path.GetDirectoryName(target))) Directory.Delete(Path.GetDirectoryName(target)!,true);
