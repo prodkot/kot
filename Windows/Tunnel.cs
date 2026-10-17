@@ -29,10 +29,12 @@ public sealed class Tunnel
     bool statisticsStarted;
     int apiPort;
     string apiSecret = "";
+    bool providerAutomatic;
     public string AutomaticNode { get; private set; } = "";
     public async Task<bool> Probe(CancellationToken ct)
     {
         int port = ProxyPort; if (State != "connected" || port == 0) return false;
+        if (providerAutomatic && !await ReadAutomaticNode(ct)) return false;
         using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
@@ -42,14 +44,14 @@ public sealed class Tunnel
         }
         return false;
     }
-    public async Task ReadAutomaticNode(CancellationToken ct)
+    public async Task<bool> ReadAutomaticNode(CancellationToken ct)
     {
         int port = apiPort, session = Session; string secret = apiSecret;
-        if (port == 0 || State != "connected") return;
+        if (port == 0 || State is not ("connected" or "connecting")) return false;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(2));
         using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false };
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/proxies/proxy");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/proxies/{(providerAutomatic ? "health-proxy" : "proxy")}");
         request.Headers.Authorization = new("Bearer", secret);
         try
         {
@@ -57,10 +59,22 @@ public sealed class Tunnel
             response.EnsureSuccessStatusCode();
             string json = await BoundedBody.ReadUtf8(response.Content, 65536, deadline.Token);
             using var doc = JsonDocument.Parse(json);
-            string selection = doc.RootElement.TryGetProperty("now", out var value) ? value.GetString()?.Replace("node-", "") ?? "" : "";
-            if (Session == session && State == "connected") AutomaticNode = selection;
+            string selected = doc.RootElement.TryGetProperty("now", out var value) ? value.GetString() ?? "" : "";
+            if (Session != session || State is not ("connected" or "connecting")) return false;
+            string selection = selected.StartsWith("health-") ? selected[7..] : selected.StartsWith("node-") ? selected[5..] : "";
+            if (providerAutomatic)
+            {
+                if (selection.Length != 64 || !selection.All(Uri.IsHexDigit)) return false;
+                using var update = new HttpRequestMessage(HttpMethod.Put, $"http://127.0.0.1:{port}/proxies/proxy") { Content = new StringContent(JsonSerializer.Serialize(new { name = "node-" + selection }), System.Text.Encoding.UTF8, "application/json") };
+                update.Headers.Authorization = new("Bearer", secret);
+                using var applied = await client.SendAsync(update, deadline.Token); applied.EnsureSuccessStatusCode();
+            }
+            AutomaticNode = selection;
+            return true;
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or UserError) { AppLog.Write("auto", "selection read: " + e.GetType().Name); }
+        ct.ThrowIfCancellationRequested();
+        return false;
     }
     public Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct) => ReadConnections(ct, false);
     async Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct, bool closing)
@@ -108,12 +122,13 @@ public sealed class Tunnel
             bool automatic = profile.Selected == "auto";
             if (automatic) node = profile.Nodes.FirstOrDefault();
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
-            if (profile.KillSwitch) KillSwitch.Arm(xhttp: Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses)); else if (KillSwitch.Active) KillSwitch.Release();
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
             cancelled = false; attempt = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var ct = attempt.Token;
             Set("connecting");
+            await ProviderAssets.Prepare(Xhttp.ConnectionNodes(profile), ct);
+            if (profile.KillSwitch) KillSwitch.Arm(xhttp: Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses)); else if (KillSwitch.Active) KillSwitch.Release();
             string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
             await GeoIpStore.Update(countries, true, ct);
             ct.ThrowIfCancellationRequested();
@@ -125,6 +140,7 @@ public sealed class Tunnel
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
             xray = await XraySession.Start(Xhttp.ConnectionNodes(profile), ct, null, port, apiPort, systemPort);
+            providerAutomatic = automatic && Xhttp.ConnectionNodes(profile).Any(n => n.FullConfig != null);
             var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret, GeoIpStore.Cache.Paths(countries), xray?.Bridges, xray?.Egress);
             ProxyPort = port; AutomaticNode = "";
             Directory.CreateDirectory(Store.Folder);
@@ -165,7 +181,7 @@ public sealed class Tunnel
                 {
                     string target = healthTargets[healthIndex++ % healthTargets.Length];
                     using var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, healthDeadline.Token);
-                    if (response.IsSuccessStatusCode) { healthy = true; break; }
+                    if (response.IsSuccessStatusCode && (!providerAutomatic || await ReadAutomaticNode(ct))) { healthy = true; break; }
                 }
                 catch (HttpRequestException ex) { AppLog.Error("health", ex); }
                 catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }

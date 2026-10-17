@@ -182,7 +182,7 @@
       const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'Пинг';
       ping.title=result?.status==='ok'?result.mode.toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.append(icon,value);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
-      const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.textContent='QR';qr.setAttribute('aria-label','QR '+presentation.name);qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
+      const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.textContent='QR';qr.setAttribute('aria-label','QR '+presentation.name);qr.disabled=!!item.providerRouting;qr.title=item.providerRouting?'QR не сохраняет правила подписки. Используйте исходную подписку или резервную копию.':'';qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
       if(focusId===item.id)(focusQr?qr:focusPing?ping:focusFavorite?favorite:button).focus({preventScroll:true});
     });
     if(focusId&&!visible.some(item=>item.id===focusId))$('serverSearch').focus({preventScroll:true});
@@ -421,8 +421,9 @@
   }
   function renderRouting(){
     const routing=model.routing||{active:'',profiles:[]},saved=routingSaved(),active=routing.profiles.find(p=>p.id===routing.active);
-    $('routingSummary').textContent='Маршрут: '+(active?.rules.name||'по умолчанию');
-    $('routingActive').replaceChildren(new Option('По умолчанию',''),...routing.profiles.map(p=>new Option((p.sourceUrl?'Обновляемый · ':'')+p.rules.name,p.id)));
+    const provider=model.nodes.some(n=>n.providerRouting&&(model.selected==='auto'||n.id===model.selected)),defaultLabel=provider?'Правила подписки':'По умолчанию';
+    $('routingSummary').textContent='Маршрут: '+(active?.rules.name||(provider?'правила подписки':'по умолчанию'));
+    $('routingActive').replaceChildren(new Option(defaultLabel,''),...routing.profiles.map(p=>new Option((p.sourceUrl?'Обновляемый · ':'')+p.rules.name,p.id)));
     $('routingActive').value=routing.active||'';$('routingActive').disabled=routingBusy||routingDirty;
     $('routingFields').disabled=routingBusy;
     for(const id of ['routingNew','routingImport'])$(id).disabled=routingBusy||routingDirty;

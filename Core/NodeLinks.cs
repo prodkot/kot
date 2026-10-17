@@ -8,6 +8,7 @@ public static class NodeLinks
     public static string Export(Node node)
     {
         NodeSecurity.Validate(node);
+        if (node.FullConfig != null) throw new UserError("Полный конфиг с маршрутизацией нельзя передать ссылкой или QR без потери правил. Используйте исходную подписку или резервную копию.");
         var o = node.Outbound;
         string G(string key) => o[key]?.ToString() ?? "";
         string host = G("server"); if (host.Contains(':')) host = "[" + host.Trim('[', ']') + "]";

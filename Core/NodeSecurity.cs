@@ -4,6 +4,11 @@ public static class NodeSecurity
 {
     public static void Validate(Node node)
     {
+        if (node.FullConfig != null) XrayConfig.Validate(node.FullConfig);
+        else if (node.Protocol == "xray") throw new UserError("Отсутствует клиентская конфигурация Xray.");
+        if (node.GeoIpUrl == null || node.GeoSiteUrl == null) throw new UserError("Неверные адреса геобаз подписки.");
+        if (node.GeoIpUrl.Length > 0) RoutingProfiles.Source(node.GeoIpUrl);
+        if (node.GeoSiteUrl.Length > 0) RoutingProfiles.Source(node.GeoSiteUrl);
         Xhttp.Validate(node);
         if (node.Outbound["tls"] is JsonObject tls && tls["insecure"] is JsonValue value
             && value.TryGetValue<bool>(out bool insecure) && insecure)

@@ -14,6 +14,9 @@ public sealed partial class MainWindow
         try
         {
             var result = await Task.Run(() => Subscriptions.Parse(text), attempt.Token);
+            result = await ProviderRouting.ResolveLocal(result, attempt.Token, RequestProxyPort);
+            await ProviderAssets.Prepare(result.Nodes, attempt.Token, RequestProxyPort);
+            await XraySession.Validate(result.Nodes, attempt.Token);
             attempt.Token.ThrowIfCancellationRequested();
             if (profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
             await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
@@ -33,7 +36,7 @@ public sealed partial class MainWindow
     }
     async Task ImportServersFile(string name)
     {
-        using var dialog = new OpenFileDialog { Filter = "Серверы / Clash YAML (*.yaml;*.yml;*.txt)|*.yaml;*.yml;*.txt|Все файлы (*.*)|*.*" };
+        using var dialog = new OpenFileDialog { Filter = "Серверы / Clash / Xray (*.yaml;*.yml;*.txt;*.json)|*.yaml;*.yml;*.txt;*.json|Все файлы (*.*)|*.*" };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         using var file = new FileStream(dialog.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (file.Length > Subscriptions.MaxBytes) throw new UserError("Файл больше 4 МиБ.");

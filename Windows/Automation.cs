@@ -140,6 +140,8 @@ public sealed partial class MainWindow
                             if (due.Id == profile.ActiveSubscription) await ApplySubscription(due.Address, due.Name, result, false);
                             else
                             {
+                                await ProviderAssets.Prepare(result.Nodes, ct.Token, RequestProxyPort);
+                                await XraySession.Validate(result.Nodes, ct.Token);
                                 SaveProfile(p =>
                                 {
                                     var updated = p.Subscriptions.Single(s => s.Id == due.Id);
@@ -168,11 +170,15 @@ public sealed partial class MainWindow
     }
     async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing)
     {
+        await ProviderAssets.Prepare(result.Nodes, lifetime.Token, RequestProxyPort);
+        await XraySession.Validate(result.Nodes, lifetime.Token);
         var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
         if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
         await StopTools();
-        bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(n => n.Id).Order().SequenceEqual(result.Nodes.Select(n => n.Id).Order()) : result.Nodes.All(n => n.Id != profile.Selected));
+        string Fingerprint(Node n) => n.Id + ":" + n.FullConfig?.ToJsonString() + ":" + n.GeoIpUrl + ":" + n.GeoSiteUrl;
+        bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(Fingerprint).Order().SequenceEqual(result.Nodes.Select(Fingerprint).Order())
+            : result.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } updated || profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } current || Fingerprint(updated) != Fingerprint(current));
         if (restart) await tunnel.Stop(); await ping.Stop(clear: true);
         try
         {

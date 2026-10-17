@@ -4,11 +4,12 @@ using System.Text.RegularExpressions;
 namespace Kot.Core;
 
 // XHTTP belongs to Xray. Never pass this transport to sing-box or silently replace it with TCP.
-public sealed record XhttpBridge(int Port, string Username, string Password);
+public sealed record XhttpBridge(int Port, string Username, string Password, int HealthPort = 0, int DnsPort = 0);
 public static class Xhttp
 {
     public const string Version = "26.3.27";
-    public static bool Uses(Node node) => node.Outbound["transport"]?["type"]?.ToString() is "xhttp" or "splithttp";
+    public static bool UsesTransport(Node node) => node.Outbound["transport"]?["type"]?.ToString() is "xhttp" or "splithttp";
+    public static bool Uses(Node node) => node.FullConfig != null || UsesTransport(node);
     public static IReadOnlyList<Node> ConnectionNodes(Profile profile)
     {
         if (profile.Selected != "auto") return profile.Nodes.Where(n => n.Id == profile.Selected).ToArray();
@@ -28,7 +29,7 @@ public static class Xhttp
     }
     public static void Validate(Node node)
     {
-        if (!Uses(node)) return;
+        if (!UsesTransport(node)) return;
         if (node.Protocol is not ("vless" or "vmess" or "trojan")) throw new UserError("XHTTP поддерживается для VLESS, VMess и Trojan.");
         if (node.Outbound["flow"]?.ToString() is { Length: > 0 }) throw new UserError("Для XHTTP VLESS flow должен быть пустым.");
         if (node.Outbound["packet_encoding"]?.ToString() is { Length: > 0 } packet && (packet != "xudp" || node.Protocol == "trojan")) throw new UserError("Для XHTTP packetEncoding поддерживается только xudp у VLESS и VMess.");
@@ -125,14 +126,14 @@ public static class Xhttp
     {
         NodeSecurity.Validate(node);
         if (!Uses(node)) return (JsonObject)node.Outbound.DeepClone();
-        if (bridges == null || !bridges.TryGetValue(node.Id, out var bridge)) throw new UserError("Для подключения XHTTP требуется ядро Xray.");
+        if (bridges == null || !bridges.TryGetValue(node.Id, out var bridge)) throw new UserError("Для этого подключения требуется ядро Xray.");
         if (bridge.Port is < 1 or > 65535 || bridge.Username.Length == 0 || bridge.Password.Length < 32) throw new UserError("Небезопасное локальное соединение XHTTP.");
         return new JsonObject { ["type"] = "socks", ["tag"] = "proxy", ["server"] = "127.0.0.1", ["server_port"] = bridge.Port, ["version"] = "5", ["username"] = bridge.Username, ["password"] = bridge.Password };
     }
     public static JsonObject Build(IReadOnlyList<Node> nodes, IReadOnlyDictionary<string, XhttpBridge> bridges, XhttpBridge? egress = null)
     {
         JsonArray inputs = [], outputs = [], rules = [];
-        foreach (var node in nodes.Where(Uses).DistinctBy(n => n.Id))
+        foreach (var node in nodes.Where(n => n.FullConfig == null && UsesTransport(n)).DistinctBy(n => n.Id))
         {
             var bridge = bridges[node.Id]; _ = SingBoxOutbound(node, bridges);
             string inbound = "in-" + node.Id, outbound = "node-" + node.Id;
@@ -179,7 +180,7 @@ public static class Xhttp
     public static JsonObject Outbound(Node node)
     {
         NodeSecurity.Validate(node);
-        if (!Uses(node)) throw new UserError("Это не XHTTP-сервер.");
+        if (!UsesTransport(node)) throw new UserError("Это не XHTTP-сервер.");
         var o = node.Outbound; string G(string key) => o[key]?.ToString() ?? "";
         JsonObject user = node.Protocol == "trojan" ? new() { ["password"] = G("password") } : new() { ["id"] = G("uuid") };
         if (node.Protocol == "vless") user["encryption"] = "none";

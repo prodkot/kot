@@ -1,6 +1,10 @@
 using Kot.Windows;
 using System.Collections.Concurrent;
 
+if (args.Length == 2 && args[0] == "--service-assets")
+{
+    File.WriteAllText(args[1], Environment.GetEnvironmentVariable("XRAY_LOCATION_ASSET") ?? ""); return 0;
+}
 if (args.Length > 1 && args[0] == "--service-args")
 {
     File.WriteAllText(args[1], System.Text.Json.JsonSerializer.Serialize(args.Skip(2))); return 42;
@@ -64,6 +68,16 @@ async Task NaturalExit(int code)
 }
 try
 {
+    string? originalAssets = Environment.GetEnvironmentVariable("XRAY_LOCATION_ASSET");
+    await Task.WhenAll(Enumerable.Range(0, 2).Select(async i =>
+    {
+        string assets = Path.Combine(folder, "геобазы " + i), captured = Path.Combine(folder, "asset-" + i + ".txt");
+        Directory.CreateDirectory(assets);
+        using var child = new NativeCore(fixtureExe, ["--service-assets", captured], folder, "kot. assets fixture", assetDirectory: assets);
+        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Check(child.ExitCode == 0 && File.ReadAllText(captured) == assets, "native workers receive isolated Unicode asset directories");
+    }));
+    Check(Environment.GetEnvironmentVariable("XRAY_LOCATION_ASSET") == originalAssets, "provider workers never change the parent's asset directory");
     await NaturalExit(17);
     await NaturalExit(259); // STILL_ACTIVE must not be confused with an exited child.
     await NaturalExit(unchecked((int)0xC0000005));

@@ -41,10 +41,10 @@ public static class CoreDiagnostics
             if (value is JsonObject obj) foreach (var item in obj) Walk(item.Value, item.Key);
             else if (value is JsonArray arr) foreach (var item in arr) Walk(item, key);
             else if (value is JsonValue scalar && scalar.TryGetValue<string>(out var text)
-                && key is not ("type" or "tag" or "flow" or "method" or "security" or "fingerprint" or "alpn")
+                && key is not ("type" or "tag" or "flow" or "method" or "security" or "fingerprint" or "alpn" or "protocol" or "network" or "outboundTag" or "inboundTag" or "domainStrategy" or "queryStrategy" or "loglevel")
                 && text is not ("/" or "")) Add(text);
         }
-        foreach (var node in nodes) Walk(node.Outbound);
+        foreach (var node in nodes) { Walk(node.Outbound); Walk(node.FullConfig); Add(node.GeoIpUrl); Add(node.GeoSiteUrl); }
         foreach (string value in privateValues) Add(value);
         // Extract values once. The redactor owns strings, never mutable profile nodes.
         string[] ordered = values.OrderByDescending(v => v.Length).ToArray();
