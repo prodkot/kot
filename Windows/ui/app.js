@@ -385,10 +385,10 @@
   function clearLink(){$('profileLink').value='';$('addError').textContent='';}
   const dialogFocus=new WeakMap();
   function rememberFocus(){
-    const el=document.activeElement,node=el?.closest('[data-node]')?.dataset.node,connection=el?.closest('[data-connection]')?.dataset.connection;
+    const el=document.activeElement,node=el?.closest('[data-node]')?.dataset.node;
     const owner=el?.closest('dialog');if(owner?.dataset.closing)return dialogFocus.get(owner)||(()=>null);
     const control=['qr-node','ping-node','favorite-node','server-card'].find(name=>el?.classList.contains(name));
-    return ()=>el?.isConnected?el:node?[...$('serverList').children].find(row=>row.dataset.node===node)?.querySelector('.'+control)||$('serverSearch'):connection?[...$('connectionList').children].find(row=>row.dataset.connection===connection)?.querySelector('summary')||$('logSearch'):null;
+    return ()=>el?.isConnected?el:node?[...$('serverList').children].find(row=>row.dataset.node===node)?.querySelector('.'+control)||$('serverSearch'):null;
   }
   function openDialog(dialog){if(dialog.open)return;dialogFocus.set(dialog,rememberFocus());dialog.showModal();openDialogs.push(dialog);raiseToast();animate(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:280});}
   function closeDialog(dialog){
