@@ -22,6 +22,24 @@ public static class RoutingTests
             DirectApps = ["Game.EXE"], ProxyApps = ["chrome.exe"], BlockApps = ["tracker.exe"], DirectDns = "adguard", RemoteDns = "quad9"
         };
         rules.Validate();
+        check(Configuration.Domains(".ru\nRU\n.su\n.xn--p1ai").SequenceEqual(new[] { "ru", "su", "xn--p1ai" }), "routing accepts top-level domain suffixes and normalizes leading dots and case");
+        foreach (var invalid in new[] { ".", "r", "https://example.ru", "example.ru/path", "*.ru", "bad..ru", "-ru", "ru-", "123", "example.-ru" })
+            Reject(() => Configuration.Domains(invalid), "routing rejects malformed domain suffix: " + invalid);
+        var zones = RoutingProfiles.Parse("""{"version":1,"name":"Зоны напрямую","directDomains":[".ru",".su",".xn--p1ai"]}""");
+        var zoneProfile = new RoutingProfile { Rules = zones };
+        var zoneConnection = new Profile { Nodes = [node], Selected = node.Id, RoutingProfiles = [zoneProfile], ActiveRoutingProfile = zoneProfile.Id };
+        foreach (string mode in new[] { "tun", "proxy" })
+        foreach (string selected in new[] { node.Id, "auto" })
+        {
+            zoneConnection.ConnectionMode = mode; zoneConnection.Selected = selected;
+            var zoneConfig = Configuration.BuildConnection(zoneConnection, 18780, 18782);
+            var suffixRoute = zoneConfig["route"]!["rules"]!.AsArray().Single(r => r!["domain_suffix"] != null)!;
+            var suffixDns = zoneConfig["dns"]!["rules"]!.AsArray().Single(r => r!["domain_suffix"] != null)!;
+            check(suffixRoute["domain_suffix"]!.AsArray().Select(v => v!.ToString()).SequenceEqual(new[] { "ru", "su", "xn--p1ai" })
+                && suffixRoute["outbound"]!.ToString() == "direct" && suffixDns["server"]!.ToString() == "bootstrap"
+                && zoneConfig["route"]!["final"]!.ToString() == "proxy", "domain zones use direct connections and direct DNS without bypassing other traffic: " + mode + "/" + (selected == "auto" ? "auto" : "selected"));
+            File.WriteAllText(Path.Combine(fixtureFolder, "routing-zones-" + mode + "-" + (selected == "auto" ? "auto" : "selected") + ".json"), zoneConfig.ToJsonString());
+        }
         check(rules.DirectDomains.SequenceEqual(new[] { "bank.example" }) && rules.ProxyDomains.SequenceEqual(new[] { "youtube.com" }), "routing normalizes domains and subdomain suffixes");
         check(rules.DirectIps[0] == "203.0.113.0/24" && rules.ProxyIps[0] == "2001:db8::/32" && rules.BlockIps[0] == "198.51.100.7/32", "routing canonicalizes IPv4/IPv6 prefixes and individual addresses");
         check(RoutingRules.IpRanges("0.0.0.0/0\n::/0").SequenceEqual(new[] { "0.0.0.0/0", "::/0" }), "routing accepts zero-length IPv4 and IPv6 masks");

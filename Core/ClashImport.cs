@@ -49,6 +49,8 @@ public static partial class ClashImport
                 { warnings.Add($"Сервер {i + 1}: неверное описание сервера."); }
             }
             if (nodes.Count == 0) throw new UserError(warnings.FirstOrDefault() ?? "В YAML нет поддерживаемых серверов.");
+            if (Get(root, "rules") != null || Get(root, "rule-providers") != null)
+                warnings.Add("Правила маршрутизации Clash не импортированы. Добавлены только серверы. Настройте правила в Настройки → Маршрутизация.");
             return new(nodes, warnings);
         }
         catch (YamlException) { throw new UserError("Повреждён Clash YAML: проверьте отступы и повторяющиеся ключи."); }

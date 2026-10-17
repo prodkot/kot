@@ -47,7 +47,8 @@ public static class ClientToolsTests
         proxy-providers: {remote: {url: 'https://foreign.example/providers.yaml'}}
         """.Replace("UUID_VALUE", Uuid);
         var imported = Subscriptions.Parse(yaml);
-        check(imported.Nodes.Count == 7 && imported.Warnings.Count == 4, "Clash imports supported protocols and reports unsupported or insecure nodes");
+        check(imported.Nodes.Count == 7 && imported.Warnings.Count == 5, "Clash imports supported protocols and reports unsupported nodes and routing");
+        check(imported.Warnings.Count(w => w.Contains("маршрутизации Clash не импортированы")) == 1, "Clash import explicitly warns instead of silently discarding routing rules");
         check(imported.Nodes[1].Outbound["transport"]?["max_early_data"]?.ToString() == "2048", "Clash WebSocket early data survives conversion");
         check(imported.Nodes[5].Outbound["transport"]?["host"]?.AsArray().Count == 2, "Clash HTTP Host arrays survive conversion");
         check(imported.Nodes.All(n => n.Outbound["rules"] == null && n.Outbound["proxy-providers"] == null), "Clash imports no foreign rules, listeners or remote providers");
