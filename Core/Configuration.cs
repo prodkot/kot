@@ -9,7 +9,7 @@ public static class Configuration
         var items = input.Split(['\n', '\r', ',', ';'], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().TrimStart('.').ToLowerInvariant()).Distinct().ToArray();
         if (items.Length > 100) throw new UserError("Максимум 100 доменов.");
         foreach (string item in items)
-            if (item.Length > 253 || !Regex.IsMatch(item, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")) throw new UserError("Введите домены без https:// и путей, по одному в строке.");
+            if (item.Length > 253 || !Regex.IsMatch(item, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z][a-z0-9-]{0,61}[a-z0-9]$")) throw new UserError("Введите домены или зоны, например example.com или .ru, без https://, путей и масок, по одному в строке.");
         return items;
     }
     public static JsonObject BuildAutomatic(IReadOnlyList<Node> nodes, int port, bool smart, string[] bypass, AutomationOptions options, int apiPort = 0, string apiSecret = "", bool tun = true, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null)
