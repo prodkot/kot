@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -6,10 +7,18 @@ public static class Configuration
 {
     public static string[] Domains(string input)
     {
-        var items = input.Split(['\n', '\r', ',', ';'], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().TrimStart('.').ToLowerInvariant()).Distinct().ToArray();
+        const string error = "Введите домены или зоны, например example.com или .рф, без https://, путей и масок, по одному в строке.";
+        var idn = new IdnMapping { UseStd3AsciiRules = true };
+        var items = input.Split(['\n', '\r', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(item =>
+            {
+                if (item.StartsWith('.')) item = item[1..];
+                try { return idn.GetAscii(item).ToLowerInvariant(); }
+                catch (ArgumentException) { throw new UserError(error); }
+            }).Distinct().ToArray();
         if (items.Length > 100) throw new UserError("Максимум 100 доменов.");
         foreach (string item in items)
-            if (item.Length > 253 || !Regex.IsMatch(item, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z][a-z0-9-]{0,61}[a-z0-9]$")) throw new UserError("Введите домены или зоны, например example.com или .ru, без https://, путей и масок, по одному в строке.");
+            if (item.Length > 253 || !Regex.IsMatch(item, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z][a-z0-9-]{0,61}[a-z0-9]$")) throw new UserError(error);
         return items;
     }
     public static JsonObject BuildAutomatic(IReadOnlyList<Node> nodes, int port, bool smart, string[] bypass, AutomationOptions options, int apiPort = 0, string apiSecret = "", bool tun = true, IReadOnlyDictionary<string, XhttpBridge>? xhttp = null)

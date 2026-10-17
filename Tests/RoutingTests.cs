@@ -22,10 +22,15 @@ public static class RoutingTests
             DirectApps = ["Game.EXE"], ProxyApps = ["chrome.exe"], BlockApps = ["tracker.exe"], DirectDns = "adguard", RemoteDns = "quad9"
         };
         rules.Validate();
+        check(Configuration.Domains(" .РФ \n.xn--p1ai\nПРИМЕР.РФ\nпример.рф\n \t \n").SequenceEqual(new[] { "xn--p1ai", "xn--e1afmkfd.xn--p1ai" }), "routing accepts Unicode domains and zones, deduplicates IDN spellings and ignores blank lines");
+        check(Configuration.Domains(" \t\n , ;\r\n").Length == 0, "whitespace-only domain lists are empty");
+        var idnRules = RoutingProfiles.Parse("""{"version":1,"directDomains":[".РФ"],"proxyDomains":["ПРИМЕР.РФ"],"blockDomains":["реклама.рф"]}""");
+        check(idnRules.DirectDomains.SequenceEqual(new[] { "xn--p1ai" }) && idnRules.ProxyDomains.SequenceEqual(new[] { "xn--e1afmkfd.xn--p1ai" })
+            && idnRules.BlockDomains.All(d => d.All(c => c < 128)) && RoutingProfiles.Serialize(RoutingProfiles.Parse(RoutingProfiles.Serialize(idnRules))) == RoutingProfiles.Serialize(idnRules), "IDN direct, proxy and block rules survive JSON export and import as canonical ASCII");
         check(Configuration.Domains(".ru\nRU\n.su\n.xn--p1ai").SequenceEqual(new[] { "ru", "su", "xn--p1ai" }), "routing accepts top-level domain suffixes and normalizes leading dots and case");
-        foreach (var invalid in new[] { ".", "r", "https://example.ru", "example.ru/path", "*.ru", "bad..ru", "-ru", "ru-", "123", "example.-ru" })
+        foreach (var invalid in new[] { ".", "r", "https://example.ru", "example.ru/path", "*.ru", "bad..ru", "..ru", "-ru", "ru-", "123", "example.-ru", "пример .рф", "пример\u0000.рф", "\ud800.рф", new string('я', 64) + ".рф" })
             Reject(() => Configuration.Domains(invalid), "routing rejects malformed domain suffix: " + invalid);
-        var zones = RoutingProfiles.Parse("""{"version":1,"name":"Зоны напрямую","directDomains":[".ru",".su",".xn--p1ai"]}""");
+        var zones = RoutingProfiles.Parse("""{"version":1,"name":"Зоны напрямую","directDomains":[".ru",".su",".рф",".xn--p1ai"]}""");
         var zoneProfile = new RoutingProfile { Rules = zones };
         var zoneConnection = new Profile { Nodes = [node], Selected = node.Id, RoutingProfiles = [zoneProfile], ActiveRoutingProfile = zoneProfile.Id };
         foreach (string mode in new[] { "tun", "proxy" })

@@ -33,6 +33,7 @@ public sealed class Profile
         ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
         Name ??= "Подписка"; Address ??= ""; Selected ??= ""; ActiveSubscription ??= "";
         Subscriptions ??= []; Nodes ??= []; Favorites ??= []; Automation ??= new(); Ping ??= new(); Bypass ??= [];
+        Bypass = Configuration.Domains(string.Join('\n', Bypass));
         RoutingProfiles ??= []; ActiveRoutingProfile ??= "";
         GeoIp ??= new(); GeoIp.Validate(); Services ??= new(); Services.Validate();
         if (RoutingProfiles.Count > 20 || RoutingProfiles.Any(p => p == null) || RoutingProfiles.Select(p => p.Id).Distinct().Count() != RoutingProfiles.Count || ActiveRoutingProfile.Length > 0 && RoutingProfiles.All(p => p.Id != ActiveRoutingProfile))
@@ -74,7 +75,7 @@ public sealed class Profile
     }
     public void Validate()
     {
-        Normalize(); Automation.Validate(); Ping.Validate(); Configuration.Domains(string.Join('\n', Bypass));
+        Normalize(); Automation.Validate(); Ping.Validate();
         if (Subscriptions.Count == 0 && Nodes.Count > 0) throw new UserError("Серверы без подписки в резервной копии.");
         if (Subscriptions.Count > 50) throw new UserError("Максимум 50 подписок.");
         if (Subscriptions.Select(s => s.Id).Distinct().Count() != Subscriptions.Count) throw new UserError("Повторяющиеся ID подписок.");
