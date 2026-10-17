@@ -26,7 +26,8 @@ def check():
         root = Path(directory)
         build(root, json.loads((Path(__file__).parent / 'release.json').read_text()))
         server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(root)))
-        Thread(target=server.serve_forever, daemon=True).start()
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
         url = f'http://127.0.0.1:{server.server_port}/'
         try:
             with sync_playwright() as p:
@@ -37,6 +38,26 @@ def check():
                 page.on('request', lambda request: network.append(request.url))
                 page.goto(url)
                 frame = page.frame_locator('#client-demo')
+                # Every landing tab works with a mouse and a keyboard, with one panel visible.
+                for tab in page.get_by_role('tab').all():
+                    tab.click()
+                    expect(tab).to_have_attribute('aria-selected', 'true')
+                    expect(page.get_by_role('tabpanel')).to_have_count(1)
+                    panel = page.locator('#' + tab.get_attribute('aria-controls'))
+                    expect(panel).to_be_visible()
+                    assert panel.locator('img').evaluate('async image => {await image.decode();return image.naturalWidth>0;}')
+                    expect(page.locator('#feature-description')).to_have_text(tab.get_attribute('data-description'))
+                page.locator('#tab-settings').press('Home')
+                expect(page.locator('#tab-servers')).to_be_focused()
+                page.locator('#tab-servers').press('ArrowDown')
+                expect(page.locator('#tab-statistics')).to_be_focused()
+                page.locator('#tab-statistics').press('ArrowLeft')
+                expect(page.locator('#tab-servers')).to_be_focused()
+                page.locator('#tab-servers').press('End')
+                expect(page.locator('#tab-settings')).to_be_focused()
+                release = json.loads((Path(__file__).parent / 'release.json').read_text())
+                expect(page.locator('[data-release-version]').first).to_have_text('v' + release['version'])
+                expect(page.locator('.download-link').first).to_have_attribute('href', release['download'])
                 expect(frame.locator('#selectedName')).to_have_text('Нидерланды')
                 expect(frame.locator('[data-mode=tun]')).to_have_attribute('aria-pressed', 'true')
                 expect(frame.locator('[data-mode=proxy]')).to_have_attribute('aria-pressed', 'false')
@@ -218,6 +239,10 @@ def check():
                 for width in [320, 375, 390, 600, 700, 1000, 1440]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth === innerWidth'), width
+                    # The toolbar can wrap on phones without overlapping the note below it.
+                    holder = page.locator('.demo-holder').bounding_box()
+                    window = page.locator('#demo-window').bounding_box()
+                    assert abs(holder['height'] - window['height']) < 1, (width, holder, window)
                     for section in ['servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings', 'home']:
                         if section in ['statistics', 'diagnostics', 'logs']:
                             frame.locator('.nav-button[data-page=settings]').click()
@@ -255,6 +280,8 @@ def check():
                 nojs.close()
         finally:
             server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
     print('Demo: interaction, cancellation, isolation, fullscreen, 7 viewport widths, reduced motion and no-JS fallback passed.')
 
 
