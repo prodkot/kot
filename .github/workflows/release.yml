@@ -13,7 +13,8 @@ permissions:
   contents: read
 jobs:
   release:
-    timeout-minutes: 20
+    timeout-minutes: 35
+    if: github.ref_type != 'tag' || !contains(github.ref_name, '-xray.')
     permissions:
       contents: write
     runs-on: windows-latest
@@ -27,6 +28,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.x'
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.27.2'
+          cache: false
       - name: Verify tag and run core tests
         shell: pwsh
         env:
@@ -80,7 +85,7 @@ jobs:
         shell: pwsh
         run: |
           $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/xray.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Temporary core or real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
         timeout-minutes: 5

@@ -3,6 +3,21 @@ namespace Kot.Core;
 public sealed record ConnectionInfo(string Id, string Destination, string Network, string Inbound, string Process, string[] Chains, string Rule, long Download, long Upload, DateTimeOffset? Start);
 public sealed record ConnectionSnapshot(long DownloadTotal, long UploadTotal, int Count, ConnectionInfo[] Connections)
 {
+    // Xray exposes aggregate inbound counters, not per-connection byte totals.
+    public static ConnectionSnapshot ParseXray(string json)
+    {
+        if (json.Length > 2 * 1024 * 1024) throw new UserError("Слишком большой ответ статистики.");
+        using var doc = JsonDocument.Parse(json);
+        var inbound = doc.RootElement.GetProperty("stats").GetProperty("inbound");
+        long down = 0, up = 0;
+        foreach (string tag in new[] { "kot-tun", "kot-in" })
+            if (inbound.TryGetProperty(tag, out var counters))
+            {
+                long Counter(string key) => counters.TryGetProperty(key, out var value) && value.TryGetInt64(out long n) && n >= 0 ? n : throw new JsonException("Invalid Xray traffic counter");
+                down = checked(down + Counter("downlink")); up = checked(up + Counter("uplink"));
+            }
+        return new(down, up, -1, []);
+    }
     public static ConnectionSnapshot Parse(string json)
     {
         if (json.Length > 2 * 1024 * 1024) throw new UserError("Слишком большой ответ статистики.");

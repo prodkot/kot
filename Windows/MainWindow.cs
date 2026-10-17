@@ -28,7 +28,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? Store.Load();
         if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
-        AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=sing-box 1.14.2");
+        AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=Xray experimental 0f3d884786f9");
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
         InitAutomation();
@@ -223,7 +223,7 @@ public sealed partial class MainWindow : WindowChrome
                     Clipboard.SetText(FullLog()); break;
                 case "copyDiagnostics": Clipboard.SetText(JsonSerializer.Serialize(ToolsModel(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true })); break;
                 case "diagnostics":
-                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, core = "sing-box 1.14.2", os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
+                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
                 default:
                     await operations.WaitAsync(lifetime.Token);
                     try { if (!exiting) await Mutate(action, data); } finally { operations.Release(); }
@@ -315,7 +315,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         var header = new
         {
-            app = "kot. " + ClientIdentity.Version, core = "sing-box 1.14.2", os = Environment.OSVersion.VersionString,
+            app = "kot. " + ClientIdentity.Version, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString,
             hwidEnabled = profile.SendHwid, state = tunnel.State,
             protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol,
             nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error,

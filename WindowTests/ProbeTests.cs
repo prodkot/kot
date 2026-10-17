@@ -16,7 +16,7 @@ public static class ProbeTests
         using var port = new TcpListener(IPAddress.Loopback, 0); port.Start(); int vlessPort = ((IPEndPoint)port.LocalEndpoint).Port; port.Stop();
         string file = Path.Combine(Path.GetTempPath(), "kot-probe-server-" + Guid.NewGuid().ToString("N") + ".json");
         const string uuid = "11111111-1111-4111-8111-111111111111";
-        File.WriteAllText(file, $$"""{"inbounds":[{"type":"vless","listen":"127.0.0.1","listen_port":{{vlessPort}},"users":[{"uuid":"{{uuid}}"}]}],"outbounds":[{"type":"direct"}]}""");
+        File.WriteAllText(file, $$$$"""{"inbounds":[{"protocol":"vless","listen":"127.0.0.1","port":{{{{vlessPort}}}},"settings":{"clients":[{"id":"{{{{uuid}}}}"}],"decryption":"none"}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""");
         int requests = 0;
         var serve = Task.Run(async () =>
         {

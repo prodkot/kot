@@ -10,16 +10,8 @@ dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 $cache = Join-Path $PSScriptRoot '.build-cache'
 New-Item -ItemType Directory -Force $cache | Out-Null
-Invoke-WebRequest 'https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-windows-amd64.zip' -OutFile "$cache/sing-box.zip"
-if ((Get-FileHash "$cache/sing-box.zip" -Algorithm SHA256).Hash -ne "C2D8BFFF918755808781DFDEEB8581B6C91EB3A243D9A7B55483CFC0C0684D32") { throw "Unexpected sing-box archive checksum" }
-Expand-Archive "$cache/sing-box.zip" "$cache/core" -Force
-New-Item -ItemType Directory -Force "$publish/core" | Out-Null
-Copy-Item "$cache/core/sing-box-1.14.2-windows-amd64/sing-box.exe","$cache/core/sing-box-1.14.2-windows-amd64/libcronet.dll" "$publish/core"
-Invoke-WebRequest 'https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-windows-64.zip' -OutFile "$cache/xray.zip"
-if ((Get-FileHash "$cache/xray.zip" -Algorithm SHA256).Hash -ne 'D004C39288CE9ADA487C6F398C7C545F7D749E44BDFDD59DBC9F865AFBA4E1AD') { throw 'Unexpected Xray archive checksum' }
-Expand-Archive "$cache/xray.zip" "$cache/xray" -Force
-# XHTTP needs the unmodified executable; bundled geo databases and extra tools are not used.
-Copy-Item "$cache/xray/xray.exe" "$publish/core/xray.exe"
+python Release/xray-core.py "$publish/core"
+if ($LASTEXITCODE -ne 0) { throw 'Pinned native Xray build failed.' }
 Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$publish/Install-WebView2.exe"
 $signature=Get-AuthenticodeSignature "$publish/Install-WebView2.exe"
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { throw 'WebView2 installer signature is not valid Microsoft signature.' }

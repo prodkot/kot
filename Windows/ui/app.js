@@ -151,7 +151,7 @@
     $('refreshButton').disabled=refreshBusy||!data.hasSubscription||!!data.localSubscription;$('removeSubscription').hidden=!data.hasSubscription;
     if(!$('advancedDialog').open)$('bypassDomains').value=data.settings.bypass||'';
     $('skippedDetails').hidden=!data.warnings?.length;$('skippedNodes').replaceChildren(...(data.warnings||[]).slice(0,50).map(w=>{const p=document.createElement('p');p.textContent=w;return p;}));
-    $('titleVersion').textContent=data.version||'';$('version').textContent='kot. '+data.version+' · sing-box 1.14.2'+(data.updated?' · '+data.updated:'');
+    $('titleVersion').textContent=data.version||'';$('version').textContent='kot. '+data.version+' · Xray experimental'+(data.updated?' · '+data.updated:'');
     const ping=data.ping||{};
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;
@@ -252,7 +252,7 @@
         const meta=document.createElement('div');meta.className='connection-meta';const route=document.createElement('span');route.className='connection-route';label(route,(c.process?c.process+' · ':'')+(c.chains?.join(' → ')||'Маршрут неизвестен'));const total=document.createElement('span');total.className='connection-bytes';total.textContent='↓ '+bytes(c.download)+'  ↑ '+bytes(c.upload);meta.append(route,total);summary.append(top,meta);
         const detail=document.createElement('div');detail.className='connection-detail';detail.textContent='Вход: '+(c.inbound||'Не определён')+'\nПравило: '+(c.rule||'final')+(c.start?'\nНачало: '+new Date(c.start).toLocaleTimeString('ru-RU'):'');detail.style.whiteSpace='pre-line';card.append(summary,detail);return card;
       }));connectionsKey=key;if(focused){const card=[...$('connectionList').children].find(e=>e.dataset.connection===focused);(card?.querySelector('summary')||$('logSearch')).focus({preventScroll:true});}}
-      $('logStatus').textContent=logsPaused?'На паузе':t.error||((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':''));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?'Нет активных соединений':'Подключитесь к серверу';
+      $('logStatus').textContent=logsPaused?'На паузе':t.error||(t.count===-1?'Xray: общий трафик':((t.count||0)+' активных'+((t.count||0)>300?' · показаны первые 300':'')));$('logEmpty').hidden=!!rows.length;$('logEmpty').textContent=query?'Ничего не найдено':snap.state==='connected'?(t.count===-1?'Xray не предоставляет список соединений. Общий трафик доступен в статистике.':'Нет активных соединений'):'Подключитесь к серверу';
     }
   }
   new ResizeObserver(()=>{

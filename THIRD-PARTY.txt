@@ -3,30 +3,21 @@
 Лицензия MIT относится к собственному коду kot. У компонентов ниже
 свои условия. Тексты лицензий и уведомлений лежат в папке licenses.
 
-sing-box 1.14.2
+Xray 26.10.10 (experimental source build)
 
-Ядро SagerNet запускается отдельным процессом. В комплекте официальный
-релиз без изменений, включая libcronet.dll. kot. не является официальным
-приложением SagerNet и не заявляет об одобрении со стороны SagerNet.
-
-Лицензия: GPL-3.0-or-later с уведомлениями upstream.
-Релиз: https://github.com/SagerNet/sing-box/releases/tag/v1.14.2
-Точные исходники, также включённые в пакет исходников kot.:
-https://github.com/SagerNet/sing-box/archive/refs/tags/v1.14.2.tar.gz
-Инструкции сборки и версии зависимостей находятся в этом архиве.
-Wintun встроен upstream в sing-tun; отдельная DLL не требуется.
-Chromium / Cronet:
-https://chromium.googlesource.com/chromium/src/+/main/LICENSE
-
-Xray 26.3.27
-
-Отдельный процесс для транспорта XHTTP; используется официальный xray.exe
-без изменений. Геобазы Xray и дополнительные инструменты не включены.
+Единственное сетевое ядро, отдельный процесс xray.exe. Официальные
+исходники XTLS без изменений, коммит 0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e.
 Лицензия MPL-2.0: licenses/Xray-MPL-2.0.txt.
-Уведомления зависимостей и точные архивы: licenses/Xray-Go-NOTICES.txt.
-Релиз: https://github.com/XTLS/Xray-core/releases/tag/v26.3.27
-Исходники: https://github.com/XTLS/Xray-core/archive/refs/tags/v26.3.27.tar.gz
-Точные исходники включены в upstream/Xray-core-26.3.27-source.tar.gz.
+Зависимости Go: licenses/Xray-Go-NOTICES.txt.
+Исходники: https://github.com/XTLS/Xray-core/tree/0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e
+Точный архив: upstream/Xray-core-0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e-source.tar.gz.
+Повторяемая сборка: Release/xray-core.py, Go 1.27.2.
+
+Wintun 0.14.1
+
+Официальная подписанная DLL AMD64 из https://www.wintun.net/.
+Условия распространения бинарного пакета: licenses/Wintun.txt.
+SHA-256 архива: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51.
 
 WebView2
 

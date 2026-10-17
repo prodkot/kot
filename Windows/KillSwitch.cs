@@ -22,7 +22,7 @@ public static class KillSwitch
         if (result == 0) FwpmFreeMemory0(ref pointer); else if (result != 0x80320003) Error(result);
         return Active = result == 0;
     }
-    public static void Arm(ulong tun = 0, bool xhttp = false)
+    public static void Arm(ulong tun = 0, bool xhttp = true)
     {
         lock (Sync)
         {
@@ -92,7 +92,7 @@ public static class KillSwitch
                 var layer = new SubLayer { Key = Sublayer, Display = new() { Name = "kot. kill switch" }, Flags = 1, Weight = 0x7fff };
                 uint r = FwpmSubLayerAdd0(engine.Handle, ref layer, IntPtr.Zero); if (r != 0 && r != 0x80320009) Error(r);
                 AddCorePermit(engine.Handle, extraAllowed);
-                Error(FwpmGetAppIdFromFileName0(testAllowed ?? Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe"), out var core));
+                Error(FwpmGetAppIdFromFileName0(testAllowed ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe"), out var core));
                 try
                 {
                     Error(FwpmGetAppIdFromFileName0(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "svchost.exe"), out var dhcp));

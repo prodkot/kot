@@ -6,7 +6,7 @@ using System.Text;
 using Kot.Core;
 using Microsoft.Win32.SafeHandles;
 namespace Kot.Windows;
-// A dedicated console lets sing-box receive a normal interrupt and release TUN/WFP.
+// A dedicated console lets Xray receive a normal interrupt and release TUN/WFP.
 // The suspended child is assigned to a kill-on-close job before any core code runs.
 public sealed class NativeCore : IDisposable
 {

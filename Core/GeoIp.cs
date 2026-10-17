@@ -18,7 +18,7 @@ public sealed class GeoIpOptions
 public static class GeoIp
 {
     public const int MaxBytes = 4 * 1024 * 1024;
-    public const string ProjectUrl = "https://github.com/SagerNet/sing-geoip";
+    public const string ProjectUrl = "https://github.com/Loyalsoldier/geoip";
     // Country files published by the project's rule-set branch. No arbitrary download URLs or local paths.
     static readonly HashSet<string> Supported = new(("ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bw by bz ca cd cf cg ch ci ck cl cm cn co cr cu cv cw cy cz de dj dk dm do dz ec ee eg er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gt gu gw gy hk hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg si sk sl sm sn so sr ss st sv sx sy sz tc td tg th tj tk tl tm tn to tr tt tv tw tz ua ug us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw").Split(' '), StringComparer.Ordinal);
     public static string[] Countries(string input)
@@ -33,7 +33,7 @@ public static class GeoIp
     {
         var codes = Countries(code);
         if (codes.Length != 1) throw new UserError("Нужен один код страны GeoIP.");
-        return new Uri("https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-" + codes[0] + ".srs");
+        return new Uri("https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/" + codes[0] + ".txt");
     }
     public static async Task<byte[]> Download(string code, CancellationToken ct, HttpMessageHandler? testTransport = null)
     {
@@ -53,53 +53,26 @@ public static class GeoIp
             buffer.Write(block, 0, count);
         }
         byte[] bytes = buffer.ToArray();
-        if (bytes.Length < 5 || bytes[0] != 'S' || bytes[1] != 'R' || bytes[2] != 'S') throw new UserError("Источник GeoIP вернул неверный файл SRS.");
+        Prefixes(Encoding.UTF8.GetString(bytes));
         return bytes;
     }
-
-    // Use the same sing-box version as the tunnel, then permit only IP prefixes in the downloaded data.
+    public static string[] Prefixes(string text)
+    {
+        if (Encoding.UTF8.GetByteCount(text) > MaxBytes) throw new UserError("Файл GeoIP слишком большой.");
+        var lines = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length is < 1 or > 300000) throw new UserError("Неверная база GeoIP.");
+        foreach (string line in lines)
+        {
+            var parts = line.Split('/');
+            if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var ip) || parts[0].Contains('%') || !int.TryParse(parts[1], out int bits) || bits < 0 || bits > ip.GetAddressBytes().Length * 8)
+                throw new UserError("Неверная IP-подсеть в базе GeoIP.");
+        }
+        return lines.Distinct().ToArray();
+    }
     public static async Task ValidateFile(string path, string coreExe, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-        string decoded = path + "." + Guid.NewGuid().ToString("N") + ".json";
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(20));
-        var psi = new ProcessStartInfo(coreExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (string argument in new[] { "rule-set", "decompile", path, "--output", decoded }) psi.ArgumentList.Add(argument);
-        try
-        {
-            using var process = Process.Start(psi) ?? throw new UserError("Не удалось запустить проверку GeoIP.");
-            Task output = Drain(process.StandardOutput), error = Drain(process.StandardError);
-            try { await process.WaitForExitAsync(deadline.Token); }
-            finally
-            {
-                if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); }
-                await Task.WhenAll(output, error);
-            }
-            if (process.ExitCode != 0 || !File.Exists(decoded) || new FileInfo(decoded).Length > 32 * 1024 * 1024)
-                throw new UserError("Файл GeoIP не прошёл проверку sing-box. Рабочая база сохранена.");
-            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(decoded, deadline.Token), new JsonDocumentOptions { MaxDepth = 8 });
-            var root = document.RootElement;
-            if (!root.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array || rules.GetArrayLength() == 0)
-                throw new UserError("В файле GeoIP нет IP-правил.");
-            foreach (var rule in rules.EnumerateArray())
-            {
-                if (rule.ValueKind != JsonValueKind.Object || rule.EnumerateObject().Count() != 1 || !rule.TryGetProperty("ip_cidr", out var cidrs) || cidrs.ValueKind != JsonValueKind.Array || cidrs.GetArrayLength() == 0)
-                    throw new UserError("GeoIP должен содержать только IP-подсети.");
-                foreach (var cidr in cidrs.EnumerateArray())
-                {
-                    string[] parts = (cidr.GetString() ?? "").Split('/');
-                    if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var ip) || parts[0].Contains('%') || !int.TryParse(parts[1], out int bits) || bits < 0 || bits > ip.GetAddressBytes().Length * 8)
-                        throw new UserError("Неверная IP-подсеть в базе GeoIP.");
-                }
-            }
-        }
-        catch (JsonException) { throw new UserError("Неверный формат базы GeoIP."); }
-        finally { if (File.Exists(decoded)) File.Delete(decoded); }
-    }
-    static async Task Drain(StreamReader stream)
-    {
-        char[] buffer = new char[4096];
-        while (await stream.ReadAsync(buffer) > 0) { }
+        if (new FileInfo(path).Length > MaxBytes) throw new UserError("Файл GeoIP слишком большой.");
+        Prefixes(await File.ReadAllTextAsync(path, ct));
     }
 }
 
@@ -133,7 +106,7 @@ public sealed class GeoIpCache
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or UserError or InvalidOperationException) { entries.Clear(); }
     }
     static bool HashValid(string hash) => hash is { Length: 64 } && hash.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
-    string PathFor(string code, string hash) => Path.Combine(folder, "geoip-" + code + "-" + hash + ".srs");
+    string PathFor(string code, string hash) => Path.Combine(folder, "geoip-" + code + "-" + hash + ".cidr");
     bool ValidFile(string code, GeoIpEntry entry)
     {
         string path = PathFor(code, entry.Hash);
@@ -176,7 +149,7 @@ public sealed class GeoIpCache
             {
                 if (missingOnly && next.TryGetValue(code, out var available) && ValidFile(code, available)) continue;
                 Directory.CreateDirectory(folder);
-                string staging = Path.Combine(folder, "download-" + Guid.NewGuid().ToString("N") + ".srs"); temporary.Add(staging);
+                string staging = Path.Combine(folder, "download-" + Guid.NewGuid().ToString("N") + ".cidr"); temporary.Add(staging);
                 byte[] data = await (download == null ? GeoIp.Download(code, ct) : download(code, ct));
                 if (data.Length is < 5 or > GeoIp.MaxBytes) throw new UserError("Неверный размер базы GeoIP.");
                 await File.WriteAllBytesAsync(staging, data, ct); await validate(staging, ct); ct.ThrowIfCancellationRequested();
@@ -213,7 +186,7 @@ public sealed class GeoIpCache
             {
                 if (!Directory.Exists(folder)) return;
                 var keep = entries.SelectMany(item => new[] { PathFor(item.Key, item.Value.Hash), PathFor(item.Key, item.Value.PreviousHash) }).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                foreach (string path in Directory.EnumerateFiles(folder, "geoip-*.srs"))
+                foreach (string path in Directory.EnumerateFiles(folder, "geoip-*.cidr"))
                     if (!keep.Contains(path)) try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
         }

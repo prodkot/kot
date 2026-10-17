@@ -4,7 +4,9 @@
 
 <h1 align="center">Подключился. Занимайся своим.</h1>
 
-<p align="center">Клиент для Windows на базе sing-box с Xray для XHTTP и правил провайдера.<br>Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<p align="center">Экспериментальный Windows-клиент полностью на Xray.<br>Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+
+> Ветка `dev/xray-core`: полный перенос на Xray, предварительный выпуск 0.8.0. [Устройство эксперимента и ограничения](docs/XRAY.md). Кнопки стабильной загрузки ведут на 0.7.3.
 
 <p align="center">
   <a href="https://github.com/prodkot/kot/releases/latest"><img src="https://img.shields.io/github/v/release/prodkot/kot?style=flat-square&amp;color=d5f88c&amp;label=release" alt="Последний релиз"></a>
@@ -116,4 +118,4 @@ docs/           Руководства, примеры и скриншоты
 
 ## Лицензия
 
-Исходный код клиента распространяется по [MIT](LICENSE.txt). У sing-box, Xray, сервисов, шрифтов и других включённых компонентов собственные лицензии: [THIRD-PARTY.txt](THIRD-PARTY.txt).
+Исходный код клиента распространяется по [MIT](LICENSE.txt). У Xray, Wintun, сервисов, шрифтов и других включённых компонентов собственные лицензии: [THIRD-PARTY.txt](THIRD-PARTY.txt).

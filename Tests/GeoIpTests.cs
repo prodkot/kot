@@ -22,7 +22,7 @@ public static class GeoIpTests
         var rules = RoutingProfiles.Parse("{\"version\":1,\"directCountries\":[\"RU\"],\"proxyCountries\":[\"us\"],\"blockCountries\":[\"CN\"]}");
         check(RoutingProfiles.Parse(RoutingProfiles.Serialize(rules)).Countries().SequenceEqual(new[] { "cn", "ru", "us" }), "GeoIP country rules survive JSON export and import");
         var legacy = new Profile(); legacy.Normalize(); check(legacy.GeoIp.RefreshHours == 24 && legacy.RoutingProfiles.Count == 0, "legacy profiles gain daily GeoIP updates without changing routing");
-        byte[] original = Encoding.ASCII.GetBytes("SRS\u0001first"), newer = Encoding.ASCII.GetBytes("SRS\u0001second");
+        byte[] original = Encoding.ASCII.GetBytes("203.0.113.0/24\n2001:db8::/32\n"), newer = Encoding.ASCII.GetBytes("198.51.100.0/24\n2001:db8:1::/48\n");
         Task Validate(string path, CancellationToken ct) { ct.ThrowIfCancellationRequested(); check(File.ReadAllBytes(path).Length > 4, "GeoIP validates the staged file before committing it"); return Task.CompletedTask; }
         var cache = new GeoIpCache(Path.Combine(fixtureFolder, "geoip-cache"));
         Directory.CreateDirectory(Path.Combine(fixtureFolder, "geoip-cache"));
@@ -42,7 +42,7 @@ public static class GeoIpTests
         check(failed && cache.Paths(["ru", "us"]).OrderBy(p => p.Key).SequenceEqual(before.OrderBy(p => p.Key)) && cache.Status(["ru", "us"]).SequenceEqual(oldDates), "GeoIP batch download failure preserves every old country file and success date");
         check(Directory.GetFiles(Path.Combine(fixtureFolder, "geoip-cache"), "download-*").Length == 0, "GeoIP cleans staged downloads after failure");
         failed = false;
-        try { await cache.Update(["ru"], false, (_, _) => throw new UserError("invalid SRS"), CancellationToken.None, (_, _) => Task.FromResult(newer)); }
+        try { await cache.Update(["ru"], false, (_, _) => throw new UserError("invalid CIDR"), CancellationToken.None, (_, _) => Task.FromResult(newer)); }
         catch (UserError) { failed = true; }
         check(failed && File.ReadAllBytes(cache.Paths(["ru"])["ru"]).SequenceEqual(original), "GeoIP validation failure leaves the active database usable");
         using (var cancellation = new CancellationTokenSource())
@@ -59,7 +59,7 @@ public static class GeoIpTests
         check(reloaded.Paths(["ru", "us"])["ru"] == updated, "GeoIP index persists across app restarts with verified hashes");
         changed = await reloaded.Update(["ru"], false, Validate, CancellationToken.None, (_, _) => Task.FromResult(newer));
         check(changed.Length == 0, "GeoIP identical data refreshes the success date without requesting a tunnel restart");
-        await reloaded.Update(["ru"], false, Validate, CancellationToken.None, (_, _) => Task.FromResult(Encoding.ASCII.GetBytes("SRS\u0001third")));
+        await reloaded.Update(["ru"], false, Validate, CancellationToken.None, (_, _) => Task.FromResult(Encoding.ASCII.GetBytes("192.0.2.0/24\n")));
         reloaded.Prune();
         check(!File.Exists(before["ru"]) && File.Exists(updated) && File.Exists(before["us"]), "GeoIP cache cleanup retains the current and previous generation of each country");
         File.WriteAllText(reloaded.Paths(["us"])["us"], "corrupted");
@@ -84,7 +84,7 @@ public static class GeoIpTests
                 "GeoIP fetch uses the fixed official country URL without HWID or authorization headers");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(original) });
         }));
-        check(downloaded.SequenceEqual(original), "GeoIP accepts bounded SRS downloads for core validation");
+        check(downloaded.SequenceEqual(original), "GeoIP accepts bounded IPv4/IPv6 CIDR downloads for core validation");
         using (var cancellation = new CancellationTokenSource(50))
         {
             bool canceled = false;
