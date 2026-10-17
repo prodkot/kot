@@ -56,6 +56,9 @@ public static class XhttpChecks
         int serverPort = Port(); string file = Path.Combine(Path.GetTempPath(), "kot-xhttp-server-" + Guid.NewGuid().ToString("N") + ".json");
         var config = JsonNode.Parse($$$$"""{"log":{"loglevel":"warning"},"inbounds":[{"listen":"127.0.0.1","port":{{{{serverPort}}}},"protocol":"vless","settings":{"clients":[{"id":"{{{{uuid}}}}"}],"decryption":"none"},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/fixture","mode":"auto"}}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""")!;
         config["outbounds"]![0]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["interface"] = PhysicalNetwork.Interface } };
+        config["outbounds"]![0]!["tag"] = "external";
+        config["outbounds"]!.AsArray().Add(new JsonObject { ["protocol"] = "freedom", ["tag"] = "local", ["settings"] = new JsonObject { ["finalRules"] = new JsonArray(new JsonObject { ["action"] = "allow", ["ip"] = new JsonArray("127.0.0.0/8", "::1/128") }) } });
+        config["routing"] = new JsonObject { ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("127.0.0.0/8", "::1/128"), ["outboundTag"] = "local" }) };
         File.WriteAllText(file, config.ToJsonString());
         var node = Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{serverPort}?type=xhttp&path=%2Ffixture&mode=packet-up&security=none#XHTTP");
         Directory.CreateDirectory(Store.Folder);

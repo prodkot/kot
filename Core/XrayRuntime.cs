@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Net;
 namespace Kot.Core;
 
 // The only production runtime builder. Stored node outbounds retain their old
@@ -123,6 +124,10 @@ public static class XrayRuntime
         if (!tun && physicalInterface.Length > 0)
             foreach (var output in outputs.OfType<JsonObject>().Where(o => XrayConfig.IsProxy(o) || o["protocol"]?.ToString() == "freedom"))
             {
+                // A local proxy belongs to the loopback interface. IP_UNICAST_IF
+                // on the physical adapter makes Windows reject that connection.
+                var addresses = Addresses(output).ToArray();
+                if (XrayConfig.IsProxy(output) && addresses.Length > 0 && addresses.All(IsLoopback)) continue;
                 var stream = output["streamSettings"] as JsonObject ?? new(); output["streamSettings"] = stream;
                 var sockopt = stream["sockopt"] as JsonObject ?? new(); stream["sockopt"] = sockopt;
                 if (sockopt["dialerProxy"] == null && output["proxySettings"] == null) sockopt["interface"] = physicalInterface;
@@ -130,6 +135,18 @@ public static class XrayRuntime
         c["log"] = new JsonObject { ["loglevel"] = "warning" };
         c.Remove("remarks"); c.Remove("ps"); c.Remove("meta");
         return c;
+    }
+    static bool IsLoopback(string host) => host.TrimEnd('.').Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || IPAddress.TryParse(host.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address);
+    static IEnumerable<string> Addresses(JsonNode? node)
+    {
+        if (node is JsonObject o)
+            foreach (var pair in o)
+            {
+                if (pair.Key == "address" && pair.Value is JsonValue v && v.TryGetValue<string>(out var host)) yield return host;
+                else foreach (string nested in Addresses(pair.Value)) yield return nested;
+            }
+        else if (node is JsonArray a) foreach (var child in a) foreach (string host in Addresses(child)) yield return host;
     }
     static void Port(int port) { if (port is < 1 or > 65535) throw new UserError("Неверный локальный порт."); }
     static JsonArray Array(IEnumerable<string> values) => new(values.Select(v => (JsonNode?)JsonValue.Create(v)).ToArray());

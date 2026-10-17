@@ -29,6 +29,13 @@ public static class XrayRuntimeTests
             File.WriteAllText(Path.Combine(dir, "transport-" + i++ + ".json"), c.ToJsonString());
         }
         var node = Subscriptions.ParseNode(links[0]);
+        foreach (string host in new[] { "127.0.0.1", "[::1]", "localhost" })
+        {
+            var local = XrayRuntime.Build(Subscriptions.ParseNode($"vless://{uuid}@{host}:19441?security=none"), 19442, physicalInterface: "Ethernet");
+            check(local["outbounds"]!.AsArray().First(o => o?["protocol"]?.ToString() == "vless")!["streamSettings"]?["sockopt"]?["interface"] == null, "temporary native probe preserves loopback dialing: " + host);
+        }
+        var bound = XrayRuntime.Build(Subscriptions.ParseNode(links[1]), 19442, physicalInterface: "Ethernet");
+        check(bound["outbounds"]!.AsArray().First(o => o?["protocol"]?.ToString() == "vless")!["streamSettings"]!["sockopt"]!["interface"]!.ToString() == "Ethernet", "temporary native probe keeps remote transports outside the active TUN");
         var tun = XrayRuntime.Build(node, 19442, true);
         check(tun["inbounds"]!.AsArray().Single(o => o?["protocol"]?.ToString() == "tun")!["settings"]!["autoOutboundsInterface"]!.ToString() == "auto", "native TUN installs both routes with physical socket binding");
         File.WriteAllText(Path.Combine(dir, "tun.json"), tun.ToJsonString());
