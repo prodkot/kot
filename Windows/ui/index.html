@@ -124,7 +124,7 @@ body.revealing .main,body.revealing .sidebar{will-change:filter,opacity,transfor
 </defs></svg>
 
 <div class="app">
-  <header class="titlebar"><div class="title-brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span><span id="titleVersion" aria-label="Версия приложения">0.7.2</span></div><div class="chrome"><button data-window="minimize" aria-label="Свернуть"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button><button data-window="maximize" aria-label="Развернуть"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button><button data-window="close" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2l-8 8"/></svg></button></div></header>
+  <header class="titlebar"><div class="title-brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span><span id="titleVersion" aria-label="Версия приложения">0.7.3</span></div><div class="chrome"><button data-window="minimize" aria-label="Свернуть"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button><button data-window="maximize" aria-label="Развернуть"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button><button data-window="close" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2l-8 8"/></svg></button></div></header>
   <aside class="sidebar" inert>
     <div class="brand"><button class="wordmark" id="brandButton" type="button" aria-label="kot.">kot<span aria-hidden="true">.</span></button></div>
     <nav class="nav" aria-label="Навигация">
@@ -245,7 +245,7 @@ body.revealing .main,body.revealing .sidebar{will-change:filter,opacity,transfor
   <h2 id="addTitle">Добавить серверы</h2>
   <form id="addForm">
     <label for="profileName">Название</label><input id="profileName" placeholder="Моя подписка" maxlength="60" autocomplete="off">
-    <label for="profileLink">HTTPS-подписка, ссылка на сервер или Clash YAML</label><textarea id="profileLink" rows="3" maxlength="131072" placeholder="https://…" autocomplete="off" spellcheck="false"></textarea><div class="import-actions"><button class="quiet-button" id="importServersFile" type="button">Из файла</button><button class="quiet-button" id="readQrFile" type="button">QR из картинки</button><button class="quiet-button" id="readQrClipboard" type="button">QR из буфера</button></div>
+    <label for="profileLink">HTTPS-подписка, сервер, Clash YAML или Xray JSON</label><textarea id="profileLink" rows="3" maxlength="131072" placeholder="https://…" autocomplete="off" spellcheck="false"></textarea><div class="import-actions"><button class="quiet-button" id="importServersFile" type="button">Из файла</button><button class="quiet-button" id="readQrFile" type="button">QR из картинки</button><button class="quiet-button" id="readQrClipboard" type="button">QR из буфера</button></div>
     <p class="dialog-note" id="replaceNote" hidden>Добавит отдельную подписку. Совпадающая ссылка обновит существующую.</p><p class="dialog-error" id="addError" role="alert"></p>
     <div class="dialog-actions"><button class="quiet-button" type="button" id="cancelAdd">Отмена</button><button class="primary" type="submit">Добавить</button></div>
   </form>
@@ -260,7 +260,7 @@ body.revealing .main,body.revealing .sidebar{will-change:filter,opacity,transfor
 <div class="dialog-actions"><button class="quiet-button" id="diagnostics">Скопировать полный лог</button><button class="primary" id="saveRules">Сохранить</button></div>
 <div class="advanced-footer"><button class="settings-link" id="removeSubscription">Удалить подписку</button><button class="settings-link" id="closeAdvanced">Закрыть</button></div>
 <div class="compact-links"><button class="settings-link" id="backupButton">Резервная копия</button></div><p id="backgroundError" class="background-error" hidden></p>
-<p class="dialog-note" id="version">kot. 0.7.2 · sing-box 1.14.2</p></div>
+<p class="dialog-note" id="version">kot. 0.7.3 · sing-box 1.14.2</p></div>
 <section class="device-dialog" id="deviceDialog" aria-labelledby="deviceTitle" hidden>
 <h3 id="deviceTitle" class="sr-only">Устройство и HWID</h3>
 <div class="setting-row"><span>Передавать HWID</span><button class="switch" role="switch" aria-checked="true" aria-label="Передавать HWID" data-setting="sendHwid"></button></div>

@@ -26,16 +26,37 @@ public static class Configuration
         options.Validate();
         if (nodes.Count == 0) throw new UserError("Нет серверов для автоматического выбора.");
         var config = Build(nodes[0], port, smart, bypass, tun, xhttp);
-        var outputs = new JsonArray(); var tags = new JsonArray();
+        var outputs = new JsonArray(); var tags = new JsonArray(); var healthTags = new JsonArray();
         foreach (var node in nodes)
         {
             NodeSecurity.Validate(node);
             var outbound = Xhttp.SingBoxOutbound(node, xhttp); string tag = "node-" + node.Id;
             outbound["tag"] = tag; outputs.Add(outbound); tags.Add(tag);
+            if (node.FullConfig != null && xhttp != null && xhttp[node.Id].HealthPort > 0)
+            {
+                var health = (JsonObject)outbound.DeepClone(); health["tag"] = "health-" + node.Id; health["server_port"] = xhttp[node.Id].HealthPort;
+                outputs.Add(health); healthTags.Add("health-" + node.Id);
+            }
+            else healthTags.Add(tag);
         }
         outputs.Add(new JsonObject { ["type"] = "urltest", ["tag"] = "proxy", ["outbounds"] = tags,
             ["url"] = "https://www.gstatic.com/generate_204", ["interval"] = options.AutoMinutes + "m", ["tolerance"] = options.AutoToleranceMs, ["interrupt_exist_connections"] = false });
         outputs.Add(new JsonObject { ["type"] = "direct", ["tag"] = "direct" }); config["outbounds"] = outputs;
+        if (nodes.Any(n => n.FullConfig != null))
+        {
+            // Probe through the isolated proxy-only bridges, then synchronize the
+            // traffic selector with that result through the authenticated API.
+            outputs.RemoveAt(outputs.Count - 2);
+            outputs.Add(new JsonObject { ["type"] = "selector", ["tag"] = "proxy", ["outbounds"] = tags.DeepClone(), ["default"] = tags[0]!.DeepClone() });
+            outputs.Add(new JsonObject { ["type"] = "urltest", ["tag"] = "health-proxy", ["outbounds"] = healthTags, ["url"] = "https://www.gstatic.com/generate_204", ["interval"] = options.AutoMinutes + "m", ["tolerance"] = options.AutoToleranceMs });
+            config["route"]!["rules"]![2]!["outbound"] = "health-proxy";
+            if (!((JsonArray)config["dns"]!["servers"]!).Any(s => s?["tag"]?.ToString() == "provider"))
+            {
+                ((JsonArray)config["dns"]!["servers"]!).Add(new JsonObject { ["type"] = "tcp", ["tag"] = "provider", ["server"] = "1.1.1.1", ["server_port"] = 53, ["detour"] = "proxy" });
+                ((JsonArray)config["dns"]!["rules"]!).Insert(0, new JsonObject { ["inbound"] = new JsonArray("health-in"), ["action"] = "route", ["server"] = "remote" });
+                config["dns"]!["final"] = "provider";
+            }
+        }
         if (apiPort > 0) Controller(config, apiPort, apiSecret);
         return config;
     }
@@ -56,6 +77,15 @@ public static class Configuration
         {
             var routing = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile) ?? throw new UserError("Профиль маршрутизации уже удалён.");
             routing.Validate(); ApplyRouting(config, routing.Rules, geoIpPaths);
+            if (((JsonArray)config["outbounds"]!).Any(o => o?["tag"]?.ToString() == "health-proxy"))
+            {
+                // An explicitly selected local profile replaces provider routing, including forced proxy rules.
+                foreach (var rule in ((JsonArray)config["route"]!["rules"]!).OfType<JsonObject>())
+                    if (rule["outbound"]?.ToString() == "proxy") rule["outbound"] = "health-proxy";
+                if (config["route"]!["final"]?.ToString() == "proxy") config["route"]!["final"] = "health-proxy";
+                foreach (var server in ((JsonArray)config["dns"]!["servers"]!).OfType<JsonObject>())
+                    if (server["detour"]?.ToString() == "proxy") server["detour"] = "health-proxy";
+            }
         }
         if (Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses))
         {
@@ -147,7 +177,7 @@ public static class Configuration
             routeRules.Add(new JsonObject { ["domain_suffix"] = JsonSerializer.SerializeToNode(bypass), ["action"] = "route", ["outbound"] = "direct" });
             dnsRules.Add(new JsonObject { ["domain_suffix"] = JsonSerializer.SerializeToNode(bypass), ["action"] = "route", ["server"] = "bootstrap" });
         }
-        return new JsonObject
+        var config = new JsonObject
         {
             ["log"] = new JsonObject { ["level"] = "info", ["timestamp"] = false },
             ["dns"] = new JsonObject { ["servers"] = new JsonArray(Dns("bootstrap"), Dns("remote", "proxy")), ["rules"] = dnsRules, ["final"] = "remote", ["strategy"] = "prefer_ipv4" },
@@ -155,5 +185,19 @@ public static class Configuration
             ["outbounds"] = new JsonArray(Xhttp.SingBoxOutbound(node, xhttp), new JsonObject { ["type"] = "direct", ["tag"] = "direct" }),
             ["route"] = new JsonObject { ["rules"] = routeRules, ["final"] = "proxy", ["auto_detect_interface"] = true, ["default_domain_resolver"] = "bootstrap" }
         };
+        if (node.FullConfig != null && xhttp != null && xhttp.TryGetValue(node.Id, out var bridge))
+        {
+            if (bridge.HealthPort > 0)
+            {
+                var health = Xhttp.SingBoxOutbound(node, xhttp); health["tag"] = "health-proxy"; health["server_port"] = bridge.HealthPort;
+                ((JsonArray)config["outbounds"]!).Add(health); routeRules[2]!["outbound"] = "health-proxy";
+            }
+            // Send DNS over the selected authenticated bridge. Xray consumes
+            // port 53 locally, using its own provider DNS. Auto follows the same selector.
+            ((JsonArray)config["dns"]!["servers"]!).Add(new JsonObject { ["type"] = "tcp", ["tag"] = "provider", ["server"] = "1.1.1.1", ["server_port"] = 53, ["detour"] = "proxy" });
+            dnsRules.Insert(0, new JsonObject { ["inbound"] = new JsonArray("health-in"), ["action"] = "route", ["server"] = "remote" });
+            config["dns"]!["final"] = "provider";
+        }
+        return config;
     }
 }

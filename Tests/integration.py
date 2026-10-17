@@ -66,3 +66,4 @@ finally:
 
 # The same integration entry point also verifies the XHTTP transport matrix.
 subprocess.run([sys.executable, str(ROOT/'Tests/xhttp_integration.py'), '--core', str(core)], check=True, timeout=300)
+subprocess.run([sys.executable, str(ROOT/'Tests/provider_integration.py'), '--core', str(core)], check=True, timeout=90)

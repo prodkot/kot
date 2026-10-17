@@ -42,7 +42,7 @@ public sealed class NativeCore : IDisposable
         }
     }
     public NativeCore(string exe, string config, Action<string>? report = null) : this(exe, ["run", "-c", config], Path.GetDirectoryName(exe)!, "kot. VPN core", report) { }
-    public NativeCore(string exe, IEnumerable<string> arguments, string workingDirectory, string title, Action<string>? report = null)
+    public NativeCore(string exe, IEnumerable<string> arguments, string workingDirectory, string title, Action<string>? report = null, string? assetDirectory = null)
     {
         this.report = report;
         // Keep temporary inheritable client pipe handles out of other concurrent core launches.
@@ -67,7 +67,19 @@ public sealed class NativeCore : IDisposable
                 };
                 // Paths are quoted and contain no user-supplied command text.
                 report?.Invoke("CreateProcess suspended");
-                if (!CreateProcess(exe, new StringBuilder(WindowsArguments.Command(exe, arguments)), IntPtr.Zero, IntPtr.Zero, true, 0x10 | 0x4, IntPtr.Zero, workingDirectory, ref si, out var pi)) throw new Win32Exception();
+                IntPtr environment = IntPtr.Zero; ProcessInformation pi;
+                try
+                {
+                    if (assetDirectory != null)
+                    {
+                        var entries = Environment.GetEnvironmentVariables().Cast<System.Collections.DictionaryEntry>()
+                            .Where(e => !string.Equals(e.Key.ToString(), "XRAY_LOCATION_ASSET", StringComparison.OrdinalIgnoreCase) && !string.Equals(e.Key.ToString(), "xray.location.asset", StringComparison.OrdinalIgnoreCase))
+                            .Select(e => e.Key + "=" + e.Value).Append("XRAY_LOCATION_ASSET=" + Path.GetFullPath(assetDirectory)).Order(StringComparer.OrdinalIgnoreCase);
+                        environment = Marshal.StringToHGlobalUni(string.Join('\0', entries) + "\0\0");
+                    }
+                    if (!CreateProcess(exe, new StringBuilder(WindowsArguments.Command(exe, arguments)), IntPtr.Zero, IntPtr.Zero, true, 0x10 | 0x4 | (environment == IntPtr.Zero ? 0u : 0x400u), environment, workingDirectory, ref si, out pi)) throw new Win32Exception();
+                }
+                finally { if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment); }
                 processHandle = new SafeProcessHandle(pi.hProcess, ownsHandle: true);
                 try
                 {

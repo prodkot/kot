@@ -86,7 +86,7 @@ public sealed class Profile
                 throw new UserError("Некорректная резервная копия подписок.");
             foreach (var node in s.Nodes)
             {
-                if (node.Outbound == null || node.Name == null || node.Name.Length > 512 || node.Id == null || node.Id.Length != 64 || node.Id.Any(c => !Uri.IsHexDigit(c)) || node.Protocol is not ("vless" or "vmess" or "trojan" or "shadowsocks" or "hysteria2") || node.Outbound["type"]?.ToString() != node.Protocol)
+                if (node.Outbound == null || node.Name == null || node.Name.Length > 512 || node.Id == null || node.Id.Length != 64 || node.Id.Any(c => !Uri.IsHexDigit(c)) || node.Protocol is not ("vless" or "vmess" or "trojan" or "shadowsocks" or "hysteria2" or "xray") || node.Outbound["type"]?.ToString() != node.Protocol)
                     throw new UserError("Неподдерживаемый сервер в резервной копии.");
                 RejectFiles(node.Outbound);
                 NodeSecurity.Validate(node);

@@ -13,6 +13,8 @@ void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.W
 Kot.Tests.LogTests.Run(Check);
 Kot.Tests.LoopbackPortTests.Run(Check);
 Kot.Tests.XhttpTests.Run(Check);
+await Kot.Tests.ProviderRoutingTests.Run(Check);
+if (args.Contains("--provider")) return;
 Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);
 var a = Subscriptions.Parse(vless + "\r\n" + vless + "\nvless://broken@example.com:443\n");

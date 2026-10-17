@@ -148,7 +148,7 @@ public sealed partial class MainWindow : WindowChrome
     object Model() => new
     {
         name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
-        nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, ping = ping.Get(n.Id), code = n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
+        nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, providerRouting = n.FullConfig != null, ping = ping.Get(n.Id), code = n.Protocol == "xray" ? "XR" : n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
         services = services.Model(visiblePage == "services"), telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,

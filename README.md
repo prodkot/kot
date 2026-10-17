@@ -4,7 +4,7 @@
 
 <h1 align="center">Подключился. Занимайся своим.</h1>
 
-<p align="center">Клиент для Windows на базе sing-box с Xray для XHTTP.<br>Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<p align="center">Клиент для Windows на базе sing-box с Xray для XHTTP и правил провайдера.<br>Твои подписки, серверы и правила маршрутизации в одном окне.</p>
 
 <p align="center">
   <a href="https://github.com/prodkot/kot/releases/latest"><img src="https://img.shields.io/github/v/release/prodkot/kot?style=flat-square&amp;color=d5f88c&amp;label=release" alt="Последний релиз"></a>
@@ -53,7 +53,7 @@
 | Сервисы | Управление zapret и Telegram-прокси, подбор стратегий и история проверок |
 | Профиль и обновления | Обновление клиента после подтверждения, резервные копии с паролем и восстановление повреждённого профиля |
 
-Поддерживаются **VLESS, VMess, Trojan, Shadowsocks и Hysteria2**, а также [XHTTP для VLESS, VMess и Trojan](docs/XHTTP.md). Лимит трафика и срок подписки отображаются, если провайдер передал эти данные. Из Clash YAML импортируются серверы; правила и удалённые `proxy-providers` не импортируются.
+Поддерживаются **VLESS, VMess, Trojan, Shadowsocks и Hysteria2**, а также [XHTTP для VLESS, VMess и Trojan](docs/XHTTP.md). Лимит трафика и срок подписки отображаются, если провайдер передал эти данные. [Правила провайдера](docs/ROUTING.md#правила-провайдера-из-подписки) из `routing` / `autorouting` и полные клиентские Xray JSON применяются вместе с подпиской. Из Clash YAML импортируются серверы; правила и удалённые `proxy-providers` не импортируются.
 
 <details>
 <summary><strong>Посмотреть серверы и статистику</strong></summary>

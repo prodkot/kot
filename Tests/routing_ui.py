@@ -19,6 +19,7 @@ const snapshot=()=>{
 };
 window.routingRequests=[];
 window.fixtureSnapshot=()=>snapshot();
+window.fixtureProvider=()=>{model.nodes=[{id:'provider',name:'Provider',protocol:'vless',providerRouting:true}];model.selected='provider';model.routing.active='';snapshot();};
 window.fixtureProfiles=()=>structuredClone(model.routing);
 window.fixtureGeoIp=()=>structuredClone(model.geoIp);
 window.chrome={webview:{addEventListener:(_,cb)=>callback=cb,postMessage:msg=>setTimeout(()=>{
@@ -220,6 +221,14 @@ with sync_playwright() as p:
         page.locator('[data-page=settings]').click()
         page.locator('#routingButton').click()
         expect(page.locator('#routingName')).to_have_value('Работа')
+        page.locator('#closeRouting').click()
+        page.evaluate('fixtureProvider()')
+        expect(page.locator('#routingSummary')).to_have_text('Маршрут: правила подписки')
+        page.locator('#routingButton').click()
+        expect(page.locator('#routingActive option').first).to_have_text('Правила подписки')
+        page.locator('#closeRouting').click()
+        page.locator('[data-page=servers]').click()
+        expect(page.locator('.qr-node')).to_be_disabled()
         assert not errors, errors
         print('PASS routing UI: profiles, country rules, GeoIP updates/rollback/intervals, keyboard tabs, snapshots, errors, import/export, removal and responsive themes')
     finally:
