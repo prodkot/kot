@@ -239,7 +239,7 @@ static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
             RECT tick{Scale(1),(bounds.bottom-Scale(16))/2,Scale(17),(bounds.bottom+Scale(16))/2};
             COLORREF fill=Mix(Mix(surface,RGB(40,45,46),hoverAmount),Mix(accent,RGB(190,224,119),pressAmount),checkAmount);
             Box(dc,tick,fill,Mix(line,accent,checkAmount),4);
-            if(checked) Check(dc,5,(bounds.bottom/Scale(1)-16)/2+3,ink);
+            if(checked) Check(dc,5,(MulDiv(bounds.bottom,96,dpi)-16)/2+3,ink);
             bounds.left=Scale(28); DrawTextIn(dc,caption.c_str(),bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         }
     } else {

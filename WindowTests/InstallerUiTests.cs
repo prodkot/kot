@@ -27,6 +27,8 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, int flags);
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr window,IntPtr rect,IntPtr region,uint flags);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
     [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool ReadSystemFlag(uint action,uint parameter,out bool value,uint flags);
     [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool SetSystemFlag(uint action,uint parameter,IntPtr value,uint flags);
     static bool Button(IntPtr window) { var name=new StringBuilder(64); GetClassName(window,name,name.Capacity); return name.ToString()=="Button"; }
@@ -79,16 +81,13 @@ static class InstallerUiTests
     }
     static Bitmap ButtonImage(IntPtr button)
     {
-        GetClientRect(button,out var bounds);
-        var bitmap=new Bitmap(bounds.Right,bounds.Bottom);
-        bool captured;
-        using(var graphics=Graphics.FromImage(bitmap))
-        {
-            var dc=graphics.GetHdc();
-            try { captured=PrintWindow(button,dc,1); }
-            finally { graphics.ReleaseHdc(dc); }
-        }
-        if(!captured) { bitmap.Dispose(); throw new Exception("Button capture failed"); }
+        // PrintWindow is not reliable for another process's child HWND.
+        // Capture the composited desktop so the assertion sees real frames.
+        RedrawWindow(button,IntPtr.Zero,IntPtr.Zero,0x101);
+        DwmFlush();
+        GetWindowRect(button,out var bounds);
+        var bitmap=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
+        using(var graphics=Graphics.FromImage(bitmap)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,bitmap.Size);
         return bitmap;
     }
     static void MotionPreference(IntPtr window,bool enabled)
@@ -100,6 +99,7 @@ static class InstallerUiTests
     }
     static void MotionStates(IntPtr window,string folder,Action<bool,string> check)
     {
+        SetForegroundWindow(window);
         var next=GetDlgItem(window,1);
         SendMessage(window,0x28,next,(IntPtr)1);
         SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
