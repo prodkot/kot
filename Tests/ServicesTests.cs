@@ -23,6 +23,9 @@ public static class ServicesTests
             check(c.GetProperty("secret").GetString() == options.Telegram.Secret && options.Telegram.Link.EndsWith("secret=dd" + options.Telegram.Secret), "MTProto link matches official dd-secret format");
         }
         foreach (int port in new[] {0,443,65536}) Reject(() => new TelegramProxyOptions { Port=port }.Validate(), "invalid Telegram port " + port);
+        using (var cfg = JsonDocument.Parse(new TelegramProxyOptions { Domains = "ПРИМЕР.РФ\n \n", WorkerDomains = "пример.рф" }.ServiceConfig()))
+            check(cfg.RootElement.GetProperty("cfproxy_user_domain")[0].GetString() == "xn--e1afmkfd.xn--p1ai"
+                && cfg.RootElement.GetProperty("cfproxy_worker_domain")[0].GetString() == "xn--e1afmkfd.xn--p1ai", "Telegram service receives canonical IDN domains without blank entries");
         foreach (string dc in new[] {"not-a-dc", "0:149.154.167.220", "2:127.0.0.1", "2:0.0.0.0"}) Reject(() => new TelegramProxyOptions { DcIp=dc }.Validate(), "invalid Telegram DC rejected " + dc);
         Reject(() => new TelegramProxyOptions { Secret="123" }.Validate(), "short MTProto secret rejected");
         Reject(() => new TelegramProxyOptions { Domains="https://evil.example/path" }.Validate(), "worker/domain settings reject URLs");

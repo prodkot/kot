@@ -8,6 +8,12 @@ public static class ProductTests
     {
         var old = JsonSerializer.Deserialize<Profile>("{\"Mode\":\"smart\",\"Bypass\":[\"example.org\"]}")!;
         old.Normalize(); check(old.ConnectionMode == "tun" && old.Mode == "smart", "legacy routing profile remains in TUN with saved rules");
+        old.Bypass = [".EXAMPLE.org", "example.org"];
+        old.Normalize(); check(old.Bypass.SequenceEqual(new[] { "example.org" }), "loading a legacy bypass list retains its normalized domain suffixes");
+        old.Bypass = [".РФ", ".xn--p1ai", "ПРИМЕР.РФ"];
+        old.Validate();
+        var legacyRestored = Backup.Import(Backup.Export(old, "legacy-idn-password"), "legacy-idn-password");
+        check(legacyRestored.Bypass.SequenceEqual(new[] { "xn--p1ai", "xn--e1afmkfd.xn--p1ai" }), "encrypted backup preserves normalized legacy IDN bypass rules");
         var connection = new Profile { Nodes = [node], Selected = node.Id, Mode = "smart", Bypass = ["example.org"] };
         var tunConfig = Configuration.BuildConnection(connection, 18730);
         check(tunConfig["inbounds"]!.AsArray().Any(i => i!["type"]!.ToString() == "tun"), "TUN mode has virtual network ingress");

@@ -66,7 +66,7 @@ with sync_playwright() as p:
         page.locator('#routingNew').click()
         page.locator('#routingName').fill('Работа')
         page.locator('#routingDefault').select_option('direct')
-        page.locator('#routingDirectDomains').fill('bank.example\nmail.example')
+        page.locator('#routingDirectDomains').fill('.ru\n.рф\nпример.рф\n \n')
         page.locator('#routingProxyDomains').fill('youtube.com; wikipedia.org')
         page.locator('#routingBlockDomains').fill('ads.example')
         page.locator('#routingTabDomains').press('ArrowRight')
@@ -98,6 +98,7 @@ with sync_playwright() as p:
         expect(page.locator('#routingActive')).to_have_value('route1')
         requests = page.evaluate("routingRequests.filter(r=>r.action==='routingSave')")
         assert len(requests) == 1
+        assert requests[0]['data']['rules']['directDomains'] == ['.ru', '.рф', 'пример.рф']
         assert requests[0]['data']['rules']['proxyApps'] == ['chrome.exe', 'telegram.exe']
         assert requests[0]['data']['rules']['proxyDomains'] == ['youtube.com', 'wikipedia.org']
         assert requests[0]['data']['rules']['proxyIps'] == ['203.0.113.0/24']
