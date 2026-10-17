@@ -7,10 +7,11 @@ namespace Kot.Windows;
 public sealed class Tunnel
 {
     NativeCore? core;
-    XraySession? xray;
-    public bool UsesXhttp => xray != null;
+    public bool HasCore => core != null;
     CancellationTokenSource? attempt;
     bool cancelled;
+    bool usesTun;
+    int stopGeneration;
     static readonly string[] DefaultHealthTargets = ["https://www.gstatic.com/generate_204", "https://www.cloudflare.com/cdn-cgi/trace"];
     readonly string[] healthTargets;
     readonly TimeSpan healthTimeout;
@@ -29,52 +30,72 @@ public sealed class Tunnel
     bool statisticsStarted;
     int apiPort;
     string apiSecret = "";
-    bool providerAutomatic;
+    Profile? automaticProfile;
+    long lastAutomatic;
+    string preferredNode = "";
     public string AutomaticNode { get; private set; } = "";
     public async Task<bool> Probe(CancellationToken ct)
     {
-        int port = ProxyPort; if (State != "connected" || port == 0) return false;
-        if (providerAutomatic && !await ReadAutomaticNode(ct)) return false;
+        int port = ProxyPort, session = Session; bool tun = usesTun;
+        if (State != "connected" || port == 0) return false;
         using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
         {
-            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode) return true; }
+            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelDns.Probe(target, ct))) return State == "connected" && Session == session; }
             catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException && !ct.IsCancellationRequested) { AppLog.Write("health", e.GetType().Name); }
         }
         return false;
     }
     public async Task<bool> ReadAutomaticNode(CancellationToken ct)
     {
-        int port = apiPort, session = Session; string secret = apiSecret;
-        if (port == 0 || State is not ("connected" or "connecting")) return false;
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(2));
-        using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false };
-        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/proxies/{(providerAutomatic ? "health-proxy" : "proxy")}");
-        request.Headers.Authorization = new("Bearer", secret);
+        var profile = automaticProfile;
+        if (profile == null || State != "connected") return false;
+        if (MonotonicMilliseconds - lastAutomatic < profile.Automation.AutoMinutes * 60000L) return true;
+        int generation = stopGeneration;
+        int session = Session; lastAutomatic = MonotonicMilliseconds;
+        string selected = await SelectAutomatic(profile, ct);
+        if (Session != session || State != "connected") return false;
+        if (selected != AutomaticNode)
+        {
+            preferredNode = selected;
+            await Stop();
+            if (!ct.IsCancellationRequested && stopGeneration == generation + 1) await Connect(profile);
+        }
+        return State == "connected";
+    }
+    async Task<string> SelectAutomatic(Profile profile, CancellationToken ct)
+    {
+        var nodes = Xhttp.ConnectionNodes(profile);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct); budget.CancelAfter(TimeSpan.FromSeconds(20));
+        var results = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
         try
         {
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-            response.EnsureSuccessStatusCode();
-            string json = await BoundedBody.ReadUtf8(response.Content, 65536, deadline.Token);
-            using var doc = JsonDocument.Parse(json);
-            string selected = doc.RootElement.TryGetProperty("now", out var value) ? value.GetString() ?? "" : "";
-            if (Session != session || State is not ("connected" or "connecting")) return false;
-            string selection = selected.StartsWith("health-") ? selected[7..] : selected.StartsWith("node-") ? selected[5..] : "";
-            if (providerAutomatic)
+            await Parallel.ForEachAsync(nodes.OrderBy(n => n.Id == AutomaticNode ? 0 : 1), new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = budget.Token }, async (node, token) =>
             {
-                if (selection.Length != 64 || !selection.All(Uri.IsHexDigit)) return false;
-                using var update = new HttpRequestMessage(HttpMethod.Put, $"http://127.0.0.1:{port}/proxies/proxy") { Content = new StringContent(JsonSerializer.Serialize(new { name = "node-" + selection }), System.Text.Encoding.UTF8, "application/json") };
-                update.Headers.Authorization = new("Bearer", secret);
-                using var applied = await client.SendAsync(update, deadline.Token); applied.EnsureSuccessStatusCode();
-            }
-            AutomaticNode = selection;
-            return true;
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(6));
+                try
+                {
+                    await using var probe = await ProbeCore.Start(node, deadline.Token);
+                    results[node.Id] = await Latency.Http(healthTargets[0], probe.Port, 4000, deadline.Token);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException) { AppLog.Write("auto", node.Id + ": " + ex.GetType().Name); }
+            });
         }
-        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or UserError) { AppLog.Write("auto", "selection read: " + e.GetType().Name); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
         ct.ThrowIfCancellationRequested();
-        return false;
+        string fallback = nodes.Any(n => n.Id == AutomaticNode) ? AutomaticNode : nodes[0].Id;
+        var best = results.OrderBy(p => p.Value).FirstOrDefault();
+        if (best.Key == null) return fallback;
+        return results.TryGetValue(AutomaticNode, out int current) && current <= best.Value + profile.Automation.AutoToleranceMs ? AutomaticNode : best.Key;
+    }
+    async Task<string> ReadMetrics(int port, string secret, CancellationToken ct)
+    {
+        using var handler = new HttpClientHandler { UseProxy = true, Proxy = new WebProxy("http://127.0.0.1:" + port) { Credentials = new NetworkCredential("kot", secret) }, AllowAutoRedirect = false, UseCookies = false };
+        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+        using var response = await client.GetAsync("http://kot-metrics.internal/debug/vars", HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+        return await BoundedBody.ReadUtf8(response.Content, 2 * 1024 * 1024, ct);
     }
     public Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct) => ReadConnections(ct, false);
     async Task<ConnectionSnapshot?> ReadConnections(CancellationToken ct, bool closing)
@@ -83,22 +104,13 @@ public sealed class Tunnel
         bool CanRead() => State == "connected" || closing && State == "disconnecting";
         if (port == 0 || !CanRead()) return null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(2));
-        using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false };
-        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/connections");
-        request.Headers.Authorization = new("Bearer", secret);
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-        response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength > 2 * 1024 * 1024) throw new UserError("Слишком большой ответ локального API.");
-        using var body = await response.Content.ReadAsStreamAsync(deadline.Token); using var buffer = new MemoryStream(); byte[] block = new byte[16384];
-        while (true) { int read = await body.ReadAsync(block, deadline.Token); if (read == 0) break; if (buffer.Length + read > 2 * 1024 * 1024) throw new UserError("Слишком большой ответ локального API."); await buffer.WriteAsync(block.AsMemory(0, read), deadline.Token); }
-        var value = ConnectionSnapshot.Parse(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
+        var value = ConnectionSnapshot.ParseXray(await ReadMetrics(port, secret, deadline.Token));
         return Session == session && CanRead() ? value : null;
     }
     static int ReservePort() { using var reserved = LoopbackPort.Reserve(); return reserved.Port; }
     public event Action? Changed;
     readonly string path = Path.Combine(Store.Folder, "runtime.json");
-    string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe");
+    string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
     public Tunnel() : this(DefaultHealthTargets, TimeSpan.FromSeconds(30)) { }
     internal Tunnel(string[] targets, TimeSpan timeout)
     {
@@ -106,7 +118,7 @@ public sealed class Tunnel
         try { File.Delete(path); } catch { }
     }
     void Set(string state, string error = "") { AppLog.Write("tunnel", "state=" + state + (error.Length > 0 ? "; " + error : "")); State = state; Error = error; Changed?.Invoke(); }
-    public void Cancel() { cancelled = true; attempt?.Cancel(); }
+    public void Cancel() { Interlocked.Increment(ref stopGeneration); cancelled = true; attempt?.Cancel(); }
     public async Task Toggle(Profile profile)
     {
         if (State != "idle") { await Stop(); return; }
@@ -124,13 +136,14 @@ public sealed class Tunnel
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
+            PhysicalNetwork.Capture();
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
             cancelled = false; attempt = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var ct = attempt.Token;
             Set("connecting");
             await ProviderAssets.Prepare(Xhttp.ConnectionNodes(profile), ct);
-            if (profile.KillSwitch) KillSwitch.Arm(xhttp: Xhttp.ConnectionNodes(profile).Any(Xhttp.Uses)); else if (KillSwitch.Active) KillSwitch.Release();
             string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
             await GeoIpStore.Update(countries, true, ct);
+            if (profile.KillSwitch) KillSwitch.Arm(); else if (KillSwitch.Active) KillSwitch.Release();
             ct.ThrowIfCancellationRequested();
             using var portReservation = LoopbackPort.Reserve(ct);
             int port = portReservation.Port;
@@ -139,72 +152,71 @@ public sealed class Tunnel
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
-            xray = await XraySession.Start(Xhttp.ConnectionNodes(profile), ct, null, port, apiPort, systemPort);
-            providerAutomatic = automatic && Xhttp.ConnectionNodes(profile).Any(n => n.FullConfig != null);
-            var config = Configuration.BuildConnection(profile, port, systemPort, apiPort, apiSecret, GeoIpStore.Cache.Paths(countries), xray?.Bridges, xray?.Egress);
-            ProxyPort = port; AutomaticNode = "";
+            automaticProfile = automatic ? profile : null;
+            if (automatic)
+            {
+                string selected = preferredNode.Length > 0 ? preferredNode : await SelectAutomatic(profile, ct);
+                preferredNode = "";
+                node = profile.Nodes.FirstOrDefault(n => n.Id == selected) ?? node;
+            }
+            activeNode = node; lastAutomatic = MonotonicMilliseconds;
+            var routing = profile.ActiveRoutingProfile.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules ?? throw new UserError("Профиль маршрутизации удалён.");
+            var config = XrayRuntime.Build(node, port, profile.ConnectionMode == "tun", systemPort, apiPort, apiSecret,
+                profile.Mode == "smart", profile.Bypass, routing, GeoIpStore.Cache.Paths(countries));
+            usesTun = profile.ConnectionMode == "tun";
+            ProxyPort = port; AutomaticNode = automatic ? node.Id : "";
             Directory.CreateDirectory(Store.Folder);
             File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-            // Validate against the bundled version before touching the network.
-            var psi = new ProcessStartInfo(CoreExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true, WorkingDirectory = Path.GetDirectoryName(CoreExe)! };
-            psi.ArgumentList.Add("check"); psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(path);
-            AppLog.Write("tunnel", "sing-box check: starting");
-            using (var check = Process.Start(psi) ?? throw new UserError("Не удалось запустить sing-box."))
-            {
-                var stderr = check.StandardError.ReadToEndAsync(ct); var stdout = check.StandardOutput.ReadToEndAsync(ct);
-                try { await check.WaitForExitAsync(ct).WaitAsync(TimeSpan.FromSeconds(10), ct); }
-                catch { if (!check.HasExited) check.Kill(true); throw; }
-                await Task.WhenAll(stderr, stdout);
-                AppLog.Write("check", "exit=" + check.ExitCode + "\n" + stderr.Result + "\n" + stdout.Result);
-                if (check.ExitCode != 0)
-                {
-                    CoreExitCode = check.ExitCode;
-                    CoreDetails = CoreDiagnostics.Tail(Clean(stderr.Result + "\n" + stdout.Result));
-                    throw new UserError($"sing-box не принял конфигурацию (код {check.ExitCode}).\n" + CoreDiagnostics.Summary(CoreDetails));
-                }
-            }
+            await XraySession.Check(CoreExe, path, ProviderAssets.Cache.DirectoryFor(node), Clean, ct);
             ct.ThrowIfCancellationRequested();
-            AppLog.Write("tunnel", "sing-box run: starting");
             portReservation.Dispose();
-            core = new NativeCore(CoreExe, path, text => AppLog.Write("tunnel-core", text));
+            core = new NativeCore(CoreExe, ["run", "-c", path], Path.GetDirectoryName(CoreExe)!, "kot. Xray", text => AppLog.Write("tunnel-core", text), ProviderAssets.Cache.DirectoryFor(node));
             AppLog.Write("tunnel", "waiting for proxy health");
             using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            bool healthy = false; int healthIndex = 0;
+            bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
             while (!healthDeadline.IsCancellationRequested)
             {
                 ct.ThrowIfCancellationRequested();
-                if (xray != null) await xray.EnsureRunning();
                 if (core.HasExited) throw new UserError(await ExitReason(core));
                 try
                 {
                     string target = healthTargets[healthIndex++ % healthTargets.Length];
                     using var response = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, healthDeadline.Token);
-                    if (response.IsSuccessStatusCode && (!providerAutomatic || await ReadAutomaticNode(ct))) { healthy = true; break; }
+                    if (response.IsSuccessStatusCode)
+                    {
+                        proxyHealthy = true;
+                        if (usesTun)
+                        {
+                            // DNS Client runs outside Xray. Allow the verified TUN
+                            // interface before checking resolution with the guard on.
+                            if (profile.KillSwitch && !tunPermitted) { KillSwitch.Arm(KillSwitch.TunnelInterface()); tunPermitted = true; }
+                            if (!await TunnelDns.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
+                        }
+                        healthy = true; break;
+                    }
                 }
                 catch (HttpRequestException ex) { AppLog.Error("health", ex); }
-                catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }
+                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { AppLog.Error("health", ex); }
                 await Task.Delay(500, ct);
             }
             ct.ThrowIfCancellationRequested();
-            if (xray != null) await xray.EnsureRunning();
             if (core.HasExited) throw new UserError(await ExitReason(core));
             if (!healthy)
             {
                 CoreDetails = CoreDiagnostics.Tail(Clean(await core.ReadRecentOutput(false)));
-                if (xray != null) CoreDetails += "\nXray:\n" + CoreDiagnostics.Tail(await xray.RecentOutput());
+                if (usesTun && proxyHealthy) throw new UserError("Сервер доступен, но DNS Windows через туннель не отвечает. Переподключитесь или проверьте настройки DNS.");
                 throw new UserError("Сервер не ответил на проверку соединения. " + (CoreDetails.Length > 0 ? CoreDiagnostics.Summary(CoreDetails) : "Попробуйте другой сервер."));
             }
             ct.ThrowIfCancellationRequested();
             try { File.Delete(path); } catch { }
             if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
-            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, UsesXhttp);
+            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
             attempt.CancelAfter(Timeout.InfiniteTimeSpan);
             ConnectedMilliseconds = MonotonicMilliseconds; ConnectedUtc = DateTimeOffset.UtcNow; statisticsStarted = true;
             Set("connected");
             _ = Watch(core);
-            if (xray != null) _ = WatchXray(xray);
         }
         catch (Exception ex)
         {
@@ -222,19 +234,6 @@ public sealed class Tunnel
         try { if (core == observed) { string reason = await ExitReason(observed); await StopCore(); Set("idle", reason); } }
         finally { gate.Release(); }
     }
-    async Task WatchXray(XraySession observed)
-    {
-        try { await observed.WaitForExitAsync(); } catch { return; }
-        await gate.WaitAsync();
-        try
-        {
-            if (xray != observed) return;
-            string reason = "Ядро XHTTP завершилось.";
-            try { await observed.EnsureRunning(); } catch (UserError ex) { reason = ex.Message; }
-            await StopCore(); Set("idle", reason);
-        }
-        finally { gate.Release(); }
-    }
     public async Task Stop()
     {
         Cancel(); await gate.WaitAsync();
@@ -247,7 +246,7 @@ public sealed class Tunnel
         CoreDetails = CoreDiagnostics.Tail(Clean(await observed.ReadRecentOutput(true)));
         CoreExitCode = observed.ExitCode;
         AppLog.Write("tunnel", "unexpected exit=" + CoreExitCode);
-        return $"sing-box завершился (код {CoreExitCode}, 0x{unchecked((uint)CoreExitCode.Value):X8}).\n" + CoreDiagnostics.Summary(CoreDetails);
+        return $"Xray завершился (код {CoreExitCode}, 0x{unchecked((uint)CoreExitCode.Value):X8}).\n" + CoreDiagnostics.Summary(CoreDetails);
     }
     async Task StopCore()
     {
@@ -260,14 +259,13 @@ public sealed class Tunnel
             statisticsStarted = false;
             SessionEnded?.Invoke(Session, ended, utc, final);
         }
-        Session++; var old = core; core = null; var oldXray = xray; xray = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = "";
+        Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = ""; usesTun = false;
         try
         {
             try { SystemProxy.Restore(); }
             finally
             {
-                try { if (old != null) await StopProcess(old); else { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } } }
-                finally { if (oldXray != null) await oldXray.DisposeAsync(); }
+                if (old != null) await StopProcess(old); else { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } }
             }
         }
         catch (Exception ex)

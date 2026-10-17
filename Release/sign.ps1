@@ -14,7 +14,7 @@ Get-ChildItem $Folder -Recurse -File | Sort-Object FullName | ForEach-Object {
   $relative=[IO.Path]::GetRelativePath($Folder,$_.FullName).Replace('\','/')
   if ($relative -notin @('release.json','release.sig')) { $files[$relative]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
-if (!$files.Contains('Kot.exe') -or !$files.Contains('core/sing-box.exe')) { throw 'Incomplete payload.' }
+if (!$files.Contains('Kot.exe') -or !$files.Contains('core/xray.exe') -or !$files.Contains('core/wintun.dll')) { throw 'Incomplete payload.' }
 $data=[Text.Encoding]::UTF8.GetBytes((@{version=$Version;files=$files} | ConvertTo-Json -Depth 5 -Compress))
 [IO.File]::WriteAllBytes((Join-Path $Folder 'release.json'),$data)
 [IO.File]::WriteAllBytes((Join-Path $Folder 'release.sig'),$rsa.SignData($data,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1))

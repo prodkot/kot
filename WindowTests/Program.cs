@@ -42,7 +42,7 @@ internal static class Program
     {
         string config = Path.Combine(Path.GetTempPath(), "kot-wfp-tun-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(config, """
-        {"log":{"level":"info"},"inbounds":[{"type":"tun","tag":"tun-in","interface_name":"kot-tun","address":["172.28.231.1/30","fdfe:dcba:231::1/126"],"mtu":1500,"auto_route":true,"strict_route":true,"dns_mode":"hijack"}],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"auto_detect_interface":true,"final":"direct"}}
+        {"log":{"loglevel":"warning"},"inbounds":[{"tag":"kot-tun","protocol":"tun","settings":{"name":"kot-tun","gateway":["172.28.231.1/30","fdfe:dcba:231::1/126"],"mtu":1500,"autoSystemRoutingTable":["0.0.0.0/0","::/0"],"autoOutboundsInterface":"auto"}}],"outbounds":[{"protocol":"freedom","tag":"direct"}]}
         """);
         try
         {
@@ -53,7 +53,7 @@ internal static class Program
             {
                 try { luid = KillSwitch.TunnelInterface(); } catch (Kot.Core.UserError) { Thread.Sleep(200); }
             }
-            Check(luid != 0 && !core.HasExited, "bundled sing-box creates the real Windows TUN interface");
+            Check(luid != 0 && !core.HasExited, "bundled Xray creates the real Windows TUN interface");
             KillSwitch.ArmForTests(Environment.ProcessPath!, exe, luid);
             // The adapter exists before Windows has finished installing its routes.
             // Keep the guard armed, and only try the protected connection on the TUN route.
@@ -67,9 +67,9 @@ internal static class Program
                 Thread.Sleep(200);
             }
             Check(routed, "Windows installs the outgoing route through the real TUN");
-            Check(connected, "protected fixture connects through the real TUN and sing-box");
+            Check(connected, "protected fixture connects through the real TUN and Xray");
             core.Process.Kill(); core.WaitForExitAsync().Wait(TimeSpan.FromSeconds(10));
-            Check(KillSwitch.Detect() && !Connect(), "abrupt sing-box termination leaves direct TCP blocked");
+            Check(KillSwitch.Detect() && !Connect(), "abrupt Xray termination leaves direct TCP blocked");
         }
         finally { KillSwitch.Release(); File.Delete(config); }
         Check(Connect(), "direct access is restored after intentional release following a core crash");
@@ -104,9 +104,10 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
-        if (args.Length == 3 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
-        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.XhttpChecks.Run(core, Path.Combine(Path.GetDirectoryName(core)!, "xray.exe"), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--dns-test") { Kot.WindowTests.TunnelDnsChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.TunnelDnsChecks.Run(core, Check).GetAwaiter().GetResult(); Kot.WindowTests.XhttpChecks.Run(core, Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return 0; }
         if (args.Length == 3 && args[0] == "--proxy-owner") { SystemProxy.Enable(int.Parse(args[1])); File.WriteAllText(args[2], "ready"); Thread.Sleep(60000); return 0; }
         Kot.WindowTests.ProfileUpgradeChecks.Run(Check);

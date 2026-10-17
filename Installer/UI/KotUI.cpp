@@ -5,18 +5,43 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <uxtheme.h>
+#include <objidl.h>
+#include <gdiplus.h>
 #include <string>
 #include <cwchar>
 #include <algorithm>
 #include <cstdlib>
+#include <map>
 
 struct Stack { Stack* next; wchar_t text[1]; };
 static int dpi = 96;
-static HFONT regular, small, heading, bold, brandFont;
+static HFONT regular, smallFont, heading, bold, brandFont;
 static HWND mainWindow, activePage;
 static std::wstring pageRole, progressFile, failureText;
 static LONG phase;
-static int percentage, pulse;
+static int percentage;
+static ULONG_PTR graphicsToken;
+static bool animations=true, frameTimer=false, pagePending=false;
+static ULONGLONG pageStarted;
+struct Tween {
+    float from=0, target=0;
+    ULONGLONG started=0;
+    unsigned duration=0;
+    bool Active(ULONGLONG now) const { return duration && now-started<duration; }
+    float Value(ULONGLONG now) const {
+        if(!Active(now)) return target;
+        float t=static_cast<float>(now-started)/duration;
+        return from+(target-from)*(1-(1-t)*(1-t)*(1-t));
+    }
+    void Set(float value,unsigned milliseconds,bool animate=true) {
+        if(target==value&&animate) return;
+        auto now=GetTickCount64(); from=Value(now); target=value; started=now;
+        duration=animate&&animations?milliseconds:0;
+    }
+};
+struct ButtonMotion { Tween hover, press, checked; bool running=false; };
+static std::map<HWND,ButtonMotion> buttonMotions;
+static Tween progressPosition;
 static HBRUSH backgroundBrush, surfaceBrush;
 static std::wstring version, fontFile;
 static bool uninstalling;
@@ -26,6 +51,47 @@ static constexpr COLORREF background = RGB(21,23,24), surface = RGB(32,36,37),
 static constexpr UINT refreshPage = WM_APP + 20, failurePage = WM_APP + 21;
 static void ShowFailure(const std::wstring& detail);
 static int Scale(int value) { return MulDiv(value, dpi, 96); }
+static void RequestFrame() {
+    if(mainWindow&&!frameTimer) frameTimer=SetTimer(mainWindow,9201,16,nullptr)!=0;
+}
+static COLORREF Mix(COLORREF a,COLORREF b,float t) {
+    return RGB(static_cast<int>(GetRValue(a)+(GetRValue(b)-GetRValue(a))*t+.5f),
+        static_cast<int>(GetGValue(a)+(GetGValue(b)-GetGValue(a))*t+.5f),
+        static_cast<int>(GetBValue(a)+(GetBValue(b)-GetBValue(a))*t+.5f));
+}
+static Gdiplus::Color Color(COLORREF value) { return Gdiplus::Color(255,GetRValue(value),GetGValue(value),GetBValue(value)); }
+// Paint one complete frame off-screen, including text, to avoid exposing the
+// background between frames. Fall back to the supplied DC on allocation failure.
+class Frame {
+    HDC destination, memory=nullptr;
+    HBITMAP bitmap=nullptr;
+    HGDIOBJ previous=nullptr;
+    int width,height;
+public:
+    Frame(HDC dc,RECT bounds):destination(dc),width(bounds.right),height(bounds.bottom) {
+        if(width<=0||height<=0) return;
+        memory=CreateCompatibleDC(dc); bitmap=CreateCompatibleBitmap(dc,width,height);
+        if(memory&&bitmap) previous=SelectObject(memory,bitmap);
+    }
+    HDC DC() const { return previous?memory:destination; }
+    ~Frame() {
+        if(previous) { BitBlt(destination,0,0,width,height,memory,0,0,SRCCOPY); SelectObject(memory,previous); }
+        if(bitmap) DeleteObject(bitmap);
+        if(memory) DeleteDC(memory);
+    }
+};
+static void UpdateButtonMotion(HWND window) {
+    auto found=buttonMotions.find(window); if(found==buttonMotions.end()) return;
+    auto& motion=found->second;
+    bool enabled=IsWindowEnabled(window)!=FALSE, animate=IsWindowVisible(window)!=FALSE;
+    motion.hover.Set(enabled&&GetPropW(window,L"kot.hover")?1.f:0.f,160,animate);
+    motion.press.Set(enabled&&(SendMessageW(window,BM_GETSTATE,0,0)&BST_PUSHED)?1.f:0.f,100,animate);
+    motion.checked.Set(SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED?1.f:0.f,180,animate);
+    auto now=GetTickCount64();
+    motion.running=motion.hover.Active(now)||motion.press.Active(now)||motion.checked.Active(now);
+    if(motion.running) RequestFrame();
+    InvalidateRect(window,nullptr,FALSE);
+}
 static std::wstring Pop(Stack** stack) {
     if (!stack || !*stack) return {};
     auto item = *stack; std::wstring value(item->text); *stack = item->next;
@@ -33,6 +99,21 @@ static std::wstring Pop(Stack** stack) {
 }
 static HWND PopWindow(Stack** stack) { return reinterpret_cast<HWND>(static_cast<UINT_PTR>(std::wcstoull(Pop(stack).c_str(), nullptr, 10))); }
 static void Box(HDC dc, RECT bounds, COLORREF fill, COLORREF border, int radius) {
+    if(graphicsToken) {
+        Gdiplus::Graphics graphics(dc); graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        float x=static_cast<float>(bounds.left)+.5f,y=static_cast<float>(bounds.top)+.5f;
+        float width=static_cast<float>(bounds.right-bounds.left)-1,height=static_cast<float>(bounds.bottom-bounds.top)-1;
+        if(width<=0||height<=0) return;
+        float diameter=std::min(static_cast<float>(Scale(radius)),std::min(width,height));
+        Gdiplus::GraphicsPath path;
+        path.AddArc(x,y,diameter,diameter,180,90);
+        path.AddArc(x+width-diameter,y,diameter,diameter,270,90);
+        path.AddArc(x+width-diameter,y+height-diameter,diameter,diameter,0,90);
+        path.AddArc(x,y+height-diameter,diameter,diameter,90,90); path.CloseFigure();
+        Gdiplus::SolidBrush brush(Color(fill)); graphics.FillPath(&brush,&path);
+        if(border!=fill) { Gdiplus::Pen pen(Color(border),1.f); graphics.DrawPath(&pen,&path); }
+        return;
+    }
     HBRUSH brush = CreateSolidBrush(fill); HPEN pen = CreatePen(PS_SOLID, 1, border);
     auto oldBrush = SelectObject(dc, brush); auto oldPen = SelectObject(dc, pen);
     RoundRect(dc, bounds.left, bounds.top, bounds.right, bounds.bottom, Scale(radius), Scale(radius));
@@ -78,7 +159,7 @@ static void PaintPage(HDC dc) {
         Logo(dc,Scale(22),Scale(139),Scale(76));
         TextAt(dc,L"kot. для Windows",122,147,366,24,bold);
         std::wstring release=L"Версия "+version;
-        TextAt(dc,release.c_str(),122,181,366,24,small,muted);
+        TextAt(dc,release.c_str(),122,181,366,24,smallFont,muted);
     } else if(pageRole==L"options") {
         Box(dc,Area(0,138,408,40),surface,line,12);
         Box(dc,Area(0,226,512,112),surface,line,16); Rule(dc,16,282,496);
@@ -105,10 +186,13 @@ static void PaintPage(HDC dc) {
                 bool done=current>i+1, running=current==i+1;
                 if(done) Check(dc,2,y+8,accent);
                 else if(running) {
-                    HPEN pen=CreatePen(PS_SOLID,Scale(2),accent); auto old=SelectObject(dc,pen); auto brush=SelectObject(dc,GetStockObject(NULL_BRUSH));
-                    RECT ring=Area(0,y+7,16,16); Ellipse(dc,ring.left,ring.top,ring.right,ring.bottom);
-                    RECT cover=Area(pulse%2?0:9,y+7,7,8); FillRect(dc,&cover,backgroundBrush);
-                    SelectObject(dc,brush); SelectObject(dc,old); DeleteObject(pen);
+                    if(graphicsToken) {
+                        Gdiplus::Graphics graphics(dc); graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                        Gdiplus::Pen pen(Color(accent),static_cast<float>(Scale(2)));
+                        pen.SetStartCap(Gdiplus::LineCapRound); pen.SetEndCap(Gdiplus::LineCapRound);
+                        float angle=animations?static_cast<float>(GetTickCount64()%1200)*.3f:-90.f;
+                        graphics.DrawArc(&pen,static_cast<float>(Scale(1)),static_cast<float>(Scale(y+8)),static_cast<float>(Scale(14)),static_cast<float>(Scale(14)),angle,260.f);
+                    } else Box(dc,Area(0,y+7,16,16),background,accent,16);
                 } else Box(dc,Area(0,y+7,16,16),background,line,16);
                 TextAt(dc,(uninstalling?remove:install)[i],28,y,480,32,regular,running||done?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
                 if(i<2) Rule(dc,0,y+42,512);
@@ -118,11 +202,13 @@ static void PaintPage(HDC dc) {
 }
 static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
     int saved=SaveDC(dc);
-    FillRect(dc,&bounds,backgroundBrush);
     wchar_t buffer[1024]{}; GetWindowTextW(window,buffer,1024);
     std::wstring caption(buffer);
     caption.erase(std::remove(caption.begin(),caption.end(),L'&'),caption.end());
     int id=GetDlgCtrlID(window);
+    if(id==IDCANCEL&&GetParent(window)==mainWindow) {
+        HBRUSH brush=CreateSolidBrush(sidebar); FillRect(dc,&bounds,brush); DeleteObject(brush);
+    } else FillRect(dc,&bounds,backgroundBrush);
     if(id==IDOK||id==3) {
         if(caption.compare(0,2,L"< ")==0) caption.erase(0,2);
         if(caption.size()>=2 && caption.compare(caption.size()-2,2,L" >")==0) caption.resize(caption.size()-2);
@@ -133,27 +219,36 @@ static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
     bool enabled=(state&ODS_DISABLED)==0;
     bool pressed=enabled&&(state&ODS_SELECTED)!=0;
     bool hover=enabled&&GetPropW(window,L"kot.hover")!=nullptr;
+    auto motion=buttonMotions.find(window); auto now=GetTickCount64();
+    float hoverAmount=motion==buttonMotions.end()?(hover?1.f:0.f):motion->second.hover.Value(now);
+    float pressAmount=motion==buttonMotions.end()?(pressed?1.f:0.f):motion->second.press.Value(now);
     if(checkbox) {
         bool toggle=GetPropW(window,L"kot.toggle")!=nullptr;
         bool checked=SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED;
+        float checkAmount=motion==buttonMotions.end()?(checked?1.f:0.f):motion->second.checked.Value(now);
         if(toggle) {
             FillRect(dc,&bounds,surfaceBrush);
             RECT track{bounds.right-Scale(54),(bounds.bottom-Scale(22))/2,bounds.right-Scale(16),(bounds.bottom+Scale(22))/2};
-            Box(dc,track,checked?(pressed?RGB(190,224,119):accent):line,checked?accent:line,22);
-            int x=checked?track.right-Scale(19):track.left+Scale(3);
-            Box(dc,RECT{x,track.top+Scale(3),x+Scale(16),track.top+Scale(19)},checked?ink:muted,checked?ink:muted,16);
+            COLORREF fill=Mix(Mix(line,RGB(61,67,68),hoverAmount),Mix(accent,RGB(190,224,119),pressAmount),checkAmount);
+            Box(dc,track,fill,fill,22);
+            int x=track.left+Scale(3)+static_cast<int>(Scale(16)*checkAmount+.5f);
+            COLORREF knob=Mix(muted,ink,checkAmount);
+            Box(dc,RECT{x,track.top+Scale(3),x+Scale(16),track.top+Scale(19)},knob,knob,16);
             DrawTextIn(dc,caption.c_str(),Area(16,0,420,54),bold,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         } else {
             RECT tick{Scale(1),(bounds.bottom-Scale(16))/2,Scale(17),(bounds.bottom+Scale(16))/2};
-            Box(dc,tick,checked?(pressed?RGB(190,224,119):accent):(pressed?RGB(26,30,31):surface),checked?accent:line,4);
-            if(checked) Check(dc,5,(bounds.bottom/Scale(1)-16)/2+3,ink);
+            COLORREF fill=Mix(Mix(surface,RGB(40,45,46),hoverAmount),Mix(accent,RGB(190,224,119),pressAmount),checkAmount);
+            Box(dc,tick,fill,Mix(line,accent,checkAmount),4);
+            if(checked) Check(dc,5,(MulDiv(bounds.bottom,96,dpi)-16)/2+3,ink);
             bounds.left=Scale(28); DrawTextIn(dc,caption.c_str(),bounds,regular,enabled?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         }
     } else {
-        COLORREF fill=enabled&&primary ? (pressed?RGB(190,224,119):hover?RGB(224,255,163):accent) : pressed?RGB(26,30,31):hover?RGB(40,45,46):surface;
-        if(id==9009) fill=pressed?RGB(95,32,32):hover?RGB(120,44,44):background;
-        Box(dc,bounds,fill,primary&&enabled?accent:line,10);
-        DrawTextIn(dc,caption.c_str(),bounds,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+        COLORREF fill=enabled&&primary ? Mix(Mix(accent,RGB(224,255,163),hoverAmount),RGB(190,224,119),pressAmount)
+            : Mix(Mix(surface,RGB(40,45,46),hoverAmount),RGB(26,30,31),pressAmount);
+        if(id==9009) fill=Mix(Mix(background,RGB(120,44,44),hoverAmount),RGB(95,32,32),pressAmount);
+        RECT shape=bounds; int inset=static_cast<int>(Scale(1)*pressAmount+.5f); InflateRect(&shape,-inset,-inset);
+        Box(dc,shape,fill,fill,10);
+        DrawTextIn(dc,caption.c_str(),shape,bold,enabled&&primary?ink:enabled?text:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
     }
     if(enabled&&(state&ODS_FOCUS)!=0 && !(SendMessageW(window,WM_QUERYUISTATE,0,0)&UISF_HIDEFOCUS)) {
         RECT focus=bounds; InflateRect(&focus,-Scale(4),-Scale(4));
@@ -171,7 +266,8 @@ static UINT ButtonState(HWND window) {
 static bool DrawButton(LPARAM parameter) {
     auto item=reinterpret_cast<DRAWITEMSTRUCT*>(parameter);
     if(!item||item->CtlType!=ODT_BUTTON||!GetPropW(item->hwndItem,L"kot.owner-button")) return false;
-    PaintButton(item->hwndItem,item->hDC,item->rcItem,item->itemState); return true;
+    Frame frame(item->hDC,item->rcItem);
+    PaintButton(item->hwndItem,frame.DC(),item->rcItem,item->itemState); return true;
 }
 static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
     wchar_t name[64]{}; GetClassNameW(window,name,64);
@@ -180,6 +276,9 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
     bool label = _wcsicmp(name,L"Static")==0;
     bool hero = GetPropW(window,L"kot.hero")!=nullptr;
     bool ownerButton=GetPropW(window,L"kot.owner-button")!=nullptr;
+    // The progress track is entirely custom-painted. Some common-control
+    // versions reserve and paint a classic edge even without WS_BORDER.
+    if(progress&&(message==WM_NCCALCSIZE||message==WM_NCPAINT)) return 0;
     if(ownerButton&&message==BM_SETSTYLE) {
         // Dialog focus changes switch the default button style. Keep those
         // semantics without letting Windows restore its stock renderer.
@@ -192,21 +291,37 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
         return code|(GetPropW(window,L"kot.default-button")?DLGC_DEFPUSHBUTTON:DLGC_UNDEFPUSHBUTTON);
     }
     if(message==WM_SETTEXT && GetPropW(window,L"kot.progress-status")) l=reinterpret_cast<LPARAM>(uninstalling?L"Удаляем kot.":L"Устанавливаем kot.");
-    if (message==WM_NCDESTROY) { RemoveWindowSubclass(window,ControlProc,1); return DefSubclassProc(window,message,w,l); }
-    if (button && message==WM_MOUSEMOVE && !GetPropW(window,L"kot.hover")) {
-        SetPropW(window,L"kot.hover",reinterpret_cast<HANDLE>(1)); TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,window,0}; TrackMouseEvent(&track); InvalidateRect(window,nullptr,FALSE);
+    if (message==WM_NCDESTROY) { buttonMotions.erase(window); RemoveWindowSubclass(window,ControlProc,1); return DefSubclassProc(window,message,w,l); }
+    if(button&&message==WM_LBUTTONDOWN) {
+        // Mouse focus is still real native focus, but it should not look like
+        // a second permanent button border. Tab restores Windows' focus cues.
+        SendMessageW(window,WM_CHANGEUISTATE,MAKEWPARAM(UIS_SET,UISF_HIDEFOCUS),0);
     }
-    if (message==WM_MOUSELEAVE) { RemovePropW(window,L"kot.hover"); InvalidateRect(window,nullptr,FALSE); }
+    if(button&&message==WM_KEYDOWN) SendMessageW(window,WM_CHANGEUISTATE,MAKEWPARAM(UIS_CLEAR,UISF_HIDEFOCUS),0);
+    if(button&&message==WM_MOUSEMOVE) {
+        RECT bounds; GetClientRect(window,&bounds);
+        POINT point{static_cast<short>(LOWORD(l)),static_cast<short>(HIWORD(l))};
+        bool inside=PtInRect(&bounds,point)!=FALSE;
+        if(inside&&!GetPropW(window,L"kot.hover")) {
+            SetPropW(window,L"kot.hover",reinterpret_cast<HANDLE>(1));
+            TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,window,0}; TrackMouseEvent(&track); UpdateButtonMotion(window);
+        } else if(!inside&&GetPropW(window,L"kot.hover")) { RemovePropW(window,L"kot.hover"); UpdateButtonMotion(window); }
+    }
+    if(button&&message==WM_MOUSELEAVE) { RemovePropW(window,L"kot.hover"); UpdateButtonMotion(window); }
     if ((button||progress||label) && message==WM_ERASEBKGND) return 1;
     if ((button||progress||label) && (message==WM_PAINT||message==WM_PRINTCLIENT||message==WM_PRINT)) {
         PAINTSTRUCT paint{}; HDC dc = message==WM_PAINT ? BeginPaint(window,&paint) : reinterpret_cast<HDC>(w);
-        RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,GetPropW(window,L"kot.surface")?surfaceBrush:backgroundBrush);
+        RECT bounds; GetClientRect(window,&bounds);
+        {
+        Frame frame(dc,bounds); dc=frame.DC(); FillRect(dc,&bounds,GetPropW(window,L"kot.surface")?surfaceBrush:backgroundBrush);
         if (hero) Logo(dc,0,0,std::min(bounds.right,bounds.bottom));
         else if (progress) {
             RECT track=bounds; Box(dc,track,surface,surface,6);
-            track.right=MulDiv(bounds.right,percentage,100);
+            track.right=static_cast<LONG>(bounds.right*progressPosition.Value(GetTickCount64())/100.f);
             if(percentage==0&&InterlockedCompareExchange(&phase,0,0)>0) {
-                int width=bounds.right/6; track.left=(pulse*Scale(8))%(bounds.right+width)-width; track.right=track.left+width;
+                int width=bounds.right/6;
+                track.left=animations?static_cast<int>((GetTickCount64()%1500)*(bounds.right+width)/1500)-width:0;
+                track.right=track.left+width;
             }
             if(track.right>0) Box(dc,track,accent,accent,6);
         } else if(label) {
@@ -215,13 +330,14 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
             UINT format=GetPropW(window,L"kot.path")?DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_PATH_ELLIPSIS:DT_LEFT|DT_WORDBREAK;
             DrawTextIn(dc,caption,bounds,font?font:regular,GetPropW(window,L"kot.accent")?accent:GetPropW(window,L"kot.primary")?text:muted,format);
         } else PaintButton(window,dc,bounds,ButtonState(window));
+        }
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
     auto result=DefSubclassProc(window,message,w,l);
-    if(button&&(message==BM_SETCHECK||message==BM_SETSTATE||message==BM_SETSTYLE||message==WM_ENABLE||message==WM_SETTEXT||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_LBUTTONDOWN||message==WM_LBUTTONUP||message==WM_KEYDOWN||message==WM_KEYUP)) {
+    if(button&&(message==BM_SETCHECK||message==BM_SETSTATE||message==BM_SETSTYLE||message==WM_ENABLE||message==WM_SETTEXT||message==WM_SETFOCUS||message==WM_KILLFOCUS||message==WM_LBUTTONDOWN||message==WM_LBUTTONUP||message==WM_KEYDOWN||message==WM_KEYUP||message==WM_CAPTURECHANGED||message==WM_UPDATEUISTATE)) {
         // Checkboxes retain native check-state and accessibility semantics.
         // Their immediate state painting must also finish in our palette.
-        RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+        UpdateButtonMotion(window); RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
     }
     if(progress&&(message==PBM_SETPOS||message==PBM_STEPIT||message==PBM_SETRANGE32)) InvalidateRect(window,nullptr,FALSE);
     return result;
@@ -230,7 +346,8 @@ static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, 
     if(message==WM_DRAWITEM&&DrawButton(l)) return TRUE;
     if(message==WM_PAINT||message==WM_PRINTCLIENT) {
         PAINTSTRUCT paint{}; HDC dc=message==WM_PAINT?BeginPaint(window,&paint):reinterpret_cast<HDC>(w);
-        RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,backgroundBrush); PaintPage(dc);
+        RECT bounds; GetClientRect(window,&bounds);
+        { Frame frame(dc,bounds); FillRect(frame.DC(),&bounds,backgroundBrush); PaintPage(frame.DC()); }
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) {
@@ -240,7 +357,7 @@ static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM w, LPARAM l, 
         return reinterpret_cast<LRESULT>(onSurface?surfaceBrush:backgroundBrush);
     }
     if(message==WM_ERASEBKGND) { RECT bounds; GetClientRect(window,&bounds); FillRect(reinterpret_cast<HDC>(w),&bounds,backgroundBrush); return 1; }
-    if(message==WM_NCDESTROY) RemoveWindowSubclass(window,PageProc,1);
+    if(message==WM_NCDESTROY) { if(activePage==window) { activePage=nullptr; pageStarted=0; pagePending=false; } RemoveWindowSubclass(window,PageProc,1); }
     return DefSubclassProc(window,message,w,l);
 }
 static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
@@ -251,6 +368,10 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
     SetWindowTheme(window,L"",L""); SetWindowSubclass(window,ControlProc,1,0);
     wchar_t name[64]{}; GetClassNameW(window,name,64);
     if(_wcsicmp(name,L"Button")==0) {
+        if(buttonMotions.find(window)==buttonMotions.end()) {
+            auto& motion=buttonMotions[window];
+            motion.checked.Set(SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED?1.f:0.f,0,false);
+        }
         auto style=GetWindowLongW(window,GWL_STYLE); auto kind=style&BS_TYPEMASK;
         if(kind==BS_PUSHBUTTON||kind==BS_DEFPUSHBUTTON) {
             SetPropW(window,L"kot.owner-button",reinterpret_cast<HANDLE>(1));
@@ -260,7 +381,7 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
     }
     if(_wcsicmp(name,WC_LISTVIEWW)==0) {
         ListView_SetBkColor(window,background); ListView_SetTextBkColor(window,background); ListView_SetTextColor(window,muted);
-        SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE);
+        SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE);
     }
     return TRUE;
 }
@@ -292,10 +413,57 @@ static void RefreshProgress() {
         EnableWindow(GetDlgItem(mainWindow,IDOK),TRUE);
         SetWindowTextW(GetDlgItem(mainWindow,IDOK),L"Закрыть");
     }
-    ++pulse;
+    progressPosition.Set(static_cast<float>(percentage),220);
     if(activePage&&pageRole==L"progress"&&current>=0) {
         InvalidateRect(activePage,nullptr,FALSE); InvalidateRect(GetDlgItem(activePage,1004),nullptr,FALSE);
+        if(animations&&(current<4||progressPosition.Active(GetTickCount64()))) RequestFrame();
     }
+}
+
+static void AdvancePage(ULONGLONG now) {
+    if(!activePage||!pageStarted) return;
+    float t=animations?std::min(1.f,static_cast<float>(now-pageStarted)/220.f):1.f;
+    int offset=static_cast<int>(Scale(14)*(1-t)*(1-t)*(1-t)+.5f);
+    RECT oldBounds; GetWindowRect(activePage,&oldBounds);
+    MapWindowPoints(nullptr,mainWindow,reinterpret_cast<POINT*>(&oldBounds),2);
+    if(oldBounds.left!=Scale(253)+offset) {
+        SetWindowPos(activePage,nullptr,Scale(253)+offset,Scale(72),0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+        RECT area=Area(253,72,526,430);
+        RedrawWindow(mainWindow,&area,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+    }
+    if(t>=1.f) pageStarted=0;
+}
+static void AnimationFrame() {
+    auto now=GetTickCount64(); bool more=false;
+    for(auto& item:buttonMotions) {
+        auto& motion=item.second;
+        if(!motion.running) continue;
+        InvalidateRect(item.first,nullptr,FALSE);
+        motion.running=motion.hover.Active(now)||motion.press.Active(now)||motion.checked.Active(now);
+        more=more||motion.running;
+    }
+    AdvancePage(now); more=more||pageStarted!=0;
+    LONG current=InterlockedCompareExchange(&phase,0,0);
+    if(activePage&&pageRole==L"progress"&&current>0&&animations) {
+        InvalidateRect(activePage,nullptr,FALSE); InvalidateRect(GetDlgItem(activePage,1004),nullptr,FALSE);
+        more=more||current<4||progressPosition.Active(now);
+    }
+    if(!more) { KillTimer(mainWindow,9201); frameTimer=false; }
+}
+static void ReadMotionPreference() {
+    BOOL enabled=TRUE; SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);
+    animations=enabled!=FALSE;
+    if(!animations) {
+        for(auto& item:buttonMotions) {
+            auto& motion=item.second;
+            motion.hover.Set(motion.hover.target,0,false); motion.press.Set(motion.press.target,0,false);
+            motion.checked.Set(motion.checked.target,0,false);
+            InvalidateRect(item.first,nullptr,FALSE);
+        }
+        progressPosition.Set(static_cast<float>(percentage),0,false);
+        AdvancePage(GetTickCount64());
+    }
+    RequestFrame();
 }
 
 static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR) {
@@ -309,9 +477,15 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
         return 0;
     }
     if(message==WM_TIMER&&w==9200) { RefreshProgress(); return 0; }
+    if(message==WM_TIMER&&w==9201) { AnimationFrame(); return 0; }
+    if(message==WM_SETTINGCHANGE) ReadMotionPreference();
     if(message==refreshPage) {
         // Native pages become visible after their show callback returns.
         // Repaint the shared header once NSIS has completed that switch.
+        if(pagePending&&activePage) {
+            pagePending=false;
+            if(animations) { pageStarted=GetTickCount64(); AdvancePage(pageStarted); RequestFrame(); }
+        }
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
         return 0;
     }
@@ -330,16 +504,18 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
     if(message==WM_ERASEBKGND) return 1;
     if(message==WM_PAINT || message==WM_PRINTCLIENT) {
         PAINTSTRUCT paint{}; HDC dc=message==WM_PAINT?BeginPaint(window,&paint):reinterpret_cast<HDC>(w);
-        RECT bounds; GetClientRect(window,&bounds); FillRect(dc,&bounds,backgroundBrush);
+        RECT bounds; GetClientRect(window,&bounds);
+        {
+        Frame frame(dc,bounds); dc=frame.DC(); FillRect(dc,&bounds,backgroundBrush);
         RECT side=Area(0,40,218,560); HBRUSH sideBrush=CreateSolidBrush(sidebar); FillRect(dc,&side,sideBrush); DeleteObject(sideBrush);
         Rule(dc,0,40,800); Rule(dc,218,522,800);
         HPEN pen=CreatePen(PS_SOLID,1,line); auto previous=SelectObject(dc,pen);
         MoveToEx(dc,Scale(218),Scale(40),nullptr); LineTo(dc,Scale(218),Scale(600)); SelectObject(dc,previous); DeleteObject(pen);
         Logo(dc,Scale(22),Scale(13),Scale(14)); Brand(dc,47,8,false);
         std::wstring caption=(uninstalling?L"Удаление ":L"Установка ")+version;
-        TextAt(dc,caption.c_str(),87,9,350,22,small,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+        TextAt(dc,caption.c_str(),87,9,350,22,smallFont,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         Logo(dc,Scale(23),Scale(69),Scale(36)); Brand(dc,69,69,true);
-        TextAt(dc,uninstalling?L"Удаление приложения":L"Установка для Windows",23,134,180,22,small,muted);
+        TextAt(dc,uninstalling?L"Удаление приложения":L"Установка для Windows",23,134,180,22,smallFont,muted);
         int step=Step(); int count=uninstalling?3:4;
         if(uninstalling) step=pageRole==L"progress"?(phase==4?2:1):0;
         const wchar_t* installSteps[]{L"Знакомство",L"Параметры",L"Установка",L"Готово"};
@@ -350,14 +526,19 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
             int y=174+i*52;
             Box(dc,Area(23,y,28,28),i==step?accent:sidebar,i<=step?accent:line,28);
             if(i<step) Check(dc,32,y+9,accent);
-            else { std::wstring number=std::to_wstring(i+1); TextAt(dc,number.c_str(),23,y,28,28,small,i==step?ink:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
-            TextAt(dc,(uninstalling?removeSteps:installSteps)[i],63,y,144,28,small,i==step?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+            else { std::wstring number=std::to_wstring(i+1); TextAt(dc,number.c_str(),23,y,28,28,smallFont,i==step?ink:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
+            TextAt(dc,(uninstalling?removeSteps:installSteps)[i],63,y,144,28,smallFont,i==step?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         }
-        TextAt(dc,L"Windows 10 / 11 · x64",23,507,180,20,small,muted);
+        TextAt(dc,L"Windows 10 / 11 · x64",23,507,180,20,smallFont,muted);
+        }
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) return PageProc(window,message,w,l,1,0);
-    if(message==WM_NCDESTROY) RemoveWindowSubclass(window,MainProc,1);
+    if(message==WM_NCDESTROY) {
+        KillTimer(window,9200); KillTimer(window,9201); frameTimer=false;
+        if(graphicsToken) { Gdiplus::GdiplusShutdown(graphicsToken); graphicsToken=0; }
+        mainWindow=nullptr; RemoveWindowSubclass(window,MainProc,1);
+    }
     return DefSubclassProc(window,message,w,l);
 }
 extern "C" __declspec(dllexport) void Init(HWND parent,int,wchar_t*,Stack** stack,void*) {
@@ -365,8 +546,11 @@ extern "C" __declspec(dllexport) void Init(HWND parent,int,wchar_t*,Stack** stac
     dpi=static_cast<int>(GetDpiForWindow(parent)); if(!dpi) dpi=96;
     AddFontResourceExW(fontFile.c_str(),FR_PRIVATE,nullptr);
     auto Font=[](int size,int weight) { return CreateFontW(-Scale(size),0,0,0,weight,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Manrope"); };
-    regular=Font(13,500); small=Font(11,500); heading=Font(30,750); bold=Font(13,650); brandFont=Font(25,750);
+    regular=Font(13,500); smallFont=Font(11,500); heading=Font(30,750); bold=Font(13,650); brandFont=Font(25,750);
     mainWindow=parent;
+    Gdiplus::GdiplusStartupInput graphicsInput;
+    if(Gdiplus::GdiplusStartup(&graphicsToken,&graphicsInput,nullptr)!=Gdiplus::Ok) graphicsToken=0;
+    ReadMotionPreference();
     backgroundBrush=CreateSolidBrush(background); surfaceBrush=CreateSolidBrush(surface);
     SetWindowSubclass(parent,MainProc,1,0);
     SetWindowLongW(parent,GWL_STYLE,(GetWindowLongW(parent,GWL_STYLE)&~(WS_CAPTION|WS_THICKFRAME|WS_BORDER|DS_MODALFRAME))|WS_POPUP|WS_CLIPCHILDREN);
@@ -382,18 +566,19 @@ extern "C" __declspec(dllexport) void Init(HWND parent,int,wchar_t*,Stack** stac
     auto close=CreateWindowExW(0,L"Button",L"×",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,Scale(757),Scale(6),Scale(30),Scale(28),parent,reinterpret_cast<HMENU>(9009),GetModuleHandleW(nullptr),nullptr);
     SkinControl(close,0); SkinControl(GetDlgItem(parent,IDOK),0); SkinControl(GetDlgItem(parent,IDCANCEL),0); SkinControl(GetDlgItem(parent,3),0);
     SetWindowTextW(GetDlgItem(parent,IDCANCEL),L"Отмена"); SetWindowTextW(GetDlgItem(parent,3),L"Назад");
+    SendMessageW(parent,WM_CHANGEUISTATE,MAKEWPARAM(UIS_SET,UISF_HIDEFOCUS),0);
     SetTimer(parent,9200,140,nullptr);
     InvalidateRect(parent,nullptr,TRUE);
 }
 extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*) {
-    HWND page=PopWindow(stack); pageRole=Pop(stack); activePage=page;
+    HWND page=PopWindow(stack); pageRole=Pop(stack); activePage=page; pageStarted=0; pagePending=true;
     SetWindowLongW(page,GWL_STYLE,GetWindowLongW(page,GWL_STYLE)|WS_CLIPCHILDREN);
     Place(page,253,72,512,430); SetWindowSubclass(page,PageProc,1,0); EnumChildWindows(page,SkinControl,0);
     if(pageRole==L"options") {
         ShowWindow(GetDlgItem(page,1031),SW_HIDE); ShowWindow(GetDlgItem(page,1020),SW_HIDE);
         HWND title=GetDlgItem(page,1006); Place(title,0,26,512,44); SetWindowTextW(title,L"Параметры установки");
         SendMessageW(title,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(title,L"kot.primary",reinterpret_cast<HANDLE>(1));
-        Label(page,9062,L"Папка установки",0,112,512,22,small,muted);
+        Label(page,9062,L"Папка установки",0,112,512,22,smallFont,muted);
         HWND edit=GetDlgItem(page,1019); Place(edit,12,148,384,23); SetPropW(edit,L"kot.primary",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(edit,GWL_STYLE,GetWindowLongW(edit,GWL_STYLE)&~WS_BORDER);
         SetWindowLongW(edit,GWL_EXSTYLE,GetWindowLongW(edit,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
@@ -403,10 +588,10 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         SetPropW(checkbox,L"kot.toggle",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(checkbox,GWL_STYLE,GetWindowLongW(checkbox,GWL_STYLE)|BS_PUSHLIKE);
         Place(GetDlgItem(page,1023),0,184,512,20); ShowWindow(GetDlgItem(page,1024),SW_HIDE);
-        Label(page,9064,L"Для всех пользователей компьютера.",0,359,512,24,small,muted);
+        Label(page,9064,L"Для всех пользователей компьютера.",0,359,512,24,smallFont,muted);
     }
     if(pageRole==L"progress") {
-        InterlockedExchange(&phase,1); percentage=0; progressFile=Pop(stack);
+        InterlockedExchange(&phase,1); percentage=0; progressPosition.Set(0,0,false); progressFile=Pop(stack);
         ShowWindow(GetDlgItem(page,1031),SW_HIDE); ShowWindow(GetDlgItem(page,1016),SW_HIDE); ShowWindow(GetDlgItem(page,1027),SW_HIDE);
         HWND status=GetDlgItem(page,1006); Place(status,0,26,512,44);
         SetPropW(status,L"kot.primary",reinterpret_cast<HANDLE>(1)); SetPropW(status,L"kot.progress-status",reinterpret_cast<HANDLE>(1));
@@ -428,6 +613,7 @@ extern "C" __declspec(dllexport) void Failure(HWND,int,wchar_t*,Stack** stack,vo
     if(!PostMessageW(mainWindow,failurePage,0,reinterpret_cast<LPARAM>(detail))) delete detail;
 }
 static void ShowFailure(const std::wstring& detail) {
+    pageStarted=0; pagePending=false; Place(activePage,253,72,512,430);
     failureText=detail; InterlockedExchange(&phase,-1);
     HWND child=GetWindow(activePage,GW_CHILD); while(child) { ShowWindow(child,SW_HIDE); child=GetWindow(child,GW_HWNDNEXT); }
     Label(activePage,9090,uninstalling?L"Удаление прервалось.":L"Установка прервалась.",0,78,512,80,heading);
@@ -442,8 +628,8 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
     int x=_wtoi(Pop(stack).c_str()),y=_wtoi(Pop(stack).c_str()),width=_wtoi(Pop(stack).c_str()),height=_wtoi(Pop(stack).c_str());
     std::wstring role=Pop(stack); Place(window,x,y,width,height); SkinControl(window,0);
     if(role==L"heading") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1)); }
-    if(role==L"small"||role==L"overline") SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE);
-    if(role==L"accent") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE); SetPropW(window,L"kot.accent",reinterpret_cast<HANDLE>(1)); }
+    if(role==L"small"||role==L"overline") SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE);
+    if(role==L"accent") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE); SetPropW(window,L"kot.accent",reinterpret_cast<HANDLE>(1)); }
     if(role==L"surface") SetPropW(window,L"kot.surface",reinterpret_cast<HANDLE>(1));
     if(role==L"body") SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1));
     if(role==L"path") SetPropW(window,L"kot.path",reinterpret_cast<HANDLE>(1));
@@ -452,7 +638,7 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
 }
 BOOL WINAPI DllMain(HINSTANCE,DWORD reason,LPVOID) {
     if(reason==DLL_PROCESS_DETACH) {
-        DeleteObject(regular); DeleteObject(small); DeleteObject(heading); DeleteObject(bold); DeleteObject(brandFont); DeleteObject(backgroundBrush); DeleteObject(surfaceBrush);
+        DeleteObject(regular); DeleteObject(smallFont); DeleteObject(heading); DeleteObject(bold); DeleteObject(brandFont); DeleteObject(backgroundBrush); DeleteObject(surfaceBrush);
         if(!fontFile.empty()) RemoveFontResourceExW(fontFile.c_str(),FR_PRIVATE,nullptr);
     }
     return TRUE;

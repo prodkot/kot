@@ -41,7 +41,7 @@ public static class Startup
 
             dynamic definition = com.Own(service.NewTask(0));
             dynamic info = com.Own(definition.RegistrationInfo);
-            info.Description = "kot. application based on sing-box";
+            info.Description = "kot. application based on Xray";
             dynamic principal = com.Own(definition.Principal);
             principal.Id = "Author";
             principal.UserId = sid;

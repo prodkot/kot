@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   release:
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
     runs-on: windows-latest
@@ -24,6 +24,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.x'
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Compile native installer interface
+        shell: pwsh
+        run: ./Release/build-installer-ui.ps1 -Output artifacts/installer-ui-compile
       - name: Verify development branch and run core tests
         shell: pwsh
         run: |
@@ -58,6 +65,13 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress
+      - name: Native Xray traffic and kill switch with a real TUN
+        shell: pwsh
+        run: |
+          python Release/xray-core.py artifacts/network-core --target windows
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Xray build failed.' }
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Xray or real TUN kill switch test failed.' }
       - name: Build signed package and installer
         shell: pwsh
         env:
@@ -69,12 +83,6 @@ jobs:
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
             ./Release/release.ps1 -Key $key
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
-      - name: Temporary probe and kill switch with the bundled core and a real TUN
-        shell: pwsh
-        run: |
-          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
-          if ($LASTEXITCODE -ne 0) { throw 'Temporary core or real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
         timeout-minutes: 5
         shell: pwsh
@@ -127,6 +135,13 @@ jobs:
           Wait-Installer $process 'Uninstallation'
           if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
           Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: installer-preview
+          path: artifacts/setup-ui/setup-*.png
+          retention-days: 14
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: success()
         with:
