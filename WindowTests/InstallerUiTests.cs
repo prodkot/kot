@@ -81,10 +81,14 @@ static class InstallerUiTests
     {
         GetClientRect(button,out var bounds);
         var bitmap=new Bitmap(bounds.Right,bounds.Bottom);
-        using var graphics=Graphics.FromImage(bitmap);
-        var dc=graphics.GetHdc();
-        try { if(!PrintWindow(button,dc,1)) { bitmap.Dispose(); throw new Exception("Button capture failed"); } }
-        finally { graphics.ReleaseHdc(dc); }
+        bool captured;
+        using(var graphics=Graphics.FromImage(bitmap))
+        {
+            var dc=graphics.GetHdc();
+            try { captured=PrintWindow(button,dc,1); }
+            finally { graphics.ReleaseHdc(dc); }
+        }
+        if(!captured) { bitmap.Dispose(); throw new Exception("Button capture failed"); }
         return bitmap;
     }
     static void MotionPreference(IntPtr window,bool enabled)

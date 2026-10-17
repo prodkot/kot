@@ -12,11 +12,10 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
-#include <cmath>
 
 struct Stack { Stack* next; wchar_t text[1]; };
 static int dpi = 96;
-static HFONT regular, small, heading, bold, brandFont;
+static HFONT regular, smallFont, heading, bold, brandFont;
 static HWND mainWindow, activePage;
 static std::wstring pageRole, progressFile, failureText;
 static LONG phase;
@@ -160,7 +159,7 @@ static void PaintPage(HDC dc) {
         Logo(dc,Scale(22),Scale(139),Scale(76));
         TextAt(dc,L"kot. для Windows",122,147,366,24,bold);
         std::wstring release=L"Версия "+version;
-        TextAt(dc,release.c_str(),122,181,366,24,small,muted);
+        TextAt(dc,release.c_str(),122,181,366,24,smallFont,muted);
     } else if(pageRole==L"options") {
         Box(dc,Area(0,138,408,40),surface,line,12);
         Box(dc,Area(0,226,512,112),surface,line,16); Rule(dc,16,282,496);
@@ -203,11 +202,13 @@ static void PaintPage(HDC dc) {
 }
 static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
     int saved=SaveDC(dc);
-    FillRect(dc,&bounds,backgroundBrush);
     wchar_t buffer[1024]{}; GetWindowTextW(window,buffer,1024);
     std::wstring caption(buffer);
     caption.erase(std::remove(caption.begin(),caption.end(),L'&'),caption.end());
     int id=GetDlgCtrlID(window);
+    if(id==IDCANCEL&&GetParent(window)==mainWindow) {
+        HBRUSH brush=CreateSolidBrush(sidebar); FillRect(dc,&bounds,brush); DeleteObject(brush);
+    } else FillRect(dc,&bounds,backgroundBrush);
     if(id==IDOK||id==3) {
         if(caption.compare(0,2,L"< ")==0) caption.erase(0,2);
         if(caption.size()>=2 && caption.compare(caption.size()-2,2,L" >")==0) caption.resize(caption.size()-2);
@@ -377,7 +378,7 @@ static BOOL CALLBACK SkinControl(HWND window, LPARAM) {
     }
     if(_wcsicmp(name,WC_LISTVIEWW)==0) {
         ListView_SetBkColor(window,background); ListView_SetTextBkColor(window,background); ListView_SetTextColor(window,muted);
-        SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE);
+        SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE);
     }
     return TRUE;
 }
@@ -509,9 +510,9 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
         MoveToEx(dc,Scale(218),Scale(40),nullptr); LineTo(dc,Scale(218),Scale(600)); SelectObject(dc,previous); DeleteObject(pen);
         Logo(dc,Scale(22),Scale(13),Scale(14)); Brand(dc,47,8,false);
         std::wstring caption=(uninstalling?L"Удаление ":L"Установка ")+version;
-        TextAt(dc,caption.c_str(),87,9,350,22,small,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+        TextAt(dc,caption.c_str(),87,9,350,22,smallFont,muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         Logo(dc,Scale(23),Scale(69),Scale(36)); Brand(dc,69,69,true);
-        TextAt(dc,uninstalling?L"Удаление приложения":L"Установка для Windows",23,134,180,22,small,muted);
+        TextAt(dc,uninstalling?L"Удаление приложения":L"Установка для Windows",23,134,180,22,smallFont,muted);
         int step=Step(); int count=uninstalling?3:4;
         if(uninstalling) step=pageRole==L"progress"?(phase==4?2:1):0;
         const wchar_t* installSteps[]{L"Знакомство",L"Параметры",L"Установка",L"Готово"};
@@ -522,10 +523,10 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
             int y=174+i*52;
             Box(dc,Area(23,y,28,28),i==step?accent:sidebar,i<=step?accent:line,28);
             if(i<step) Check(dc,32,y+9,accent);
-            else { std::wstring number=std::to_wstring(i+1); TextAt(dc,number.c_str(),23,y,28,28,small,i==step?ink:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
-            TextAt(dc,(uninstalling?removeSteps:installSteps)[i],63,y,144,28,small,i==step?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+            else { std::wstring number=std::to_wstring(i+1); TextAt(dc,number.c_str(),23,y,28,28,smallFont,i==step?ink:muted,DT_CENTER|DT_VCENTER|DT_SINGLELINE); }
+            TextAt(dc,(uninstalling?removeSteps:installSteps)[i],63,y,144,28,smallFont,i==step?text:muted,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         }
-        TextAt(dc,L"Windows 10 / 11 · x64",23,507,180,20,small,muted);
+        TextAt(dc,L"Windows 10 / 11 · x64",23,507,180,20,smallFont,muted);
         }
         if(message==WM_PAINT) EndPaint(window,&paint); return 0;
     }
@@ -542,7 +543,7 @@ extern "C" __declspec(dllexport) void Init(HWND parent,int,wchar_t*,Stack** stac
     dpi=static_cast<int>(GetDpiForWindow(parent)); if(!dpi) dpi=96;
     AddFontResourceExW(fontFile.c_str(),FR_PRIVATE,nullptr);
     auto Font=[](int size,int weight) { return CreateFontW(-Scale(size),0,0,0,weight,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Manrope"); };
-    regular=Font(13,500); small=Font(11,500); heading=Font(30,750); bold=Font(13,650); brandFont=Font(25,750);
+    regular=Font(13,500); smallFont=Font(11,500); heading=Font(30,750); bold=Font(13,650); brandFont=Font(25,750);
     mainWindow=parent;
     Gdiplus::GdiplusStartupInput graphicsInput;
     if(Gdiplus::GdiplusStartup(&graphicsToken,&graphicsInput,nullptr)!=Gdiplus::Ok) graphicsToken=0;
@@ -574,7 +575,7 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         ShowWindow(GetDlgItem(page,1031),SW_HIDE); ShowWindow(GetDlgItem(page,1020),SW_HIDE);
         HWND title=GetDlgItem(page,1006); Place(title,0,26,512,44); SetWindowTextW(title,L"Параметры установки");
         SendMessageW(title,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(title,L"kot.primary",reinterpret_cast<HANDLE>(1));
-        Label(page,9062,L"Папка установки",0,112,512,22,small,muted);
+        Label(page,9062,L"Папка установки",0,112,512,22,smallFont,muted);
         HWND edit=GetDlgItem(page,1019); Place(edit,12,148,384,23); SetPropW(edit,L"kot.primary",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(edit,GWL_STYLE,GetWindowLongW(edit,GWL_STYLE)&~WS_BORDER);
         SetWindowLongW(edit,GWL_EXSTYLE,GetWindowLongW(edit,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
@@ -584,7 +585,7 @@ extern "C" __declspec(dllexport) void Page(HWND,int,wchar_t*,Stack** stack,void*
         SetPropW(checkbox,L"kot.toggle",reinterpret_cast<HANDLE>(1));
         SetWindowLongW(checkbox,GWL_STYLE,GetWindowLongW(checkbox,GWL_STYLE)|BS_PUSHLIKE);
         Place(GetDlgItem(page,1023),0,184,512,20); ShowWindow(GetDlgItem(page,1024),SW_HIDE);
-        Label(page,9064,L"Для всех пользователей компьютера.",0,359,512,24,small,muted);
+        Label(page,9064,L"Для всех пользователей компьютера.",0,359,512,24,smallFont,muted);
     }
     if(pageRole==L"progress") {
         InterlockedExchange(&phase,1); percentage=0; progressPosition.Set(0,0,false); progressFile=Pop(stack);
@@ -624,8 +625,8 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
     int x=_wtoi(Pop(stack).c_str()),y=_wtoi(Pop(stack).c_str()),width=_wtoi(Pop(stack).c_str()),height=_wtoi(Pop(stack).c_str());
     std::wstring role=Pop(stack); Place(window,x,y,width,height); SkinControl(window,0);
     if(role==L"heading") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(heading),TRUE); SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1)); }
-    if(role==L"small"||role==L"overline") SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE);
-    if(role==L"accent") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(small),TRUE); SetPropW(window,L"kot.accent",reinterpret_cast<HANDLE>(1)); }
+    if(role==L"small"||role==L"overline") SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE);
+    if(role==L"accent") { SendMessageW(window,WM_SETFONT,reinterpret_cast<WPARAM>(smallFont),TRUE); SetPropW(window,L"kot.accent",reinterpret_cast<HANDLE>(1)); }
     if(role==L"surface") SetPropW(window,L"kot.surface",reinterpret_cast<HANDLE>(1));
     if(role==L"body") SetPropW(window,L"kot.primary",reinterpret_cast<HANDLE>(1));
     if(role==L"path") SetPropW(window,L"kot.path",reinterpret_cast<HANDLE>(1));
@@ -634,7 +635,7 @@ extern "C" __declspec(dllexport) void Control(HWND,int,wchar_t*,Stack** stack,vo
 }
 BOOL WINAPI DllMain(HINSTANCE,DWORD reason,LPVOID) {
     if(reason==DLL_PROCESS_DETACH) {
-        DeleteObject(regular); DeleteObject(small); DeleteObject(heading); DeleteObject(bold); DeleteObject(brandFont); DeleteObject(backgroundBrush); DeleteObject(surfaceBrush);
+        DeleteObject(regular); DeleteObject(smallFont); DeleteObject(heading); DeleteObject(bold); DeleteObject(brandFont); DeleteObject(backgroundBrush); DeleteObject(surfaceBrush);
         if(!fontFile.empty()) RemoveFontResourceExW(fontFile.c_str(),FR_PRIVATE,nullptr);
     }
     return TRUE;
