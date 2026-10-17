@@ -13,7 +13,7 @@ public static class KillSwitch
     static readonly Guid Protocol = new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7"), RemotePort = new("c35a604d-d22b-4e1a-91b4-68f674ee674b");
     static Guid Key(int n) => new($"da3e55f0-f72b-4ee7-b67b-8a74560a{n + 1:x4}");
     static readonly object Sync = new();
-    static string? connectionCore, probeCore;
+    static string? probeCore;
     static int probes;
     public static bool Active { get; private set; }
     public static bool Detect()
@@ -22,22 +22,21 @@ public static class KillSwitch
         if (result == 0) FwpmFreeMemory0(ref pointer); else if (result != 0x80320003) Error(result);
         return Active = result == 0;
     }
-    public static void Arm(ulong tun = 0, bool xhttp = true)
+    public static void Arm(ulong tun = 0)
     {
         lock (Sync)
         {
-            string? next = xhttp ? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe") : null;
-            Configure(true, tun, extraAllowed: next ?? probeCore); connectionCore = next;
+            Configure(true, tun, extraAllowed: probeCore);
         }
     }
-    public static void Release() { lock (Sync) { Configure(false, 0); connectionCore = null; } }
-    internal static IDisposable AllowXhttpProbe(string executable)
+    public static void Release() { lock (Sync) { Configure(false, 0); } }
+    internal static IDisposable AllowProbe(string executable)
     {
         executable = Path.GetFullPath(executable);
         lock (Sync)
         {
-            if (probeCore != null && !probeCore.Equals(executable, StringComparison.OrdinalIgnoreCase)) throw new UserError("Проверки XHTTP должны использовать одно комплектное ядро.");
-            if (Active && connectionCore == null && probes == 0) UpdateCorePermit(executable);
+            if (probeCore != null && !probeCore.Equals(executable, StringComparison.OrdinalIgnoreCase)) throw new UserError("Проверки должны использовать одно комплектное ядро.");
+            if (Active && probes == 0) UpdateCorePermit(executable);
             probeCore = executable; probes++; return new ProbePermit();
         }
     }
@@ -49,7 +48,7 @@ public static class KillSwitch
             lock (Sync)
             {
                 if (disposed) return;
-                if (Active && connectionCore == null && probes == 1) UpdateCorePermit(null);
+                if (Active && probes == 1) UpdateCorePermit(null);
                 disposed = true; if (--probes == 0) probeCore = null;
             }
         }
@@ -77,9 +76,9 @@ public static class KillSwitch
         if (result != 0) throw new UserError("Kill switch: сетевой интерфейс kot-tun не появился.");
         return luid;
     }
-    internal static void ArmForTests(string application, string allowed, ulong tun = 0, string? extraAllowed = null)
+    internal static void ArmForTests(string application, string allowed, ulong tun = 0)
     {
-        lock (Sync) { Configure(true, tun, application, allowed, extraAllowed ?? probeCore); connectionCore = extraAllowed; }
+        lock (Sync) { Configure(true, tun, application, allowed, probeCore); }
     }
     static void Configure(bool enabled, ulong tun, string? testApplication = null, string? testAllowed = null, string? extraAllowed = null)
     {

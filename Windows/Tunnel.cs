@@ -7,7 +7,7 @@ namespace Kot.Windows;
 public sealed class Tunnel
 {
     NativeCore? core;
-    public bool UsesXhttp => core != null;
+    public bool HasCore => core != null;
     CancellationTokenSource? attempt;
     bool cancelled;
     int stopGeneration;
@@ -197,7 +197,7 @@ public sealed class Tunnel
             ct.ThrowIfCancellationRequested();
             try { File.Delete(path); } catch { }
             if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
-            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, UsesXhttp);
+            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
             attempt.CancelAfter(Timeout.InfiniteTimeSpan);
             ConnectedMilliseconds = MonotonicMilliseconds; ConnectedUtc = DateTimeOffset.UtcNow; statisticsStarted = true;
             Set("connected");

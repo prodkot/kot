@@ -60,7 +60,7 @@ public static class XhttpChecks
         var node = Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{serverPort}?type=xhttp&path=%2Ffixture&mode=packet-up&security=none#XHTTP");
         Directory.CreateDirectory(Store.Folder);
         int before = Directory.GetFiles(Store.Folder, "probe-*.json").Length;
-        using var fixturePermission = KillSwitch.AllowXhttpProbe(xray);
+        using var fixturePermission = KillSwitch.AllowProbe(xray);
         NativeCore? server = null;
         try
         {
@@ -88,7 +88,7 @@ public static class XhttpChecks
             {
                 await connection.Connect(profile).WaitAsync(TimeSpan.FromSeconds(25), ct);
                 if (connection.State != "connected") Console.WriteLine(connection.Error + "\n" + connection.CoreDetails);
-                check(connection.State == "connected" && connection.UsesXhttp && KillSwitch.Detect(), "production native Tunnel.Connect completes XHTTP health checks with global WFP armed");
+                check(connection.State == "connected" && connection.HasCore && KillSwitch.Detect(), "production native Tunnel.Connect completes XHTTP health checks with global WFP armed");
                 check(await connection.Probe(ct), "connected native session carries a real forced-proxy HTTP response");
                 check(await Exchange(ct), "real Windows TUN exchanges HTTPS via native XHTTP without transport recursion");
                 var sample = await connection.ReadConnections(ct);
@@ -111,18 +111,19 @@ public static class XhttpChecks
             {
                 await failure.Connect(failedProfile).WaitAsync(TimeSpan.FromSeconds(20), ct);
                 check(failure.State == "idle" && failure.Error.Length > 0, "unreachable XHTTP exits connecting with an actionable error");
-                check(failure.ProxyPort == 0 && !failure.UsesXhttp && KillSwitch.Detect(), "failed native connection closes the sole core and preserves the guard");
+                check(failure.ProxyPort == 0 && !failure.HasCore && KillSwitch.Detect(), "failed native connection closes the sole core and preserves the guard");
                 var pending = failure.Connect(failedProfile);
                 await Task.Delay(300, ct); await failure.Stop(); await pending;
                 check(failure.State == "idle" && failure.Error.Length == 0, "cancelling native startup completes without a timeout error");
                 check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "success, failure and cancellation remove credential configurations");
             }
             finally { await failure.Stop(); KillSwitch.Release(); }
+            fixturePermission.Dispose();
             KillSwitch.ArmForTests(Environment.ProcessPath!, xray);
             check(!await Open("1.1.1.1", 443, ct), "WFP blocks an unpermitted executable");
-            using (var first = KillSwitch.AllowXhttpProbe(Environment.ProcessPath!))
+            using (var first = KillSwitch.AllowProbe(Environment.ProcessPath!))
             {
-                using (var second = KillSwitch.AllowXhttpProbe(Environment.ProcessPath!))
+                using (var second = KillSwitch.AllowProbe(Environment.ProcessPath!))
                     check(await Open("1.1.1.1", 443, ct), "concurrent probes obtain a scoped WFP permit");
                 check(await Open("1.1.1.1", 443, ct), "one finished probe keeps the other probe's permit");
             }

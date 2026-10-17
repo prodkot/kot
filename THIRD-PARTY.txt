@@ -47,15 +47,16 @@ Copyright Mikhail Sharanda and Mirko Velimirovic.
 Полный текст: licenses/Manrope-OFL.txt.
 
 При распространении сохраняйте лицензии и уведомления. Исходники
-приложенного sing-box доступны по точной ссылке выше и в upstream/.
+приложенного Xray доступны по точной ссылке выше и в upstream/.
 
 Флаги стран: flag-icons 7.3.2, Panayiotis Lipiridis.
 Источник: https://github.com/lipis/flag-icons/tree/v7.3.2
 В программу входят только локальные SVG-флаги 4:3.
 Лицензия MIT: licenses/flag-icons-MIT.txt.
 
-Go module dependencies of sing-box 1.14.2:
-- Notices and exact-version source archives: licenses/sing-box-Go-NOTICES.txt
+Исторические уведомления sing-box 1.14.2 сохранены в репозитории и
+licenses/sing-box-Go-NOTICES.txt для прежних выпусков. Бинарный sing-box
+не входит в этот экспериментальный установщик и не запускается клиентом.
 
 Звук мяу: запись meow-1.mp3, предоставленная пользователем для kot.
 Перекодирована в Ogg Vorbis: ui/sounds/meow.ogg.

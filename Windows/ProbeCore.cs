@@ -19,7 +19,7 @@ public sealed class ProbeCore : IAsyncDisposable
             using var reservation = LoopbackPort.Reserve(ct); probe.Port = reservation.Port;
             Directory.CreateDirectory(Store.Folder);
             string exe = executable ?? xrayExecutable ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
-            probe.xrayPermission = KillSwitch.AllowXhttpProbe(exe);
+            probe.xrayPermission = KillSwitch.AllowProbe(exe);
             var config = XrayRuntime.Build(node, probe.Port, physicalInterface: PhysicalNetwork.Interface);
             await File.WriteAllTextAsync(probe.path, config.ToJsonString(), ct);
             ct.ThrowIfCancellationRequested();
