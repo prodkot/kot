@@ -28,6 +28,9 @@ jobs:
         with:
           go-version: '1.27.2'
           cache: false
+      - name: Compile native installer interface
+        shell: pwsh
+        run: ./Release/build-installer-ui.ps1 -Output artifacts/installer-ui-compile
       - name: Verify development branch and run core tests
         shell: pwsh
         run: |
@@ -132,6 +135,13 @@ jobs:
           Wait-Installer $process 'Uninstallation'
           if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
           Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: installer-preview
+          path: artifacts/setup-ui/setup-*.png
+          retention-days: 14
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: success()
         with:
