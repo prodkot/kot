@@ -90,7 +90,8 @@ public static class XhttpChecks
             string bundled = Path.Combine(AppContext.BaseDirectory, "core"); Directory.CreateDirectory(bundled);
             File.Copy(xray, Path.Combine(bundled, "xray.exe"), true);
             File.Copy(Path.Combine(Path.GetDirectoryName(xray)!, "wintun.dll"), Path.Combine(bundled, "wintun.dll"), true);
-            var dnsNode = node with { FullConfig = new JsonObject { ["outbounds"] = new JsonArray(XrayConfig.Outbound(node)), ["dns"] = new JsonObject { ["hosts"] = new JsonObject { [healthHost] = "192.0.2.123" }, ["servers"] = new JsonArray("https://1.1.1.1/dns-query") } } };
+            var dnsNode = node with { FullConfig = new JsonObject { ["inbounds"] = new JsonArray(), ["outbounds"] = new JsonArray(XrayConfig.Outbound(node)), ["dns"] = new JsonObject { ["hosts"] = new JsonObject { [healthHost] = "192.0.2.123" }, ["servers"] = new JsonArray("https://1.1.1.1/dns-query") } } };
+            XrayConfig.Validate(dnsNode.FullConfig!);
             var profile = new Profile { Nodes = [dnsNode], Selected = dnsNode.Id, ConnectionMode = "tun", KillSwitch = true };
             var connection = new Tunnel([$"http://{healthHost}:{webPort}/"], TimeSpan.FromSeconds(10));
             try
