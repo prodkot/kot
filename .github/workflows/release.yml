@@ -70,6 +70,13 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress
+      - name: Native Xray traffic and kill switch with a real TUN
+        shell: pwsh
+        run: |
+          python Release/xray-core.py artifacts/network-core --target windows
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Xray build failed.' }
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Xray or real TUN kill switch test failed.' }
       - name: Build signed package and installer
         shell: pwsh
         env:
@@ -81,12 +88,6 @@ jobs:
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
             ./Release/release.ps1 -Key $key
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
-      - name: Temporary probe and kill switch with the bundled core and a real TUN
-        shell: pwsh
-        run: |
-          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/xray.exe"
-          if ($LASTEXITCODE -ne 0) { throw 'Temporary core or real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
         timeout-minutes: 5
         shell: pwsh

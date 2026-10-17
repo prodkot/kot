@@ -11,10 +11,10 @@ $scratch=Join-Path ([IO.Path]::GetTempPath()) ('kot setup проверка ' + [
 $backup=$null
 New-Item -ItemType Directory $scratch | Out-Null
 
-function Run-Checked([string]$Exe, [string[]]$Arguments, [string]$Directory, [int]$Timeout=60000, [switch]$AllowFailure) {
+function Run-Checked([string]$Exe, [string[]]$Arguments, [string]$Directory, [int]$Timeout=60000, [switch]$AllowFailure, [string]$RawArguments="") {
   $start=[Diagnostics.ProcessStartInfo]::new($Exe)
   $start.UseShellExecute=$false; $start.CreateNoWindow=$true; $start.WorkingDirectory=$Directory
-  foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+  if ($RawArguments) { $start.Arguments=$RawArguments } else { foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) } }
   $process=[Diagnostics.Process]::Start($start)
   try {
     if (!$process.WaitForExit($Timeout)) { throw "Process timed out: $Exe" }
@@ -87,7 +87,7 @@ try {
   Write-Host 'PASS native helper rejects a changed installer before replacing any files.'
 
   if ($LegacyUpdate) {
-    # This launches the authentic 0.6.1 updater and the new UI. Run only in a
+    # This upgrades an authentic 0.6.1 installation and launches the new UI. Run only in a
     # disposable Windows test account, never over an existing user profile.
     $profile=Join-Path $env:LOCALAPPDATA 'KotVPN'
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
@@ -111,27 +111,52 @@ try {
       # The pinned publisher key validates both the old Setup and its payload.
       Extract $oldSetup $legacy '0.6.1'
       if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike '0.6.1*') { throw 'Legacy fixture does not contain the released 0.6.1 client.' }
-      $work=Join-Path $legacy ('.kot-update-'+[Guid]::NewGuid().ToString('N'))
-      New-Item -ItemType Directory $work | Out-Null
-      Copy-Item (Join-Path $legacy 'Kot.exe') (Join-Path $work 'Updater.exe')
-      Copy-Item $Setup (Join-Path $work 'package.exe')
-      [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through automatic update')
-      $start=[Diagnostics.ProcessStartInfo]::new((Join-Path $env:SystemRoot 'System32/cmd.exe'))
-      $start.UseShellExecute=$false; $start.CreateNoWindow=$true; $start.ArgumentList.Add('/c'); $start.ArgumentList.Add('ping -n 2 127.0.0.1 >nul')
-      $parent=[Diagnostics.Process]::Start($start)
-      $request=[ordered]@{Version=$Version;ParentPid=$parent.Id;ParentStarted=$parent.StartTime.ToUniversalTime().Ticks;Resume=$false;Startup=$false}
-      [IO.File]::WriteAllText((Join-Path $work 'request.json'),($request | ConvertTo-Json -Compress))
-      if (!$parent.WaitForExit(10000)) { throw 'Legacy updater parent fixture did not exit.' }
-      Run-Checked (Join-Path $work 'Updater.exe') @('--apply-update') $work -Timeout 150000 | Out-Null
-      if (Test-Path (Join-Path $work 'error.txt')) { throw ([IO.File]::ReadAllText((Join-Path $work 'error.txt'))) }
-      if ((Test-Path $work) -and !(Test-Path (Join-Path $work 'committed'))) { throw 'Legacy updater did not commit the new UI receipt.' }
+      [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
+      if ([version]$Version -ge [version]'0.8.0') {
+        # Released updaters require core/sing-box.exe. The Xray experiment is
+        # installed with the new signed Setup, never a fake legacy core file.
+        # NSIS requires /D to be the final, unquoted raw command-line argument.
+        Run-Checked $Setup @() $scratch -Timeout 150000 -RawArguments "/S /D=$legacy" | Out-Null
+        $work=Join-Path $legacy ('.kot-update-'+[Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory $work | Out-Null
+        $start=[Diagnostics.ProcessStartInfo]::new((Join-Path $legacy 'Kot.exe'))
+        $start.UseShellExecute=$false; $start.WorkingDirectory=$legacy
+        $start.ArgumentList.Add('--update-receipt'); $start.ArgumentList.Add($work)
+        $next=[Diagnostics.Process]::Start($start)
+        try {
+          $ready=[Diagnostics.Stopwatch]::StartNew()
+          while (!(Test-Path (Join-Path $work 'ready'))) {
+            if ($next.HasExited -or $ready.Elapsed.TotalSeconds -ge 45) { throw 'The manually upgraded Xray client did not initialize its installed UI.' }
+            Start-Sleep -Milliseconds 200
+          }
+          [IO.File]::WriteAllText((Join-Path $work 'committed'),'ok')
+        } finally { $next.Dispose() }
+      } else {
+        $work=Join-Path $legacy ('.kot-update-'+[Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory $work | Out-Null
+        Copy-Item (Join-Path $legacy 'Kot.exe') (Join-Path $work 'Updater.exe')
+        Copy-Item $Setup (Join-Path $work 'package.exe')
+        $start=[Diagnostics.ProcessStartInfo]::new((Join-Path $env:SystemRoot 'System32/cmd.exe'))
+        $start.UseShellExecute=$false; $start.CreateNoWindow=$true; $start.ArgumentList.Add('/c'); $start.ArgumentList.Add('ping -n 2 127.0.0.1 >nul')
+        $parent=[Diagnostics.Process]::Start($start)
+        $request=[ordered]@{Version=$Version;ParentPid=$parent.Id;ParentStarted=$parent.StartTime.ToUniversalTime().Ticks;Resume=$false;Startup=$false}
+        [IO.File]::WriteAllText((Join-Path $work 'request.json'),($request | ConvertTo-Json -Compress))
+        if (!$parent.WaitForExit(10000)) { throw 'Legacy updater parent fixture did not exit.' }
+        Run-Checked (Join-Path $work 'Updater.exe') @('--apply-update') $work -Timeout 150000 | Out-Null
+        if (Test-Path (Join-Path $work 'error.txt')) { throw ([IO.File]::ReadAllText((Join-Path $work 'error.txt'))) }
+        if ((Test-Path $work) -and !(Test-Path (Join-Path $work 'committed'))) { throw 'Legacy updater did not commit the new UI receipt.' }
+      }
       Verify-Files $legacy
-      if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through automatic update') { throw 'Automatic update changed a user file.' }
-      if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Automatic update changed the existing encrypted HWID.' }
+      if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Upgrade changed a user file.' }
+      if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Upgrade changed the existing encrypted HWID.' }
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
-      if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Automatic update changed the old profile or traffic history.' }
-      Write-Host 'PASS authentic 0.6.1 updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved.'
+      if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
+      if ([version]$Version -ge [version]'0.8.0') {
+        Write-Host 'PASS signed Setup upgrades an authentic 0.6.1 installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved.'
+      } else {
+        Write-Host 'PASS authentic 0.6.1 updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved.'
+      }
 
       # Exercise startup recovery from the actual bundled executable. Kot.exe is
       # in the journal, so restoration must happen from a separate helper after
@@ -158,7 +183,7 @@ try {
       if (!$restarted) { throw 'Interrupted update did not restore and restart the installed application.' }
       Verify-Files $legacy
       Run-Checked (Join-Path $legacy 'Kot.exe') @('--shutdown') $legacy -Timeout 40000 | Out-Null
-      if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through automatic update') { throw 'Startup recovery changed a user file.' }
+      if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Startup recovery changed a user file.' }
       Write-Host 'PASS installed startup recovery restores a journal containing the running Kot.exe, removes partial new files and restarts the application through a separate helper.'
 
     } finally {
