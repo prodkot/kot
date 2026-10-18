@@ -125,9 +125,20 @@ try:
             except (OSError, http.client.HTTPException):
                 passed = False
             check(passed == (action != 'block'), name + ' enforces conflicting rules for ' + host)
+        # Xray writes access records asynchronously. Wait for both records before
+        # terminating the core, otherwise a successful request can lose its log.
+        log_path = folder / (name + '-live.log')
+        marker = '[kot-in -> ' + action + ']'
+        until = time.monotonic() + 3
+        while True:
+            log_text = log_path.read_text(errors='replace')
+            if log_text.count(marker) >= 2 or process.poll() is not None or time.monotonic() >= until:
+                break
+            time.sleep(0.025)
+        recorded = log_text.count(marker) == 2
+        detail = '' if recorded else '\n' + log_text[-2000:]
+        check(recorded, name + ' sends both real requests to ' + action + detail)
         process.terminate(); process.wait(timeout=5)
-        log_text = (folder / (name + '-live.log')).read_text(errors='replace')
-        check(log_text.count('[kot-in -> ' + action + ']') == 2, name + ' sends both real requests to ' + action)
     from sniffing_checks import run as sniffing_checks
     sniffing_checks(folder, start, port, check)
 
