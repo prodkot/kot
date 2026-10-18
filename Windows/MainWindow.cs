@@ -226,7 +226,7 @@ public sealed partial class MainWindow : WindowChrome
                     Clipboard.SetText(FullLog()); break;
                 case "copyDiagnostics": Clipboard.SetText(JsonSerializer.Serialize(ToolsModel(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true })); break;
                 case "diagnostics":
-                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
+                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, build = ClientIdentity.Build, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
                 default:
                     await operations.WaitAsync(lifetime.Token);
                     try { if (!exiting) await Mutate(action, data); } finally { operations.Release(); }
@@ -320,7 +320,7 @@ public sealed partial class MainWindow : WindowChrome
     {
         var header = new
         {
-            app = "kot. " + ClientIdentity.Version, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString,
+            app = "kot. " + ClientIdentity.Version, build = ClientIdentity.Build, core = "Xray experimental 0f3d884786f9", os = Environment.OSVersion.VersionString,
             hwidEnabled = profile.SendHwid, state = tunnel.State,
             protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol,
             nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error,

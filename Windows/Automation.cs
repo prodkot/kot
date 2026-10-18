@@ -141,7 +141,7 @@ public sealed partial class MainWindow
                             else
                             {
                                 await ProviderAssets.Prepare(result.Nodes, ct.Token, RequestProxyPort);
-                                await XraySession.Validate(result.Nodes, ct.Token);
+                                result = await XraySession.Validate(result, ct.Token);
                                 SaveProfile(p =>
                                 {
                                     var updated = p.Subscriptions.Single(s => s.Id == due.Id);
@@ -171,7 +171,7 @@ public sealed partial class MainWindow
     async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing)
     {
         await ProviderAssets.Prepare(result.Nodes, lifetime.Token, RequestProxyPort);
-        await XraySession.Validate(result.Nodes, lifetime.Token);
+        result = await XraySession.Validate(result, lifetime.Token);
         var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
         if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");

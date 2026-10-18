@@ -14,11 +14,11 @@ namespace Kot.WindowTests;
 // The real builder supplies DNS, sniffing, outbound options and the Windows TUN.
 public static class RoutingChecks
 {
-    static async Task<string> Request(string host, int originPort, X509Certificate2 certificate, CancellationToken ct, int proxyPort = 0)
+    static async Task<string> Request(string host, int originPort, X509Certificate2 certificate, CancellationToken ct, int proxyPort = 0, string? dialAddress = null)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(8));
         using var client = new TcpClient();
-        await client.ConnectAsync(proxyPort == 0 ? host : "127.0.0.1", proxyPort == 0 ? originPort : proxyPort, deadline.Token);
+        await client.ConnectAsync(proxyPort == 0 ? dialAddress ?? host : "127.0.0.1", proxyPort == 0 ? originPort : proxyPort, deadline.Token);
         using var stream = client.GetStream();
         if (proxyPort != 0)
         {
@@ -43,8 +43,9 @@ public static class RoutingChecks
         string id = Guid.NewGuid().ToString("N");
         string[] proxyHosts = [$"proxy-{id}.ru", $"proxy-{id}.xn--p1ai"];
         string[] tunHosts = [$"tun-{id}.ru", $"tun-{id}.xn--p1ai"];
+        string[] recoveryHosts = [$"recover-{id}.ru", $"recover-{id}.xn--p1ai"];
         var request = new CertificateRequest("CN=kot routing fixture", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        var san = new SubjectAlternativeNameBuilder(); foreach (string host in proxyHosts.Concat(tunHosts)) san.AddDnsName(host);
+        var san = new SubjectAlternativeNameBuilder(); foreach (string host in proxyHosts.Concat(tunHosts).Concat(recoveryHosts)) san.AddDnsName(host);
         request.CertificateExtensions.Add(san.Build());
         using var signed = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
         // Schannel needs an imported key container. Without PersistKeySet the
@@ -77,6 +78,7 @@ public static class RoutingChecks
         // These addresses enter Wintun. The fixture direct outbound redirects to
         // the local TLS origin only after the SNI domain rule has matched.
         foreach (string host in tunHosts) hosts[host] = "192.0.2.123";
+        foreach (string host in recoveryHosts) hosts[host] = new JsonArray("::1", "127.0.0.1");
         var provider = new JsonObject {
             ["inbounds"] = new JsonArray(),
             ["outbounds"] = new JsonArray(vpn, new JsonObject { ["tag"] = "direct", ["protocol"] = "freedom" },
@@ -113,6 +115,12 @@ public static class RoutingChecks
                 check((await Request(host, webPort, certificate, ct, proxy.Port)).EndsWith("direct-route"), "HTTPS CONNECT follows split DNS and skips unavailable A/AAAA addresses with TUN/WFP active: " + host.Split('.').Last());
             foreach (string host in tunHosts)
                 check((await Request(host, webPort, certificate, ct)).EndsWith("direct-route"), "Windows DNS, TUN and TLS SNI select the direct route while VPN is offline: " + host.Split('.').Last());
+            // No redirect: the browser has a stale/unusable IP, but SNI and
+            // split DNS identify an available IPv4 origin. Old routeOnly=true
+            // keeps dialing the unreachable literal and fails this request.
+            foreach (string host in recoveryHosts)
+                foreach (string address in new[] { "2001:db8::dead", "192.0.2.123" })
+                    check((await Request(host, webPort, certificate, ct, dialAddress: address)).EndsWith("direct-route"), "real Windows TUN recovers an unreachable " + address + " via sniffed domain and DNS, without redirect: " + host.Split('.').Last());
             check(KillSwitch.Detect(), "direct routing never disables the WFP guard");
         }
         finally

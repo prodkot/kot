@@ -158,6 +158,9 @@ public sealed class Tunnel
             var routing = profile.ActiveRoutingProfile.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules ?? throw new UserError("Профиль маршрутизации удалён.");
             var config = XrayRuntime.Build(node, port, profile.ConnectionMode == "tun", systemPort, apiPort, apiSecret,
                 profile.Mode == "smart", profile.Bypass, routing, GeoIpStore.Cache.Paths(countries));
+            AppLog.Write("routing", "source=" + (routing != null ? "manual" : node.FullConfig != null ? "provider" : "default")
+                + "; mode=" + profile.Mode + "; rules=" + config["routing"]!["rules"]!.AsArray().Count
+                + "; manualDirectDomains=" + (routing?.DirectDomains.Length ?? 0) + "; sniffDestination=" + (profile.ConnectionMode == "tun"));
             usesTun = profile.ConnectionMode == "tun";
             ProxyPort = port; AutomaticNode = automatic ? node.Id : "";
             string json = config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });

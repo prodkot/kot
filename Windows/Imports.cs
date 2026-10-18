@@ -16,7 +16,7 @@ public sealed partial class MainWindow
             var result = await Task.Run(() => Subscriptions.Parse(text), attempt.Token);
             result = await ProviderRouting.ResolveLocal(result, attempt.Token, RequestProxyPort);
             await ProviderAssets.Prepare(result.Nodes, attempt.Token, RequestProxyPort);
-            await XraySession.Validate(result.Nodes, attempt.Token);
+            result = await XraySession.Validate(result, attempt.Token);
             attempt.Token.ThrowIfCancellationRequested();
             if (profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
             await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();

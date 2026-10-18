@@ -74,7 +74,10 @@ public static class XrayRuntime
                 ["autoSystemRoutingTable"] = new JsonArray("0.0.0.0/0", "::/0"), ["autoOutboundsInterface"] = "auto",
                 ["autoSystemWfpBlockLeak"] = new JsonArray("dns", "misconfigtun")
             },
-            ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls", "quic"), ["routeOnly"] = true }
+            // Keep the sniffed destination for egress as well as routing. Otherwise
+            // a browser-selected unreachable IPv6 survives into freedom/VLESS,
+            // and neither split DNS nor address racing can recover via IPv4.
+            ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls", "quic"), ["routeOnly"] = false }
         });
         if (manual != null || node.FullConfig == null)
         {

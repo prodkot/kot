@@ -69,8 +69,9 @@ public static class CoreDiagnostics
     public static string Summary(string clean)
     {
         var lines = clean.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
-        string line = lines.LastOrDefault(x => x.Contains("FATAL", StringComparison.OrdinalIgnoreCase))
-            ?? lines.LastOrDefault(x => x.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+        string line = lines.LastOrDefault(x => x.StartsWith("Failed to start:", StringComparison.OrdinalIgnoreCase))
+            ?? lines.LastOrDefault(x => Regex.IsMatch(x, @"\bFATAL\b", RegexOptions.IgnoreCase))
+            ?? lines.LastOrDefault(x => Regex.IsMatch(x, @"\bERROR\b", RegexOptions.IgnoreCase))
             ?? lines.LastOrDefault() ?? "Ядро не записало пояснение.";
         return line.Length > 450 ? line[..450] + "…" : line;
     }
