@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/cover.svg" width="100%" alt="kot. Клиент для Windows">
+</p>
+
 <h1 align="center">kot. / Твой сервер. Один клик.</h1>
 
 <p align="center">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
