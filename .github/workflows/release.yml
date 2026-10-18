@@ -42,6 +42,7 @@ jobs:
           if ($env:PUBLISH_RELEASE -eq 'true' -and $env:GITHUB_REF -ne 'refs/heads/main') { throw 'Manual publication is only allowed from main.' }
           python Tests/repository.py
           if ($LASTEXITCODE -ne 0) { throw 'Repository consistency checks failed.' }
+          ./Tests/qa_summary.ps1
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
       - name: Native Windows process launcher
@@ -75,6 +76,8 @@ jobs:
         run: |
           python Release/xray-core.py artifacts/network-core --target windows
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Xray build failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File Tests/qa_stdin.ps1 -CorePath "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Shipped QA stdin regression failed.' }
           ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$PWD/artifacts/network-core/xray.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Native Xray or real TUN kill switch test failed.' }
       - name: Build signed package and installer
@@ -115,6 +118,12 @@ jobs:
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
+          python QA/package.py --publish $publish --setup $setup.FullName --output artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'QA kit packaging failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File artifacts/qa-kit/Checks.ps1 -InstallDirectory $target -ReportDirectory artifacts/qa-ci -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'The shipped QA kit failed against the installed candidate.' }
+          python Tests/qa_report.py artifacts/qa-ci/qa-report.zip
+          if ($LASTEXITCODE -ne 0) { throw 'QA report privacy/schema validation failed.' }
           $legacy=Get-Content Release/legacy-documents.json -Raw | ConvertFrom-Json
           foreach ($name in $legacy) {
             if (Test-Path (Join-Path $target $name)) { throw "Unnecessary root document installed: $name" }
@@ -146,6 +155,9 @@ jobs:
           name: windows-release
           path: |
             artifacts/*.exe
+            artifacts/Kot-QA-*.zip
+            artifacts/candidate.json
+            artifacts/qa-ci/qa-report.zip
       - name: Publish release
         if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         shell: pwsh

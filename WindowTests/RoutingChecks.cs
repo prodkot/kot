@@ -73,7 +73,7 @@ public static class RoutingChecks
         var node = Subscriptions.ParseNode($"vless://11111111-1111-4111-8111-111111111111@127.0.0.1:{offline.Port}?security=none");
         var vpn = XrayConfig.Outbound(node); vpn["tag"] = "vpn";
         var hosts = new JsonObject();
-        foreach (string host in proxyHosts) hosts[host] = "127.0.0.1";
+        foreach (string host in proxyHosts) hosts[host] = new JsonArray("127.0.0.2", "::1", "127.0.0.1");
         // These addresses enter Wintun. The fixture direct outbound redirects to
         // the local TLS origin only after the SNI domain rule has matched.
         foreach (string host in tunHosts) hosts[host] = "192.0.2.123";
@@ -110,7 +110,7 @@ public static class RoutingChecks
             check(ready && !core.HasExited, "routing fixture starts the production TUN with provider DNS and an offline VPN");
             KillSwitch.ArmForTests(Environment.ProcessPath!, xray, KillSwitch.TunnelInterface());
             foreach (string host in proxyHosts)
-                check((await Request(host, webPort, certificate, ct, proxy.Port)).EndsWith("direct-route"), "HTTPS CONNECT follows provider split DNS and direct routing with TUN/WFP active: " + host.Split('.').Last());
+                check((await Request(host, webPort, certificate, ct, proxy.Port)).EndsWith("direct-route"), "HTTPS CONNECT follows split DNS and skips unavailable A/AAAA addresses with TUN/WFP active: " + host.Split('.').Last());
             foreach (string host in tunHosts)
                 check((await Request(host, webPort, certificate, ct)).EndsWith("direct-route"), "Windows DNS, TUN and TLS SNI select the direct route while VPN is offline: " + host.Split('.').Last());
             check(KillSwitch.Detect(), "direct routing never disables the WFP guard");

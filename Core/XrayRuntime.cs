@@ -48,6 +48,9 @@ public static class XrayRuntime
             var stream = output["streamSettings"] as JsonObject ?? new(); output["streamSettings"] = stream;
             var sockopt = stream["sockopt"] as JsonObject ?? new(); stream["sockopt"] = sockopt;
             sockopt["domainStrategy"] = "ForceIP";
+            // Without racing Xray picks a random address on each of five tries,
+            // so a reachable address can be missed when other A/AAAA records fail.
+            sockopt["happyEyeballs"] ??= new JsonObject { ["tryDelayMs"] = 250, ["interleave"] = 1, ["maxConcurrentTry"] = 4, ["prioritizeIPv6"] = false };
         }
         outputs.Add(new JsonObject { ["tag"] = "kot-block", ["protocol"] = "blackhole" });
         outputs.Add(new JsonObject { ["tag"] = "kot-dns-out", ["protocol"] = "dns" });

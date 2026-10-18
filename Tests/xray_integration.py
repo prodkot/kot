@@ -1,7 +1,7 @@
 """Real single-core traffic, provider routing, DNS and authenticated metrics.
 No Internet server or administrator privileges are needed on Linux.
 """
-import argparse, base64, contextlib, copy, http.client, http.server, json, pathlib
+import argparse, base64, concurrent.futures, contextlib, copy, http.client, http.server, json, pathlib
 import socket, socketserver, struct, subprocess, threading, time
 
 parser = argparse.ArgumentParser()
@@ -160,6 +160,25 @@ try:
     except (OSError, http.client.HTTPException):
         failed = True
     check(failed, 'a direct-only provider balancer cannot hide a stopped VPN server')
+    balanced_client.terminate(); balanced_client.wait(timeout=5)
+    class Web6(http.server.ThreadingHTTPServer):
+        address_family = socket.AF_INET6
+    web6 = serve(Web6(('::1', 0), Web))
+    multi = json.loads((folder / 'provider-multi-ip.json').read_text())
+    multi_client = start(multi, 'provider-multi-ip', 19442)
+    targets = [f'http://multi-v4.ru:{web_port}/', f'http://multi-v6.ru:{web6.server_port}/']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(pool.map(lambda target: request(19443, target), targets * 16))
+    check(all(r == (200, b'native-xray-traffic') for r in responses), '32 concurrent direct requests reach the working IPv4 or IPv6 address despite failed A/AAAA alternatives')
+    with socket.socket() as reserved:
+        reserved.bind(('127.0.0.1', 0))
+        failed = False
+        try:
+            failed = request(19443, f'http://multi-offline.ru:{reserved.getsockname()[1]}/', timeout=0.1)[0] != 200
+        except (OSError, http.client.HTTPException):
+            failed = True
+        check(failed, 'all unavailable direct addresses fail instead of a silent VPN fallback')
+    check(multi_client.poll() is None and request(19443, targets[0]) == (200, b'native-xray-traffic'), 'cancelled address attempts leave the core usable for the next connection')
     check(any(q[1] == 28 for q in dns.queries), 'provider DNS was asked for empty AAAA responses')
     check(not fallback.queries, 'an empty provider AAAA answer never falls through to the remote resolver')
     print('Native Xray integration passed.', flush=True)

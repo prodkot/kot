@@ -73,6 +73,17 @@ public static class XrayRuntimeTests
         socketProvider["outbounds"]![1]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["tcpKeepAliveIdle"] = 42 } };
         var sockets = XrayRuntime.Build(full with { FullConfig = socketProvider }, 19442);
         check(sockets["outbounds"]![1]!["streamSettings"]!["sockopt"]!["tcpKeepAliveIdle"]!.GetValue<int>() == 42, "default direct DNS normalization retains unrelated socket options");
+        socketProvider["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"] = new JsonObject { ["tryDelayMs"] = 0, ["prioritizeIPv6"] = true };
+        sockets = XrayRuntime.Build(full with { FullConfig = socketProvider }, 19442);
+        check(JsonNode.DeepEquals(sockets["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"], socketProvider["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"]), "explicit provider address racing policy is preserved, including disabled racing");
+        var multiIp = (JsonObject)saved.DeepClone();
+        var unavailable = Enumerable.Range(2, 16).Select(n => (JsonNode?)JsonValue.Create("127.0.0." + n)).ToArray();
+        multiIp["dns"]!["hosts"] = new JsonObject {
+            ["multi-v4.ru"] = new JsonArray(unavailable.Select(n => n!.DeepClone()).Concat(new JsonNode?[] { JsonValue.Create("::1"), JsonValue.Create("127.0.0.1") }).ToArray()),
+            ["multi-v6.ru"] = new JsonArray(unavailable.Select(n => n!.DeepClone()).Append(JsonValue.Create("::1")).ToArray()),
+            ["multi-offline.ru"] = new JsonArray("127.0.0.2", "::1")
+        };
+        File.WriteAllText(Path.Combine(dir, "provider-multi-ip.json"), XrayRuntime.Build(full with { FullConfig = multiIp }, 19442, proxyPort: 19443).ToJsonString());
         var inherited = runtime["routing"]!["rules"]!.AsArray().Single(r => r?["domain"] != null);
         check(inherited!["inboundTag"]!.AsArray().Select(t => t!.ToString()).SequenceEqual(new[] { "kot-tun", "kot-in" }) && inherited["outboundTag"]!.ToString() == "direct", "provider RU and IDN rules retain their action on native inputs");
         check(JsonNode.DeepEquals(runtime["dns"], saved["dns"]), "provider DNS and empty-AAAA fallback policy survive natively");
