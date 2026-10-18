@@ -34,6 +34,9 @@ public static class ProviderRouting
     {
         value = value.Trim();
         if (value.Length > RoutingRules.MaxBytes * 2) throw new UserError("Маршрутизация подписки слишком большая.");
+        // A raw profile can itself contain HTTPS URLs (DNS and geo databases).
+        // Only a link payload is subject to the scheme check below.
+        if (value.StartsWith('{')) return value;
         if (value.Equals("off", StringComparison.OrdinalIgnoreCase) || value.EndsWith("://routing/off", StringComparison.OrdinalIgnoreCase)) return "off";
         var link = Regex.Match(value, @"^(?:[a-zA-Z][a-zA-Z0-9+.-]*)?://(?:auto)?routing/(?:onadd|add)/(.+)$", RegexOptions.IgnoreCase);
         if (link.Success) value = link.Groups[1].Value;
@@ -85,7 +88,7 @@ public static class ProviderRouting
     }
     static SubscriptionResult Apply(SubscriptionResult result, string value)
     {
-        if (value == "off") return result with { Nodes = result.Nodes.Select(n => n.Protocol == "xray" ? n : n with { FullConfig = null, GeoIpUrl = "", GeoSiteUrl = "" }).ToList() };
+        if (value == "off") return result with { Nodes = result.Nodes.Select(n => n.Protocol == "xray" ? n : n with { FullConfig = null, GeoIpUrl = "", GeoSiteUrl = "", GeoRevision = 0 }).ToList() };
         try
         {
             if (!value.TrimStart().StartsWith('{')) value = Subscriptions.Decode64(value);
@@ -94,11 +97,23 @@ public static class ProviderRouting
             var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using (var doc = JsonDocument.Parse(value))
                 foreach (var property in doc.RootElement.EnumerateObject()) if (!fields.Add(property.Name)) throw new UserError("Повторяющиеся поля маршрутизации подписки.");
-            var supported = new HashSet<string>(new[] { "Name", "GlobalProxy", "FakeDNS", "DomainStrategy", "DnsHosts", "Geoipurl", "Geositeurl",
+            var supported = new HashSet<string>(new[] { "Name", "GlobalProxy", "FakeDNS", "DomainStrategy", "DnsHosts", "Geoipurl", "Geositeurl", "RouteOrder", "LastUpdated", "LastUpdatedDate", "UseChunkFiles",
                 "DirectSites", "DirectIp", "ProxySites", "ProxyIp", "BlockSites", "BlockIp",
                 "RemoteDNSType", "RemoteDNSIP", "RemoteDns", "RemoteDNSDomain", "DomesticDNSType", "DomesticDNSIP", "DomesticDns", "DomesticDNSDomain" }, StringComparer.OrdinalIgnoreCase);
             if (fields.Any(field => !supported.Contains(field))) throw new UserError("Профиль маршрутизации подписки содержит неподдерживаемые параметры. Правила не применены; прежняя подписка сохранена.");
             string G(string key, string fallback = "") => source.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value?.ToString() ?? fallback;
+            string[] order = G("RouteOrder", "block-proxy-direct").Trim().ToLowerInvariant().Split('-');
+            if (order.Length != 3 || order.Distinct().Count() != 3 || order.Any(tag => tag is not ("block" or "proxy" or "direct")))
+                throw new UserError("Неверный RouteOrder подписки: нужны block, proxy и direct по одному разу.");
+            string revision = G("LastUpdated").Trim(), revisionAlias = G("LastUpdatedDate").Trim();
+            if (revision.Length == 0) revision = revisionAlias;
+            else if (revisionAlias.Length > 0 && revisionAlias != revision) throw new UserError("Разные даты обновления геобаз подписки.");
+            long geoRevision = 0;
+            if (revision.Length > 0 && !long.TryParse(revision, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out geoRevision))
+                throw new UserError("Неверный LastUpdated подписки: нужна неотрицательная Unix-метка времени.");
+            // Chunking is a mobile memory optimization. The same sections in the
+            // complete, validated geo files have identical matching semantics.
+            if (!bool.TryParse(G("UseChunkFiles", "true"), out _)) throw new UserError("Неверный UseChunkFiles в профиле подписки.");
             if (!bool.TryParse(G("FakeDNS", "false"), out _)) throw new UserError("Неверный FakeDNS в профиле подписки.");
             if (G("FakeDNS", "false").Equals("true", StringComparison.OrdinalIgnoreCase)) throw new UserError("FakeDNS в профиле подписки пока не поддерживается. Провайдер должен выдать профиль с FakeDNS=false; прежняя подписка сохранена.");
             JsonArray List(string key)
@@ -109,8 +124,9 @@ public static class ProviderRouting
                 return (JsonArray)list.DeepClone();
             }
             JsonArray rules = [];
-            foreach (var (prefix, tag) in new[] { ("Block", "block"), ("Proxy", "proxy"), ("Direct", "direct") })
+            foreach (string tag in order)
             {
+                string prefix = tag switch { "block" => "Block", "proxy" => "Proxy", _ => "Direct" };
                 var domains = List(prefix + "Sites");
                 for (int i = 0; i < domains.Count; i++) domains[i] = Domain(domains[i]!.GetValue<string>());
                 if (domains.Count > 0) rules.Add(new JsonObject { ["type"] = "field", ["domain"] = domains, ["outboundTag"] = tag });
@@ -121,10 +137,11 @@ public static class ProviderRouting
             if (global is not ("true" or "false")) throw new UserError("Неверный GlobalProxy в маршрутизации подписки.");
             string strategy = G("DomainStrategy", "IPIfNonMatch");
             if (strategy is not ("AsIs" or "IPIfNonMatch" or "IPOnDemand")) throw new UserError("Неподдерживаемый DomainStrategy подписки.");
+            string DnsIp(string prefix, string fallback) => G(prefix + "DNSIP", string.IsNullOrWhiteSpace(G(prefix + "Dns")) ? fallback : G(prefix + "Dns"));
             JsonObject Dns(string prefix, bool remote)
             {
                 string type = G(prefix + "DNSType", remote ? "DoH" : "DoU");
-                string ip = G(prefix + "DNSIP", G(prefix + "Dns", remote ? "1.1.1.1" : "8.8.8.8"));
+                string ip = DnsIp(prefix, remote ? "1.1.1.1" : "8.8.8.8");
                 if (!IPAddress.TryParse(ip, out _)) throw new UserError("В DNS подписки нужен IP-адрес.");
                 string address = type switch
                 {
@@ -149,13 +166,13 @@ public static class ProviderRouting
             // Bootstrap DoH hostnames without depending on that same DoH connection.
             foreach (var (prefix, dns, fallback) in new[] { ("Remote", remoteDns, "1.1.1.1"), ("Domestic", directDns, "8.8.8.8") })
                 if (Uri.TryCreate(dns["address"]?.ToString(), UriKind.Absolute, out var doh) && doh.Scheme == "https" && !hostMap.ContainsKey(doh.IdnHost)
-                    && IPAddress.TryParse(G(prefix + "DNSIP", G(prefix + "Dns", fallback)), out var address)) hostMap[doh.IdnHost] = address.ToString();
+                    && IPAddress.TryParse(DnsIp(prefix, fallback), out var address)) hostMap[doh.IdnHost] = address.ToString();
             string geoIp = G("Geoipurl"), geoSite = G("Geositeurl");
             if (geoIp.Length > 0) RoutingProfiles.Source(geoIp);
             if (geoSite.Length > 0) RoutingProfiles.Source(geoSite);
             var nodes = result.Nodes.Select(node =>
             {
-                if (node.Protocol == "xray") return node with { GeoIpUrl = geoIp, GeoSiteUrl = geoSite }; // Keep the full config's routing and DNS.
+                if (node.Protocol == "xray") return node with { GeoIpUrl = geoIp, GeoSiteUrl = geoSite, GeoRevision = geoRevision }; // Keep the full config's routing and DNS.
                 var proxy = XrayConfig.Outbound(node); proxy["tag"] = "proxy";
                 var direct = new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" };
                 JsonArray outbounds = global == "true" ? new(proxy, direct) : new(direct, proxy);
@@ -164,7 +181,7 @@ public static class ProviderRouting
                     : (proxyDomains.Count > 0 ? new JsonArray(remoteDns.DeepClone(), directDns.DeepClone()) : new JsonArray(directDns.DeepClone()));
                 var config = new JsonObject { ["inbounds"] = new JsonArray(), ["outbounds"] = outbounds, ["routing"] = new JsonObject { ["domainStrategy"] = strategy, ["rules"] = rules.DeepClone() }, ["dns"] = new JsonObject { ["servers"] = servers, ["hosts"] = hosts.DeepClone(), ["queryStrategy"] = "UseIP", ["disableFallbackIfMatch"] = true } };
                 XrayConfig.Validate(config);
-                return node with { FullConfig = config, GeoIpUrl = geoIp, GeoSiteUrl = geoSite };
+                return node with { FullConfig = config, GeoIpUrl = geoIp, GeoSiteUrl = geoSite, GeoRevision = geoRevision };
             }).ToList();
             return result with { Nodes = nodes };
         }

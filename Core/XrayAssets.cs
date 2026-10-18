@@ -2,13 +2,17 @@ using System.Security.Cryptography;
 using System.Text;
 namespace Kot.Core;
 
-// Each pair of provider URLs has its own cache. A failed download never overwrites a working file.
+// Each pair of provider URLs and revision has its own cache. A failed download
+// never overwrites the files used by the currently saved subscription.
 public sealed class XrayAssets(string root)
 {
     public const int MaxBytes = 64 * 1024 * 1024;
     public string DirectoryFor(Node node)
     {
-        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Source(node, "geoip.dat") + "\n" + Source(node, "geosite.dat")))).ToLowerInvariant();
+        string source = Source(node, "geoip.dat") + "\n" + Source(node, "geosite.dat");
+        // Keep the existing cache path for profiles without a version marker.
+        if (node.GeoRevision != 0) source += "\n" + node.GeoRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
         return Path.Combine(root, key);
     }
     static string Source(Node node, string file) => (file == "geoip.dat" ? node.GeoIpUrl : node.GeoSiteUrl) is { Length: > 0 } custom ? custom

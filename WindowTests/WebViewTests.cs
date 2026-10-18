@@ -26,11 +26,13 @@ static class WebViewTests
         using var icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
         using var loading = new StartupScreen("light", icon, () => { }, () => { }, () => { }, () => { }, spin: true);
         Process? browser = null;
+        bool browserResourcesReleased = false;
         try
         {
             form.Controls.Add(web); form.Controls.Add(loading); loading.BringToFront(); form.Show();
             check(loading.Visible, "native loading screen is visible before WebView2 initialization");
             var env = Complete(WebViewHost.CreateEnvironment(folder));
+            env.BrowserProcessExited += (_, _) => browserResourcesReleased = true;
             Complete(web.EnsureCoreWebView2Async(env));
             var core = web.CoreWebView2;
             browser = Process.GetProcessById(checked((int)core.BrowserProcessId));
@@ -135,7 +137,9 @@ static class WebViewTests
             web.Dispose(); form.Close();
             if (browser != null)
             {
-                try { PumpUntil(() => browser.HasExited, "private browser did not exit after UI disposal", 10); }
+                // The browser PID can exit before its child processes release
+                // the profile. WebView2 signals the completed group shutdown.
+                try { PumpUntil(() => browserResourcesReleased && browser.HasExited, "private browser did not release its profile after UI disposal", 10); }
                 finally { if (!browser.HasExited) { browser.Kill(entireProcessTree: true); browser.WaitForExit(5000); } browser.Dispose(); }
             }
             if (Directory.Exists(folder)) Directory.Delete(folder, true);

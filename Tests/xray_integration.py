@@ -108,9 +108,37 @@ try:
     xhttp_inbound['port'] = xhttp_port
     xhttp_inbound['streamSettings'] = {'network': 'xhttp', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}}
     server_config['inbounds'].append(xhttp_inbound)
-    server_config['dns'] = {'hosts': {'proxy-sniff.test': '127.0.0.1'}, 'servers': []}
+    server_config['dns'] = {'hosts': {'proxy-sniff.test': '127.0.0.1', 'route-order.ru': '127.0.0.1'}, 'servers': []}
     server_config['outbounds'][0]['streamSettings'] = {'sockopt': {'domainStrategy': 'ForceIP'}}
     server = start(server_config, 'server', 19441)
+    for fixture in sorted(folder.glob('provider-order-*.json')):
+        if fixture.name.endswith('-live.json'): continue
+        name = fixture.stem
+        action = name.removeprefix('provider-order-').split('-')[0]
+        config = json.loads(fixture.read_text())
+        config['inbounds'][0]['port'] = port()
+        config['inbounds'][1]['port'] = listen = port()
+        process = start(config, name, listen)
+        for host in ('route-order.ru', '127.0.0.1'):
+            try:
+                passed = request(listen, f'http://{host}:{web_port}/', timeout=2) == (200, b'native-xray-traffic')
+            except (OSError, http.client.HTTPException):
+                passed = False
+            check(passed == (action != 'block'), name + ' enforces conflicting rules for ' + host)
+        # Xray writes access records asynchronously. Wait for both records before
+        # terminating the core, otherwise a successful request can lose its log.
+        log_path = folder / (name + '-live.log')
+        marker = '[kot-in -> ' + action + ']'
+        until = time.monotonic() + 3
+        while True:
+            log_text = log_path.read_text(errors='replace')
+            if log_text.count(marker) >= 2 or process.poll() is not None or time.monotonic() >= until:
+                break
+            time.sleep(0.025)
+        recorded = log_text.count(marker) == 2
+        detail = '' if recorded else '\n' + log_text[-2000:]
+        check(recorded, name + ' sends both real requests to ' + action + detail)
+        process.terminate(); process.wait(timeout=5)
     from sniffing_checks import run as sniffing_checks
     sniffing_checks(folder, start, port, check)
 
