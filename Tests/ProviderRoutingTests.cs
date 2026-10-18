@@ -12,6 +12,7 @@ static class ProviderRoutingTests
     static string ProfileJson => """{"Name":"Provider","DirectSites":[".ru",".рф"],"BlockSites":["blocked.example"],"RemoteDNSType":"DoU","RemoteDNSIP":"127.0.0.3","DomesticDNSType":"DoU","DomesticDNSIP":"127.0.0.2","DomainStrategy":"AsIs"}""";
     public static async Task Run(Action<bool, string> check)
     {
+        await ProviderRoutingCompatibilityTests.Run(check);
         var result = Subscriptions.Parse(Link + "\nincy://routing/onadd/" + Encode(ProfileJson));
         var node = result.Nodes.Single(); var config = node.FullConfig!;
         check(Xhttp.Uses(node) && !Xhttp.UsesTransport(node) && config != null, "provider rules automatically select official Xray without a manual profile");
