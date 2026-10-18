@@ -110,6 +110,13 @@ jobs:
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
+          python QA/package.py --publish $publish --setup $setup.FullName --output artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'QA kit packaging failed.' }
+          # Exercise the same entry point shipped to users, on Windows PowerShell 5.1.
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File artifacts/qa-kit/Checks.ps1 -InstallDirectory $target -ReportDirectory artifacts/qa-ci -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'The shipped QA kit failed against the installed candidate.' }
+          python Tests/qa_report.py artifacts/qa-ci/qa-report.zip
+          if ($LASTEXITCODE -ne 0) { throw 'QA report privacy/schema validation failed.' }
           $legacy=Get-Content Release/legacy-documents.json -Raw | ConvertFrom-Json
           foreach ($name in $legacy) {
             if (Test-Path (Join-Path $target $name)) { throw "Unnecessary root document installed: $name" }
@@ -146,6 +153,10 @@ jobs:
         if: success()
         with:
           name: windows-development
-          path: artifacts/Kot-Setup-*-Windows-x64.exe
+          path: |
+            artifacts/Kot-Setup-*-Windows-x64.exe
+            artifacts/Kot-QA-*.zip
+            artifacts/candidate.json
+            artifacts/qa-ci/qa-report.zip
           retention-days: 30
           if-no-files-found: error
