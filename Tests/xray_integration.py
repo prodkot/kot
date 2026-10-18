@@ -108,7 +108,12 @@ try:
     xhttp_inbound['port'] = xhttp_port
     xhttp_inbound['streamSettings'] = {'network': 'xhttp', 'xhttpSettings': {'path': '/fixture', 'mode': 'auto'}}
     server_config['inbounds'].append(xhttp_inbound)
+    server_config['dns'] = {'hosts': {'proxy-sniff.test': '127.0.0.1'}, 'servers': []}
+    server_config['outbounds'][0]['streamSettings'] = {'sockopt': {'domainStrategy': 'ForceIP'}}
     server = start(server_config, 'server', 19441)
+    from sniffing_checks import run as sniffing_checks
+    sniffing_checks(folder, start, port, check)
+
     provider = json.loads((folder / 'provider.json').read_text())
     provider['dns']['servers'][-1] = {'address': '127.0.0.1', 'port': fallback.server_address[1]}
     client = start(provider, 'provider', 19442)

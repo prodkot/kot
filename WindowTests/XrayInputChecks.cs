@@ -29,6 +29,17 @@ public static class XrayInputChecks
             try { await XraySession.Check(core, "{\"outbounds\":[{\"protocol\":\"fixture-invalid\"}]}", folder, text => text, deadline.Token); }
             catch (UserError ex) { rejected = ex.Message.Contains("Xray не принял конфигурацию") && !ex.Message.Contains("failed to read config:"); }
             check(rejected, "stdin validation still rejects an invalid outbound instead of masking configuration errors");
+            var compatible = Subscriptions.ParseNode("vless://11111111-1111-4111-8111-111111111111@127.0.0.1:12345?security=none");
+            var incompatible = Subscriptions.ParseNode("vless://11111111-1111-4111-8111-111111111111@8.8.8.8:443?security=none&type=ws");
+            var mixed = new SubscriptionResult([compatible, incompatible, compatible], []);
+            var validated = await XraySession.Validate(mixed, deadline.Token, core);
+            check(validated.Nodes.SequenceEqual(new[] { compatible, compatible }) && validated.Warnings.Count == 1
+                && validated.Warnings[0].Contains("Failed to start:") && validated.Warnings[0].Contains("without TLS")
+                && !validated.Warnings[0].Contains("WebSocket"), "real native rejection skips one unsafe VLESS node without losing valid subscription nodes or hiding the actual reason");
+            bool emptyRejected = false;
+            try { await XraySession.Validate(new([incompatible], []), deadline.Token, core); }
+            catch (UserError) { emptyRejected = true; }
+            check(emptyRejected, "an entirely incompatible subscription cannot replace the working profile");
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
             bool stopped = false;
             try { await XraySession.Check(core, large, folder, text => text, cancelled.Token); }

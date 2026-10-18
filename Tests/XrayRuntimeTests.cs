@@ -89,6 +89,15 @@ public static class XrayRuntimeTests
         check(JsonNode.DeepEquals(runtime["dns"], saved["dns"]), "provider DNS and empty-AAAA fallback policy survive natively");
         check(runtime["routing"]!["rules"]![1]!["outboundTag"]!.ToString() == "kot-dns-out" && runtime["routing"]!["rules"]![2]!["outboundTag"]!.ToString() == "vpn", "DNS interception and proxy-only health precede provider bypass");
         File.WriteAllText(Path.Combine(dir, "provider.json"), runtime.ToJsonString());
+        var sniffProvider = (JsonObject)saved.DeepClone();
+        sniffProvider["dns"] = new JsonObject { ["hosts"] = new JsonObject {
+            ["direct-sniff.ru"] = new JsonArray("::1", "127.0.0.1"),
+            ["proxy-sniff.test"] = "127.0.0.1", ["blocked-sniff.ru"] = "127.0.0.1"
+        }, ["servers"] = new JsonArray() };
+        sniffProvider["routing"]!["rules"]!.AsArray().Insert(0, new JsonObject {
+            ["type"] = "field", ["domain"] = new JsonArray("full:blocked-sniff.ru"), ["outboundTag"] = "kot-block" });
+        File.WriteAllText(Path.Combine(dir, "provider-sniff.json"), XrayRuntime.Build(full with { FullConfig = sniffProvider }, 19442, tun: true).ToJsonString());
+
         var imported = Subscriptions.Parse(links[0] + "\n#routing: " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("""{"DirectSites":[".ru",".рф"],"DomesticDNSType":"DoU","DomesticDNSIP":"127.0.0.1","RemoteDNSType":"DoU","RemoteDNSIP":"127.0.0.1","DomainStrategy":"AsIs"}"""))).Nodes.Single();
         imported.FullConfig!["dns"]!["servers"]![0]!["port"] = 19445;
         imported.FullConfig["dns"]!["servers"]![1]!["port"] = 19446;

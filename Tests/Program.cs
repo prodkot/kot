@@ -13,6 +13,7 @@ string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0v
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
 Kot.Tests.XrayRuntimeTests.Run(Check);
 Kot.Tests.SubscriptionEditingTests.Run(Check);
+await Kot.Tests.SubscriptionValidationTests.Run(Check);
 await Kot.Tests.ConnectionCheckTests.Run(Check);
 await Kot.Tests.AutomaticSelectionTests.Run(Check);
 Kot.Tests.LogTests.Run(Check);
@@ -138,6 +139,8 @@ string cleanLog = CoreDiagnostics.Redact("\u001b[31mFATAL\u001b[0m create adapte
 Check(!cleanLog.Contains("secret") && !cleanLog.Contains("example.com") && !cleanLog.Contains("Alice") && !cleanLog.Contains(uuid) && !cleanLog.Contains('\u001b') && cleanLog.Contains("create adapter: access denied"), "diagnostics hide credentials, hosts, URL, UUID and local identity while preserving failure");
 Check(CoreDiagnostics.Summary("WARN old\nFATAL open tun: failed\nWARN cleanup") == "FATAL open tun: failed", "fatal error takes priority over cleanup messages");
 Check(CoreDiagnostics.Summary("WARN old\nERROR DNS unavailable\nWARN cleanup") == "ERROR DNS unavailable", "error summary priority");
+Check(CoreDiagnostics.Summary("[Warning] common/errors: WebSocket deprecated\nFailed to start: vless without TLS prohibited\nWARN cleanup") == "Failed to start: vless without TLS prohibited", "native config rejection wins over the common/errors warning module");
+Check(CoreDiagnostics.Summary("[Warning] common/errors: deprecated\nfinal explanation") == "final explanation", "a module named errors is not an error severity");
 Check(CoreDiagnostics.Summary("").Contains("не записало") && CoreDiagnostics.Summary(new string('x', 1000)).Length == 451, "empty output and long diagnostic summary handled");
 Check(CoreDiagnostics.Tail(string.Join('\n', Enumerable.Range(1, 40).Select(i => "line" + i))).Split('\n').Length == 12 && CoreDiagnostics.Tail(new string('x', 5000)).Length == 3000, "diagnostic copy length and line count bounded");
 
