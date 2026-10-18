@@ -7,7 +7,6 @@ public sealed class ProbeCore : IAsyncDisposable
 {
     NativeCore? core;
     IDisposable? xrayPermission;
-    readonly string path = Path.Combine(Store.Folder, "probe-" + Guid.NewGuid().ToString("N") + ".json");
     public int Port { get; private set; }
     public static async Task<ProbeCore> Start(Node node, CancellationToken ct, string? executable = null, string? xrayExecutable = null)
     {
@@ -17,14 +16,12 @@ public sealed class ProbeCore : IAsyncDisposable
             PhysicalNetwork.Capture();
             await ProviderAssets.Prepare([node], ct);
             using var reservation = LoopbackPort.Reserve(ct); probe.Port = reservation.Port;
-            Directory.CreateDirectory(Store.Folder);
             string exe = executable ?? xrayExecutable ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
             probe.xrayPermission = KillSwitch.AllowProbe(exe);
             var config = XrayRuntime.Build(node, probe.Port, physicalInterface: PhysicalNetwork.Interface);
-            await File.WriteAllTextAsync(probe.path, config.ToJsonString(), ct);
             ct.ThrowIfCancellationRequested();
             reservation.Dispose();
-            probe.core = new NativeCore(exe, ["run", "-c", probe.path], Path.GetDirectoryName(exe)!, "kot. Xray probe", text => AppLog.Write("probe-core " + node.Id, text), ProviderAssets.Cache.DirectoryFor(node));
+            probe.core = XraySession.Start(exe, config.ToJsonString(), ProviderAssets.Cache.DirectoryFor(node), "kot. Xray probe", text => AppLog.Write("probe-core " + node.Id, text));
             var until = DateTime.UtcNow.AddSeconds(10);
             while (DateTime.UtcNow < until)
             {
@@ -42,6 +39,5 @@ public sealed class ProbeCore : IAsyncDisposable
     {
         if (core != null) { try { await core.Stop(); } catch (Exception ex) { AppLog.Error("probe stop", ex); } finally { core.Dispose(); core = null; } }
         xrayPermission?.Dispose(); xrayPermission = null;
-        try { File.Delete(path); } catch (Exception ex) { AppLog.Error("probe cleanup", ex); }
     }
 }

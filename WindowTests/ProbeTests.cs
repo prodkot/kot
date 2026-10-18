@@ -34,7 +34,8 @@ public static class ProbeTests
             catch (OperationCanceledException) { }
             catch (Exception ex) when (deadline.IsCancellationRequested && ex is SocketException or ObjectDisposedException) { }
         }, deadline.Token);
-        int before = Directory.Exists(Store.Folder) ? Directory.GetFiles(Store.Folder, "probe-*.json").Length : 0;
+        int ConfigCount() => Directory.Exists(Store.Folder) ? Directory.GetFiles(Store.Folder, "probe-*.json").Length : 0;
+        int before = ConfigCount();
         NativeCore? server = null;
         try
         {
@@ -54,10 +55,10 @@ public static class ProbeTests
                 for (int i = 0; i < 10; i++) samples.Add(await Latency.Http($"http://127.0.0.1:{webPort}/", probe.Port, 3000, deadline.Token));
                 check(ConnectionTools.Summarize(samples).Successes == 10 && Volatile.Read(ref requests) == 11, "native quality check records ten real requests through the isolated core");
             }
-            check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "temporary core disposal removes its configuration");
+            check(ConfigCount() == before, "temporary core uses stdin without leaving a credential configuration");
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel(); bool stopped = false;
             try { await using var probe = await ProbeCore.Start(Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{vlessPort}?security=none"), cancelled.Token, executable); } catch (OperationCanceledException) { stopped = true; }
-            check(stopped && Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "cancelled native probe leaves no process or temporary configuration");
+            check(stopped && ConfigCount() == before, "cancelled native probe leaves no process or temporary configuration");
         }
         finally
         {

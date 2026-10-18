@@ -103,13 +103,13 @@ public sealed class Tunnel
     }
     static int ReservePort() { using var reserved = LoopbackPort.Reserve(); return reserved.Port; }
     public event Action? Changed;
-    readonly string path = Path.Combine(Store.Folder, "runtime.json");
     string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
     public Tunnel() : this(DefaultHealthTargets, TimeSpan.FromSeconds(30)) { }
     internal Tunnel(string[] targets, TimeSpan timeout)
     {
         healthTargets = targets; healthTimeout = timeout;
-        try { File.Delete(path); } catch { }
+        // Remove the previous version's single leftover credential file once.
+        try { File.Delete(Path.Combine(Store.Folder, "runtime.json")); } catch { }
     }
     void Set(string state, string error = "") { AppLog.Write("tunnel", "state=" + state + (error.Length > 0 ? "; " + error : "")); State = state; Error = error; Changed?.Invoke(); }
     public void Cancel() { Interlocked.Increment(ref stopGeneration); cancelled = true; attempt?.Cancel(); }
@@ -160,12 +160,11 @@ public sealed class Tunnel
                 profile.Mode == "smart", profile.Bypass, routing, GeoIpStore.Cache.Paths(countries));
             usesTun = profile.ConnectionMode == "tun";
             ProxyPort = port; AutomaticNode = automatic ? node.Id : "";
-            Directory.CreateDirectory(Store.Folder);
-            File.WriteAllText(path, config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-            await XraySession.Check(CoreExe, path, ProviderAssets.Cache.DirectoryFor(node), Clean, ct);
+            string json = config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            await XraySession.Check(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), Clean, ct);
             ct.ThrowIfCancellationRequested();
             portReservation.Dispose();
-            core = new NativeCore(CoreExe, ["run", "-c", path], Path.GetDirectoryName(CoreExe)!, "kot. Xray", text => AppLog.Write("tunnel-core", text), ProviderAssets.Cache.DirectoryFor(node));
+            core = XraySession.Start(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), "kot. Xray", text => AppLog.Write("tunnel-core", text));
             AppLog.Write("tunnel", "waiting for proxy health");
             using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
@@ -205,7 +204,6 @@ public sealed class Tunnel
                 throw new UserError("Сервер не ответил на проверку соединения. " + (CoreDetails.Length > 0 ? CoreDiagnostics.Summary(CoreDetails) : "Попробуйте другой сервер."));
             }
             ct.ThrowIfCancellationRequested();
-            try { File.Delete(path); } catch { }
             if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
             if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
             attempt.CancelAfter(Timeout.InfiniteTimeSpan);
@@ -260,7 +258,7 @@ public sealed class Tunnel
             try { SystemProxy.Restore(); }
             finally
             {
-                if (old != null) await StopProcess(old); else { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } }
+                if (old != null) await StopProcess(old); else { attempt?.Dispose(); attempt = null; }
             }
         }
         catch (Exception ex)
@@ -274,6 +272,6 @@ public sealed class Tunnel
     {
         try { await old.Stop(); }
         catch (Exception ex) { AppLog.Error("stop core", ex); old?.Dispose(); }
-        finally { attempt?.Dispose(); attempt = null; try { File.Delete(path); } catch { } }
+        finally { attempt?.Dispose(); attempt = null; }
     }
 }

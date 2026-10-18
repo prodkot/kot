@@ -15,11 +15,12 @@ function Port {
     $s=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0)
     try { $s.Start(); return ([Net.IPEndPoint]$s.LocalEndpoint).Port } finally { $s.Stop() }
 }
-function Core([string]$arguments,[int]$seconds=0) {
+function Core([string]$arguments,[int]$seconds=0,[string]$json='') {
     $info=New-Object Diagnostics.ProcessStartInfo
     $info.FileName=$script:xray; $info.Arguments=$arguments; $info.WorkingDirectory=$script:work
     $info.UseShellExecute=$false; $info.CreateNoWindow=$true
     $info.RedirectStandardOutput=$true; $info.RedirectStandardError=$true
+    if ($json.Length) { $info.RedirectStandardInput=$true }
     $info.EnvironmentVariables['XRAY_LOCATION_ASSET']=$script:work
     $p=New-Object Diagnostics.Process; $p.StartInfo=$info
     if (!$p.Start()) { throw 'core-start' }
@@ -27,6 +28,11 @@ function Core([string]$arguments,[int]$seconds=0) {
     $script:guard.Add($p)
     # Drain both pipes; fixture logging is disabled and the run is bounded.
     $stdout=$p.StandardOutput.ReadToEndAsync(); $stderr=$p.StandardError.ReadToEndAsync()
+    if ($json.Length) {
+        $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+        if (!$p.StandardInput.BaseStream.WriteAsync($bytes,0,$bytes.Length).Wait(10000)) { $p.Kill();$p.WaitForExit();throw 'core-stdin-timeout' }
+        $p.StandardInput.Close()
+    }
     if ($seconds) {
         if (!$p.WaitForExit($seconds*1000)) { $p.Kill(); $p.WaitForExit(); throw 'core-timeout' }
         return @{code=$p.ExitCode; output=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()}
@@ -126,6 +132,11 @@ try {
         if ($validation.code -ne 0) { throw 'fixture-config-rejected' }
     }
     Result 'xray-config-acceptance' 'PASS' 'synthetic-loopback-only'
+    $serverJson=$server|ConvertTo-Json -Depth 12 -Compress
+    $clientJson=$client|ConvertTo-Json -Depth 12 -Compress
+    $validation=Core 'run -test -format json -c stdin:' 10 ((' ' * 262144)+$clientJson)
+    if ($validation.code -ne 0) { throw 'fixture-stdin-rejected' }
+    Result 'xray-stdin-acceptance' 'PASS' 'large-json; no-runtime-file'
     Add-Type -TypeDefinition @'
 using System;
 using System.Net;
@@ -152,8 +163,8 @@ public static class KotQaOrigin {
 }
 '@
     [KotQaOrigin]::Start($webPort)
-    $serverProcess=Core 'run -c server.json';Ready $serverPort $serverProcess
-    $clientProcess=Core 'run -c client.json';Ready $proxyPort $clientProcess
+    $serverProcess=Core 'run -format json -c stdin:' 0 $serverJson;Ready $serverPort $serverProcess
+    $clientProcess=Core 'run -format json -c stdin:' 0 $clientJson;Ready $proxyPort $clientProcess
     $socket=New-Object Net.Sockets.TcpClient
     try {
         $socket.ReceiveTimeout=10000;$socket.SendTimeout=10000
@@ -169,7 +180,7 @@ public static class KotQaOrigin {
     Result 'tun-ipv6-dns-sleep-provider' 'NOT_TESTED' 'requires manual checks on this PC'
 } catch {
     # No raw exception messages enter the report; they may contain private paths.
-    $known=@('manifest','manifest-path','installation-not-selected','payload-mismatch','core-version','core-start','core-timeout','fixture-exit','fixture-listener-timeout','fixture-config-rejected','proxy-timeout','traffic-response')
+    $known=@('manifest','manifest-path','installation-not-selected','payload-mismatch','core-version','core-start','core-timeout','core-stdin-timeout','fixture-exit','fixture-listener-timeout','fixture-config-rejected','fixture-stdin-rejected','proxy-timeout','traffic-response')
     $code=if ($known -contains $_.Exception.Message) {$_.Exception.Message} else {'check-exception'}
     Result 'automatic-checks' 'FAIL' ($code+' hresult='+$_.Exception.HResult)
 } finally {
