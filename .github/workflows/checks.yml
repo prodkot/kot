@@ -33,6 +33,7 @@ jobs:
           python3 Tests/statistics_ui.py
           python3 Tests/client_tools_ui.py
           python3 Tests/services_ui.py
+          python3 Tests/ui_controls.py
           python3 Tests/ui_polish.py
           python3 Tests/ui_resilience.py
   integration:

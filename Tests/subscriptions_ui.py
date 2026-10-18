@@ -21,8 +21,17 @@ MOCK = r'''(()=>{
        if(window.failSwitch){listener({data:{kind:'reply',id:message.id,ok:false,error:'Не удалось переключить подписку'}});return;}
        model.activeSubscription=message.data.id;model.name=model.subscriptions.find(s=>s.id===message.data.id).name;
      }
-     fixtureSnapshot({});listener({data:{kind:'reply',id:message.id,ok:true}});
-   },['switchSubscription','remove'].includes(message.action)?300:0);
+     let data;
+     if(message.action==='readSubscription'){
+       const saved=model.subscriptions.find(s=>s.id===message.data.id);
+       data={...saved,address:saved.id==='sub2'?'':'https://example.org/subscription',local:saved.id==='sub2'};
+     }
+     if(message.action==='editSubscription'){
+       if(window.failEdit){listener({data:{kind:'reply',id:message.id,ok:false,error:'Не удалось сохранить профиль'}});return;}
+       Object.assign(model.subscriptions.find(s=>s.id===message.data.id),{name:message.data.name});
+     }
+     fixtureSnapshot({});listener({data:{kind:'reply',id:message.id,ok:true,data}});
+   },['switchSubscription','remove','editSubscription'].includes(message.action)?300:0);
  }}};
 })();'''.replace('MODEL', json.dumps(fixture, ensure_ascii=False))
 
@@ -34,7 +43,7 @@ with sync_playwright() as p:
     page.locator('[data-page=servers]').click()
     trigger=page.locator('#subscriptionSelect');menu=page.locator('#subscriptionMenu');options=page.locator('#subscriptionOptions')
     trigger.click();expect(menu).to_be_visible();expect(trigger).to_have_attribute('aria-expanded','true')
-    expect(options.locator('[data-subscription=sub1]')).to_have_attribute('aria-selected','true')
+    expect(options.locator('[data-subscription=sub1]')).to_have_attribute('aria-pressed','true')
     expect(options.locator('[data-subscription=sub1] small')).to_have_text('31 сервер')
     expect(options.locator('[data-subscription=long] small')).to_have_text('112 серверов')
     assert options.locator('[onerror],script').count()==0
@@ -50,7 +59,10 @@ with sync_playwright() as p:
     page.keyboard.press('End');expect(options.locator('[data-subscription=bad]')).to_be_focused()
     page.keyboard.press('Escape');expect(menu).not_to_be_visible();expect(trigger).to_be_focused()
     trigger.click();page.locator('#serverSearch').click();expect(menu).not_to_be_visible()
-    trigger.click();page.keyboard.press('Tab');expect(page.locator('#addSubscriptionOption')).to_be_focused()
+    trigger.click();page.keyboard.press('Tab');expect(options.locator('[data-subscription=sub2]').locator('..').locator('.profile-edit')).to_be_focused()
+    page.keyboard.press('Tab');expect(options.locator('[data-subscription=sub2]').locator('..').locator('.profile-delete')).to_be_focused()
+    for _ in range(7):page.keyboard.press('Tab')
+    expect(page.locator('#addSubscriptionOption')).to_be_focused()
     page.keyboard.press('Tab');expect(menu).not_to_be_visible()
     # The menu and focused item survive telemetry snapshots without replaying animation.
     trigger.click();assert page.evaluate("()=>{const option=document.activeElement;for(let i=0;i<30;i++)fixtureSnapshot({});return option===document.activeElement}")
@@ -60,6 +72,37 @@ with sync_playwright() as p:
     expect(trigger).to_have_attribute('data-subscription','sub2');page.evaluate('window.failSwitch=false')
     trigger.click();page.locator('#addSubscriptionOption').click();expect(menu).not_to_be_visible();expect(page.locator('#addDialog')).to_be_visible()
     page.keyboard.press('Escape');expect(page.locator('#addDialog')).not_to_be_visible()
+    # Edit an inactive profile without switching it, with validation and save errors.
+    trigger.click();options.locator('[data-subscription=sub1]').locator('..').locator('.profile-edit').click()
+    expect(page.locator('#editSubscriptionDialog')).to_be_visible()
+    expect(page.locator('#editSubscriptionName')).to_have_value('Личная подписка')
+    expect(page.locator('#editSubscriptionAddress')).to_have_value('https://example.org/subscription')
+    expect(trigger).to_have_attribute('data-subscription','sub2')
+    page.locator('#editSubscriptionName').fill('Новое имя');page.locator('#editSubscriptionAddress').fill('http://example.org/no')
+    page.locator('#saveSubscription').click();expect(page.locator('#editSubscriptionError')).to_contain_text('HTTPS')
+    assert not page.evaluate("actions.some(a=>a.action==='editSubscription')")
+    page.locator('#editSubscriptionAddress').fill('https://example.org/updated')
+    page.evaluate('window.failEdit=true');page.locator('#saveSubscription').click()
+    expect(page.locator('#editSubscriptionError')).to_have_text('Не удалось сохранить профиль')
+    page.evaluate('window.failEdit=false');page.locator('#saveSubscription').click()
+    expect(page.locator('#saveSubscription')).to_be_disabled();expect(page.locator('#editSubscriptionDialog')).not_to_be_visible()
+    assert page.evaluate("actions.filter(a=>a.action==='editSubscription').at(-1).data")=={'id':'sub1','name':'Новое имя','address':'https://example.org/updated'}
+    trigger.click();expect(options.locator('[data-subscription=sub1] strong')).to_have_text('Новое имя')
+    options.locator('[data-subscription=sub2]').locator('..').locator('.profile-edit').click()
+    expect(page.locator('#editSubscriptionName')).to_have_value('kot.')
+    expect(page.locator('#editSubscriptionSource')).not_to_be_visible()
+    page.keyboard.press('Escape');expect(page.locator('#editSubscriptionDialog')).not_to_be_visible()
+    assert page.locator('#editSubscriptionAddress').input_value()==''
+    # Delete confirmation names the requested inactive profile; cancel sends nothing.
+    trigger.click();options.locator('[data-subscription=sub1]').locator('..').locator('.profile-delete').click()
+    expect(page.locator('#removeSubscriptionNote')).to_contain_text('Новое имя')
+    page.locator('#cancelRemove').click();expect(page.locator('#removeDialog')).not_to_be_visible()
+    assert not page.evaluate("actions.some(a=>a.action==='remove')")
+    trigger.click();options.locator('[data-subscription=sub1]').locator('..').locator('.profile-delete').click()
+    page.locator('#confirmRemove').click();expect(page.locator('#removeDialog')).not_to_be_visible()
+    assert page.evaluate("actions.find(a=>a.action==='remove').data.id")=='sub1'
+    expect(page.locator('#page-servers')).to_be_visible();expect(trigger).to_have_attribute('data-subscription','sub2')
+    page.evaluate("actions=actions.filter(a=>a.action!=='remove')")
     # Repeated confirmation cannot queue removal of the next active subscription.
     page.locator('[data-page=settings]').click();page.locator('#advancedButton').click()
     page.locator('#removeSubscription').click()
@@ -88,9 +131,11 @@ with sync_playwright() as p:
     many=[{'id':f's{i}','name':f'Подписка {i}','count':i} for i in range(40)]
     page.evaluate('(subscriptions)=>fixtureSnapshot({subscriptions,activeSubscription:"s0"})',many)
     trigger.click();page.keyboard.press('End');expect(options.locator('[data-subscription=s39]')).to_be_focused()
+    last=options.locator('[data-subscription=s39]').bounding_box();bounds=menu.bounding_box()
+    assert last['y']>=bounds['y'] and last['y']+last['height']<=bounds['y']+bounds['height']+1
     box=menu.bounding_box();assert box['y']+box['height']<=770
     page.keyboard.press('Escape');page.evaluate('fixtureSnapshot({subscriptions:[],activeSubscription:"",hasSubscription:false})')
     trigger.click();expect(page.locator('#subscriptionEmpty')).to_be_visible();expect(page.locator('#addSubscriptionOption')).to_be_focused()
     assert not errors,errors
     browser.close()
-print('Subscriptions: mouse, keyboard, dismissal, busy/error handling, stable snapshots, safe labels, viewport, themes and full-row hover passed.')
+print('Subscriptions: edit/save errors, inactive deletion and confirmation, mouse/keyboard, dismissal, busy handling, stable snapshots, safe labels, viewport and themes passed.')

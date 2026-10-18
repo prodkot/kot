@@ -179,11 +179,11 @@
       button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
       const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+presentation.name);
       const result=item.ping;ping.dataset.status=result?.status||'idle';
-      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#pulse');icon.append(use);
-      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'Пинг';
+      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#signal');icon.append(use);
+      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'';
       ping.title=result?.status==='ok'?result.mode.toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.append(icon,value);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
-      const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.textContent='QR';qr.setAttribute('aria-label','QR '+presentation.name);qr.disabled=!!item.providerRouting;qr.title=item.providerRouting?'QR не сохраняет правила подписки. Используйте исходную подписку или резервную копию.':'';qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
+      const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.innerHTML='<svg aria-hidden="true"><use href="#ellipsis"/></svg>';qr.setAttribute('aria-label','Поделиться сервером '+presentation.name);qr.disabled=!!item.providerRouting;qr.title=item.providerRouting?'QR не сохраняет правила подписки. Используйте исходную подписку или резервную копию.':'Поделиться сервером';qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
       if(focusId===item.id)(focusQr?qr:focusPing?ping:focusFavorite?favorite:button).focus({preventScroll:true});
     });
     if(focusId&&!visible.some(item=>item.id===focusId))$('serverSearch').focus({preventScroll:true});
@@ -311,14 +311,14 @@
 
   const subscriptionMenu=$('subscriptionMenu'), subscriptionSelect=$('subscriptionSelect');
   let switchingSubscription=false;
-  function closeSubscriptions(){if(subscriptionMenu.matches(':popover-open'))subscriptionMenu.hidePopover();}
+  function closeSubscriptions(){cancelMotion(subscriptionMenu);if(subscriptionMenu.matches(':popover-open'))subscriptionMenu.hidePopover();}
   function positionSubscriptions(){
     const r=subscriptionSelect.getBoundingClientRect(),edge=12,gap=8,width=Math.min(340,innerWidth-edge*2);
     subscriptionMenu.style.width=width+'px';
     subscriptionMenu.style.left=Math.max(edge,Math.min(r.left,innerWidth-width-edge))+'px';
     const below=innerHeight-r.bottom-gap-edge,above=r.top-gap-edge;
     const upwards=below<200&&above>below;
-    subscriptionMenu.style.maxHeight=Math.max(0,upwards?above:below)+'px';
+    subscriptionMenu.dataset.upwards=upwards;subscriptionMenu.style.maxHeight=Math.max(0,upwards?above:below)+'px';
     subscriptionMenu.style.top=upwards?'auto':r.bottom+gap+'px';
     subscriptionMenu.style.bottom=upwards?innerHeight-r.top+gap+'px':'auto';
   }
@@ -330,21 +330,31 @@
     subscriptionSelect.disabled=switchingSubscription;
     const key=JSON.stringify(subscriptions.map(s=>[s.id,s.name,s.count]));
     if($('subscriptionOptions').dataset.key!==key){
-      const focused=document.activeElement?.dataset.subscription;
+      const focused=document.activeElement?.closest('.profile-entry')?.querySelector('.profile-option')?.dataset.subscription,control=document.activeElement?.className;
       $('subscriptionOptions').replaceChildren(...subscriptions.map(s=>{
         const option=document.createElement('button');option.type='button';option.className='profile-option';
-        option.setAttribute('role','option');option.tabIndex=-1;option.dataset.subscription=s.id;
+        option.dataset.subscription=s.id;
+        const entry=document.createElement('div');entry.className='profile-entry';entry.setAttribute('role','listitem');
         const icon=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#globe');icon.append(use);icon.classList.add('profile-icon');icon.setAttribute('aria-hidden','true');
         const copy=document.createElement('span');copy.className='profile-copy';const name=document.createElement('strong');label(name,s.name);
         const count=document.createElement('small'),n=Math.max(0,Math.trunc(Number(s.count)||0));
         count.textContent=n+' '+(n%10===1&&n%100!==11?'сервер':n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?'сервера':'серверов');copy.append(name,count);
         const check=document.createElementNS('http://www.w3.org/2000/svg','svg'),mark=document.createElementNS('http://www.w3.org/2000/svg','use');mark.setAttribute('href','#check');check.append(mark);check.classList.add('profile-check');check.setAttribute('aria-hidden','true');
-        option.append(icon,copy,check);option.addEventListener('click',()=>chooseSubscription(s.id));return option;
+        option.append(icon,copy,check);option.addEventListener('click',()=>chooseSubscription(s.id));
+        const actions=document.createElement('div');actions.className='profile-entry-actions';
+        for(const [action,symbol,text] of [['edit','edit','Редактировать'],['delete','trash','Удалить']]){
+          const button=document.createElement('button');button.type='button';button.className='profile-'+action;
+          button.title=text;button.setAttribute('aria-label',text+' профиль '+s.name);
+          button.innerHTML='<svg aria-hidden="true"><use href="#'+symbol+'"/></svg>';
+          button.addEventListener('click',()=>{closeSubscriptions();subscriptionSelect.focus({preventScroll:true});action==='edit'?editSubscription(s.id):removeSubscription(s.id);});actions.append(button);
+        }
+        entry.append(option,actions);return entry;
       }));
       $('subscriptionOptions').dataset.key=key;
-      if(focused&&subscriptionMenu.matches(':popover-open'))[...$('subscriptionOptions').children].find(b=>b.dataset.subscription===focused)?.focus({preventScroll:true});
+      if(focused&&subscriptionMenu.matches(':popover-open'))[...$('subscriptionOptions').querySelectorAll('.profile-option')].find(b=>b.dataset.subscription===focused)?.closest('.profile-entry').querySelector('.'+control)?.focus({preventScroll:true});
     }
-    for(const option of $('subscriptionOptions').children){option.setAttribute('aria-selected',option.dataset.subscription===model.activeSubscription);option.disabled=switchingSubscription;}
+    for(const option of $('subscriptionOptions').querySelectorAll('.profile-option')){const active=option.dataset.subscription===model.activeSubscription;option.setAttribute('aria-pressed',active);option.closest('.profile-entry').dataset.active=active;}
+    for(const button of $('subscriptionOptions').querySelectorAll('button'))button.disabled=switchingSubscription;
     $('subscriptionEmpty').hidden=!!subscriptions.length;
     if(subscriptionMenu.matches(':popover-open'))positionSubscriptions();
   }
@@ -355,22 +365,28 @@
     switchingSubscription=true;renderSubscriptions();
     try{await request('switchSubscription',{id});}finally{switchingSubscription=false;renderSubscriptions();if(current==='servers'&&document.activeElement===document.body)subscriptionSelect.focus({preventScroll:true});}
   }
+  function focusSubscription(button){
+    button.focus({preventScroll:true});
+    const row=button.closest('.profile-entry')||button,top=row.offsetTop,bottom=top+row.offsetHeight;
+    if(top<subscriptionMenu.scrollTop)subscriptionMenu.scrollTop=top;
+    else if(bottom>subscriptionMenu.scrollTop+subscriptionMenu.clientHeight)subscriptionMenu.scrollTop=bottom-subscriptionMenu.clientHeight;
+  }
   function openSubscriptions(last=false){
     positionSubscriptions();subscriptionMenu.showPopover();
-    const options=[...$('subscriptionOptions').children];
-    const target=last?options.at(-1):options.find(b=>b.getAttribute('aria-selected')==='true')||options[0];
-    (target||$('addSubscriptionOption')).focus({preventScroll:true});
+    animate(subscriptionMenu,[{opacity:0,transform:'translateY('+(subscriptionMenu.dataset.upwards==='true'?'4':'-4')+'px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:200});
+    const options=[...$('subscriptionOptions').querySelectorAll('.profile-option')];
+    const target=last?options.at(-1):options.find(b=>b.getAttribute('aria-pressed')==='true')||options[0];
+    focusSubscription(target||$('addSubscriptionOption'));
   }
   subscriptionSelect.addEventListener('click',e=>{e.preventDefault();subscriptionMenu.matches(':popover-open')?closeSubscriptions():openSubscriptions();});
   subscriptionSelect.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();openSubscriptions(e.key==='ArrowUp');}});
   subscriptionMenu.addEventListener('beforetoggle',e=>{subscriptionSelect.setAttribute('aria-expanded',e.newState==='open');});
-  subscriptionMenu.addEventListener('toggle',e=>{if(e.newState==='open')animate(subscriptionMenu,[{opacity:0,transform:'translateY(-4px)'},{opacity:1,transform:'translateY(0)'}],{duration:160});});
   subscriptionMenu.addEventListener('keydown',e=>{
     if(e.key==='Escape'){e.preventDefault();closeSubscriptions();subscriptionSelect.focus({preventScroll:true});return;}
     if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
-    const options=[...$('subscriptionOptions').children];if(!options.length)return;
-    e.preventDefault();const index=options.indexOf(document.activeElement);
-    options[e.key==='Home'?0:e.key==='End'?options.length-1:e.key==='ArrowDown'?(index+1)%options.length:(index-1+options.length)%options.length].focus({preventScroll:true});
+    const options=[...$('subscriptionOptions').querySelectorAll('.profile-option')];if(!options.length)return;
+    e.preventDefault();const index=options.indexOf(document.activeElement?.closest('.profile-entry')?.querySelector('.profile-option'));
+    focusSubscription(options[e.key==='Home'?0:e.key==='End'?options.length-1:e.key==='ArrowDown'?(index+1)%options.length:(index-1+options.length)%options.length]);
   });
   subscriptionMenu.addEventListener('focusout',e=>{if(e.relatedTarget){if(!subscriptionMenu.contains(e.relatedTarget)&&e.relatedTarget!==subscriptionSelect)closeSubscriptions();}else setTimeout(()=>{if(!subscriptionMenu.contains(document.activeElement)&&document.activeElement!==subscriptionSelect)closeSubscriptions();},0);});
   $('addSubscriptionOption').addEventListener('click',()=>{closeSubscriptions();openAdd();});
@@ -569,11 +585,37 @@
     catch(e){$('pingSettingsError').textContent=e.message;}finally{submit.disabled=false;}
   });
   let removingSubscription='',removeBusy=false;
-  $('removeSubscription').addEventListener('click',()=>{removingSubscription=model.activeSubscription;openDialog($('removeDialog'));});$('cancelRemove').addEventListener('click',()=>closeDialog($('removeDialog')));
+  function removeSubscription(id){const saved=(model.subscriptions||[]).find(s=>s.id===id);if(!saved||removeBusy)return;removingSubscription=id;$('removeSubscriptionNote').textContent='Удалить профиль «'+saved.name+'» и его сохранённые серверы? Остальные профили останутся.';openDialog($('removeDialog'));}
+  $('removeSubscription').addEventListener('click',()=>removeSubscription(model.activeSubscription));$('cancelRemove').addEventListener('click',()=>closeDialog($('removeDialog')));
   $('confirmRemove').addEventListener('click',async()=>{
     if(removeBusy)return;removeBusy=true;$('confirmRemove').disabled=true;
-    try{if(await request('remove',{id:removingSubscription})){closeDialog($('removeDialog'));closeDialog($('advancedDialog'));page('home');toast('Подписка удалена');}}
+    try{if(await request('remove',{id:removingSubscription})){closeDialog($('removeDialog'));if($('advancedDialog').open){closeDialog($('advancedDialog'));page('home');}toast('Профиль удалён');}}
     finally{removeBusy=false;$('confirmRemove').disabled=false;}
+  });
+  let editingSubscription='',editAttempt=0,editBusy=false,editLocal=false;
+  async function editSubscription(id){
+    if(editBusy)return;
+    const attempt=++editAttempt;editingSubscription=id;$('editSubscriptionName').value='';$('editSubscriptionAddress').value='';$('editSubscriptionError').textContent='';
+    $('editSubscriptionFields').disabled=true;$('saveSubscription').disabled=true;$('editSubscriptionSource').hidden=true;openDialog($('editSubscriptionDialog'));
+    try{
+      const saved=await rpc('readSubscription',{id});
+      if(attempt!==editAttempt||!$('editSubscriptionDialog').open||$('editSubscriptionDialog').dataset.closing)return;
+      editLocal=!!saved.local;$('editSubscriptionName').value=saved.name;$('editSubscriptionAddress').value=saved.address||'';
+      $('editSubscriptionSource').hidden=editLocal;$('editSubscriptionAddress').required=!editLocal;
+      $('editSubscriptionFields').disabled=false;$('saveSubscription').disabled=false;$('editSubscriptionName').focus();
+    }catch(e){if(attempt===editAttempt)$('editSubscriptionError').textContent=e.message;}
+  }
+  $('cancelEditSubscription').addEventListener('click',()=>closeDialog($('editSubscriptionDialog')));
+  $('editSubscriptionDialog').addEventListener('close',()=>{editAttempt++;editingSubscription='';$('editSubscriptionAddress').value='';});
+  $('editSubscriptionForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(editBusy||!editingSubscription||$('saveSubscription').disabled||$('editSubscriptionDialog').dataset.closing)return;
+    const name=$('editSubscriptionName').value.trim(),address=editLocal?'':$('editSubscriptionAddress').value.trim();
+    if(!name){$('editSubscriptionError').textContent='Введите название профиля.';return;}
+    if(!editLocal){try{const uri=new URL(address);if(uri.protocol!=='https:'||uri.username||uri.password||uri.hash)throw new Error();}catch{$('editSubscriptionError').textContent='Нужна HTTPS-ссылка без логина, пароля и фрагмента.';return;}}
+    const attempt=editAttempt;editBusy=true;$('saveSubscription').disabled=true;$('editSubscriptionFields').disabled=true;$('editSubscriptionError').textContent='';
+    try{await rpc('editSubscription',{id:editingSubscription,name,address});if(attempt===editAttempt){closeDialog($('editSubscriptionDialog'));toast('Профиль сохранён');}}
+    catch(e){if(attempt===editAttempt)$('editSubscriptionError').textContent=e.message;}
+    finally{editBusy=false;if(attempt===editAttempt){$('saveSubscription').disabled=false;$('editSubscriptionFields').disabled=false;}}
   });
   $('automationButton').addEventListener('click',()=>{const a=model.automation||{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50};$('reconnectSetting').setAttribute('aria-checked',a.reconnect);$('refreshHours').value=a.refreshHours;$('backgroundPing').value=a.pingMinutes;$('autoMinutes').value=a.autoMinutes;$('autoTolerance').value=a.autoToleranceMs;$('automationError').textContent='';openDialog($('automationDialog'));});
   $('reconnectSetting').addEventListener('click',()=>{$('reconnectSetting').setAttribute('aria-checked',$('reconnectSetting').getAttribute('aria-checked')!=='true');});

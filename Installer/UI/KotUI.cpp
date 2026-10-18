@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <uxtheme.h>
+#include <timeapi.h>
 #include <objidl.h>
 #include <gdiplus.h>
 #include <string>
@@ -21,8 +22,14 @@ static std::wstring pageRole, progressFile, failureText;
 static LONG phase;
 static int percentage;
 static ULONG_PTR graphicsToken;
-static bool animations=true, frameTimer=false, pagePending=false;
+static bool animations=true, frameTimer=false, pagePending=false, preciseTimer=false;
 static ULONGLONG pageStarted;
+// Animation progress must not jump in the coarse GetTickCount64 time steps.
+static ULONGLONG MotionMilliseconds() {
+    static const double frequency=[] { LARGE_INTEGER f{}; QueryPerformanceFrequency(&f); return static_cast<double>(f.QuadPart); }();
+    LARGE_INTEGER now{}; QueryPerformanceCounter(&now);
+    return static_cast<ULONGLONG>(now.QuadPart*1000.0/frequency);
+}
 struct Tween {
     float from=0, target=0;
     ULONGLONG started=0;
@@ -35,7 +42,7 @@ struct Tween {
     }
     void Set(float value,unsigned milliseconds,bool animate=true) {
         if(target==value&&animate) return;
-        auto now=GetTickCount64(); from=Value(now); target=value; started=now;
+        auto now=MotionMilliseconds(); from=Value(now); target=value; started=now;
         duration=animate&&animations?milliseconds:0;
     }
 };
@@ -51,8 +58,18 @@ static constexpr COLORREF background = RGB(21,23,24), surface = RGB(32,36,37),
 static constexpr UINT refreshPage = WM_APP + 20, failurePage = WM_APP + 21;
 static void ShowFailure(const std::wstring& detail);
 static int Scale(int value) { return MulDiv(value, dpi, 96); }
+static void StopFrames() {
+    if(mainWindow&&frameTimer) KillTimer(mainWindow,9201);
+    frameTimer=false;
+    if(preciseTimer) { timeEndPeriod(1); preciseTimer=false; }
+}
 static void RequestFrame() {
-    if(mainWindow&&!frameTimer) frameTimer=SetTimer(mainWindow,9201,16,nullptr)!=0;
+    if(!mainWindow||frameTimer||!animations||IsIconic(mainWindow)||!IsWindowVisible(mainWindow)) return;
+    // Ask for 1 ms scheduling only while visible animation is running. Without
+    // it a nominal 16 ms WM_TIMER may be rounded to two coarse timer ticks.
+    preciseTimer=timeBeginPeriod(1)==TIMERR_NOERROR;
+    frameTimer=SetTimer(mainWindow,9201,15,nullptr)!=0;
+    if(!frameTimer) StopFrames();
 }
 static COLORREF Mix(COLORREF a,COLORREF b,float t) {
     return RGB(static_cast<int>(GetRValue(a)+(GetRValue(b)-GetRValue(a))*t+.5f),
@@ -87,7 +104,7 @@ static void UpdateButtonMotion(HWND window) {
     motion.hover.Set(enabled&&GetPropW(window,L"kot.hover")?1.f:0.f,160,animate);
     motion.press.Set(enabled&&(SendMessageW(window,BM_GETSTATE,0,0)&BST_PUSHED)?1.f:0.f,100,animate);
     motion.checked.Set(SendMessageW(window,BM_GETCHECK,0,0)==BST_CHECKED?1.f:0.f,180,animate);
-    auto now=GetTickCount64();
+    auto now=MotionMilliseconds();
     motion.running=motion.hover.Active(now)||motion.press.Active(now)||motion.checked.Active(now);
     if(motion.running) RequestFrame();
     InvalidateRect(window,nullptr,FALSE);
@@ -190,7 +207,7 @@ static void PaintPage(HDC dc) {
                         Gdiplus::Graphics graphics(dc); graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
                         Gdiplus::Pen pen(Color(accent),static_cast<float>(Scale(2)));
                         pen.SetStartCap(Gdiplus::LineCapRound); pen.SetEndCap(Gdiplus::LineCapRound);
-                        float angle=animations?static_cast<float>(GetTickCount64()%1200)*.3f:-90.f;
+                        float angle=animations?static_cast<float>(MotionMilliseconds()%1200)*.3f:-90.f;
                         graphics.DrawArc(&pen,static_cast<float>(Scale(1)),static_cast<float>(Scale(y+8)),static_cast<float>(Scale(14)),static_cast<float>(Scale(14)),angle,260.f);
                     } else Box(dc,Area(0,y+7,16,16),background,accent,16);
                 } else Box(dc,Area(0,y+7,16,16),background,line,16);
@@ -219,7 +236,7 @@ static void PaintButton(HWND window, HDC dc, RECT bounds, UINT state) {
     bool enabled=(state&ODS_DISABLED)==0;
     bool pressed=enabled&&(state&ODS_SELECTED)!=0;
     bool hover=enabled&&GetPropW(window,L"kot.hover")!=nullptr;
-    auto motion=buttonMotions.find(window); auto now=GetTickCount64();
+    auto motion=buttonMotions.find(window); auto now=MotionMilliseconds();
     float hoverAmount=motion==buttonMotions.end()?(hover?1.f:0.f):motion->second.hover.Value(now);
     float pressAmount=motion==buttonMotions.end()?(pressed?1.f:0.f):motion->second.press.Value(now);
     if(checkbox) {
@@ -317,10 +334,10 @@ static LRESULT CALLBACK ControlProc(HWND window, UINT message, WPARAM w, LPARAM 
         if (hero) Logo(dc,0,0,std::min(bounds.right,bounds.bottom));
         else if (progress) {
             RECT track=bounds; Box(dc,track,surface,surface,6);
-            track.right=static_cast<LONG>(bounds.right*progressPosition.Value(GetTickCount64())/100.f);
+            track.right=static_cast<LONG>(bounds.right*progressPosition.Value(MotionMilliseconds())/100.f);
             if(percentage==0&&InterlockedCompareExchange(&phase,0,0)>0) {
                 int width=bounds.right/6;
-                track.left=animations?static_cast<int>((GetTickCount64()%1500)*(bounds.right+width)/1500)-width:0;
+                track.left=animations?static_cast<int>((MotionMilliseconds()%1500)*(bounds.right+width)/1500)-width:0;
                 track.right=track.left+width;
             }
             if(track.right>0) Box(dc,track,accent,accent,6);
@@ -416,7 +433,7 @@ static void RefreshProgress() {
     progressPosition.Set(static_cast<float>(percentage),220);
     if(activePage&&pageRole==L"progress"&&current>=0) {
         InvalidateRect(activePage,nullptr,FALSE); InvalidateRect(GetDlgItem(activePage,1004),nullptr,FALSE);
-        if(animations&&(current<4||progressPosition.Active(GetTickCount64()))) RequestFrame();
+        if(animations&&(current<4||progressPosition.Active(MotionMilliseconds()))) RequestFrame();
     }
 }
 
@@ -434,7 +451,7 @@ static void AdvancePage(ULONGLONG now) {
     if(t>=1.f) pageStarted=0;
 }
 static void AnimationFrame() {
-    auto now=GetTickCount64(); bool more=false;
+    auto now=MotionMilliseconds(); bool more=false;
     for(auto& item:buttonMotions) {
         auto& motion=item.second;
         if(!motion.running) continue;
@@ -448,12 +465,13 @@ static void AnimationFrame() {
         InvalidateRect(activePage,nullptr,FALSE); InvalidateRect(GetDlgItem(activePage,1004),nullptr,FALSE);
         more=more||current<4||progressPosition.Active(now);
     }
-    if(!more) { KillTimer(mainWindow,9201); frameTimer=false; }
+    if(!more) StopFrames();
 }
 static void ReadMotionPreference() {
     BOOL enabled=TRUE; SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);
     animations=enabled!=FALSE;
     if(!animations) {
+        StopFrames();
         for(auto& item:buttonMotions) {
             auto& motion=item.second;
             motion.hover.Set(motion.hover.target,0,false); motion.press.Set(motion.press.target,0,false);
@@ -461,7 +479,7 @@ static void ReadMotionPreference() {
             InvalidateRect(item.first,nullptr,FALSE);
         }
         progressPosition.Set(static_cast<float>(percentage),0,false);
-        AdvancePage(GetTickCount64());
+        AdvancePage(MotionMilliseconds());
     }
     RequestFrame();
 }
@@ -479,12 +497,14 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
     if(message==WM_TIMER&&w==9200) { RefreshProgress(); return 0; }
     if(message==WM_TIMER&&w==9201) { AnimationFrame(); return 0; }
     if(message==WM_SETTINGCHANGE) ReadMotionPreference();
+    if(message==WM_SIZE) { if(w==SIZE_MINIMIZED) StopFrames(); else RequestFrame(); }
+    if(message==WM_SHOWWINDOW) { if(!w) StopFrames(); else RequestFrame(); }
     if(message==refreshPage) {
         // Native pages become visible after their show callback returns.
         // Repaint the shared header once NSIS has completed that switch.
         if(pagePending&&activePage) {
             pagePending=false;
-            if(animations) { pageStarted=GetTickCount64(); AdvancePage(pageStarted); RequestFrame(); }
+            if(animations) { pageStarted=MotionMilliseconds(); AdvancePage(pageStarted); RequestFrame(); }
         }
         RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_UPDATENOW);
         return 0;
@@ -535,7 +555,7 @@ static LRESULT CALLBACK MainProc(HWND window,UINT message,WPARAM w,LPARAM l,UINT
     }
     if(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORDLG) return PageProc(window,message,w,l,1,0);
     if(message==WM_NCDESTROY) {
-        KillTimer(window,9200); KillTimer(window,9201); frameTimer=false;
+        KillTimer(window,9200); StopFrames();
         if(graphicsToken) { Gdiplus::GdiplusShutdown(graphicsToken); graphicsToken=0; }
         mainWindow=nullptr; RemoveWindowSubclass(window,MainProc,1);
     }

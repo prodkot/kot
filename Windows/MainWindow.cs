@@ -197,7 +197,10 @@ public sealed partial class MainWindow : WindowChrome
                 case "serviceSource": case "serviceCopyLink": case "serviceOpenTelegram": case "serviceCopyResults": case "serviceExportResults": case "serviceClearLog": case "serviceSelectTest":
                     await ServiceMessage(action, data); break;
                 case "runDiagnostics": StartTools("diagnostics", data); break;
-                case "testQuality": StartTools("quality", data); break;
+                case "testConnection": StartConnectionCheck(); break;
+                case "readSubscription":
+                    var subscription = profile.Subscriptions.FirstOrDefault(s => s.Id == data.GetProperty("id").GetString()) ?? throw new UserError("Подписка уже удалена.");
+                    Reply(new { kind = "reply", id, ok = true, data = new { subscription.Id, subscription.Name, subscription.Address, subscription.Local } }); return;
                 case "cancelTools": toolsAttempt?.Cancel(); break;
                 case "readQrFile": case "readQrClipboard":
                     string? qrText = await ReadQr(action == "readQrClipboard");
@@ -292,22 +295,24 @@ public sealed partial class MainWindow : WindowChrome
             case "deferUpdate": DeferUpdate(data.GetProperty("version").GetString() ?? ""); break;
             case "remove":
                 string removedSubscription = data.GetProperty("id").GetString() ?? "";
-                if (removedSubscription.Length == 0 || removedSubscription != profile.ActiveSubscription || profile.Subscriptions.All(s => s.Id != removedSubscription))
-                    throw new UserError("Подписка уже удалена или выбрана другая подписка.");
+                if (profile.Subscriptions.All(s => s.Id != removedSubscription)) throw new UserError("Подписка уже удалена.");
+                if (removedSubscription != profile.ActiveSubscription)
+                {
+                    SaveProfile(p => p.RemoveSubscription(removedSubscription)); refreshAttempts.Remove(removedSubscription); AppLog.Register(profile); break;
+                }
                 await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
                 try
                 {
-                    SaveProfile(p =>
-                    {
-                        p.Subscriptions.RemoveAll(s => s.Id == removedSubscription);
-                        p.ActiveSubscription = ""; p.Address = ""; p.Local = false; p.SubscriptionUsage = null; p.Nodes = []; p.Selected = ""; p.Name = "Подписка"; p.Updated = null; p.Favorites = [];
-                        if (p.Subscriptions.Count > 0) p.Activate(p.Subscriptions[0].Id);
-                    });
+                    SaveProfile(p => p.RemoveSubscription(removedSubscription));
                     warnings = []; if (profile.Subscriptions.Count == 0) reconnect.Stop();
                     refreshAttempts.Remove(removedSubscription); AppLog.Register(profile);
                 }
                 finally { ResumeDesired(); }
                 break;
+            case "editSubscription":
+                string editedSubscription = data.GetProperty("id").GetString() ?? "";
+                SaveProfile(p => p.EditSubscription(editedSubscription, data.GetProperty("name").GetString() ?? "", data.GetProperty("address").GetString() ?? ""));
+                refreshAttempts.Remove(editedSubscription); AppLog.Register(profile); break;
             default: throw new UserError("Неизвестная команда.");
         }
     }

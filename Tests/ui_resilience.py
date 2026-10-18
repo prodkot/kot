@@ -20,7 +20,7 @@ window.chrome=''')
 MOCK = MOCK.replace("window.statisticsRequests.push(msg);setTimeout(()=>{window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:true}});},10);", '''
 window.fixtureRequests.push(msg);
 setTimeout(()=>{
-const data=msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
+const data=msg.action==='readSubscription'?{id:'s',name:model.name,address:'https://example.org/subscription',local:false}:msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
 window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:msg.action!==window.fixtureReject,error:'Не удалось сохранить настройки.',data}});
 },window.fixtureDelay||10);
 ''')
@@ -43,6 +43,7 @@ DIALOGS = [
  ('backupDialog', 'settings', ['#advancedButton', '#backupButton']),
  ('onlineUpdateDialog', 'settings', ['#onlineUpdateButton']),
  ('removeDialog', 'settings', ['#advancedButton', '#removeSubscription']),
+ ('editSubscriptionDialog', 'servers', ['#subscriptionSelect', '.profile-edit']),
  ('routingDialog', 'settings', ['#routingButton']),
  ('routingImportDialog', 'settings', ['#routingButton', '#routingImport']),
  ('routingRemoveDialog', 'settings', ['#routingButton', '#routingRemove']),
@@ -130,6 +131,7 @@ with sync_playwright() as pw:
                     for label,section,clicks in DIALOGS:
                         close_all(page)
                         page.evaluate('p=>fixtureNavigate(p)',section)
+                        if label=='qualityDialog':page.evaluate("fixtureSnapshot({state:'connected'})")
                         for selector in clicks:
                             page.locator(selector).click()
                         id=label.split('-')[0]
@@ -146,6 +148,7 @@ with sync_playwright() as pw:
                             assert b['y']>=0 and b['y']+b['height']<=height+1,(label,'unreachable action',b)
                         page.locator('#'+dialog).evaluate('e=>{e.scrollTop=0;e.querySelectorAll("form").forEach(f=>f.scrollTop=0)}')
                         snapshot(page,f'{theme}-{label}',scale==1)
+                        if label=='qualityDialog':page.evaluate("fixtureSnapshot({state:'idle'})")
                     close_all(page)
                     # Long unbroken errors must not push the connection button or page sideways.
                     page.evaluate('text=>fixtureSnapshot({state:"waiting",error:text,backgroundError:text})',LONG)

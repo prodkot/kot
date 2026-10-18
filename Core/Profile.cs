@@ -94,6 +94,29 @@ public sealed class Profile
         }
         if (Theme is not ("dark" or "light") || Mode is not ("all" or "smart") || ConnectionMode is not ("tun" or "proxy")) throw new UserError("Некорректные настройки интерфейса.");
     }
+    public void EditSubscription(string id, string name, string address)
+    {
+        var saved = Subscriptions.FirstOrDefault(s => s.Id == id) ?? throw new UserError("Подписка уже удалена.");
+        name = name.Trim(); address = address.Trim();
+        if (name.Length is < 1 or > 60) throw new UserError("Название: от 1 до 60 символов.");
+        if (saved.Local && address.Length > 0) throw new UserError("У локального профиля нет ссылки на подписку.");
+        if (!saved.Local && (address.Length > 2048 || !Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host.Length == 0 || uri.UserInfo.Length > 0 || uri.Fragment.Length > 0))
+            throw new UserError("Нужна HTTPS-ссылка без логина, пароля и фрагмента.");
+        if (!saved.Local && Subscriptions.Any(s => s.Id != id && !s.Local && s.Address == address))
+            throw new UserError("Эта ссылка уже есть в другой подписке.");
+        CaptureActive();
+        if (saved.Address != address) { saved.Usage = null; saved.Updated = null; saved.ExpiryNotice = ""; }
+        saved.Name = name; saved.Address = address;
+        if (id == ActiveSubscription) Activate(id);
+    }
+    public void RemoveSubscription(string id)
+    {
+        if (!Subscriptions.Any(s => s.Id == id)) throw new UserError("Подписка уже удалена.");
+        CaptureActive(); Subscriptions.RemoveAll(s => s.Id == id);
+        if (id != ActiveSubscription) return;
+        ActiveSubscription = ""; Address = ""; Local = false; SubscriptionUsage = null; Nodes = []; Selected = ""; Name = "Подписка"; Updated = null; Favorites = [];
+        if (Subscriptions.Count > 0) Activate(Subscriptions[0].Id);
+    }
     static void RejectFiles(System.Text.Json.Nodes.JsonNode? node)
     {
         if (node is System.Text.Json.Nodes.JsonObject obj)
