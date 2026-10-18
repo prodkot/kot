@@ -23,9 +23,16 @@ function Core([string]$arguments,[int]$seconds=0,[string]$json='') {
     if ($json.Length) { $info.RedirectStandardInput=$true }
     $info.EnvironmentVariables['XRAY_LOCATION_ASSET']=$script:work
     $p=New-Object Diagnostics.Process; $p.StartInfo=$info
-    if (!$p.Start()) { throw 'core-start' }
-    $script:owned.Add($p)
-    $script:guard.Add($p)
+    # .NET Framework constructs stdin with Console.InputEncoding and AutoFlush.
+    # A UTF-8 console can therefore emit a BOM during Start, before even a raw
+    # BaseStream write. Xray's stdin JSON reader rejects that leading BOM.
+    $encoding=$null
+    try {
+        if ($json.Length) { $encoding=[Console]::InputEncoding;[Console]::InputEncoding=New-Object Text.UTF8Encoding($false) }
+        if (!$p.Start()) { throw 'core-start' }
+        $script:owned.Add($p)
+        $script:guard.Add($p)
+    } finally { if ($encoding) { [Console]::InputEncoding=$encoding } }
     # Drain both pipes; fixture logging is disabled and the run is bounded.
     $stdout=$p.StandardOutput.ReadToEndAsync(); $stderr=$p.StandardError.ReadToEndAsync()
     if ($json.Length) {

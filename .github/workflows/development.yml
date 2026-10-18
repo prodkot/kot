@@ -70,6 +70,8 @@ jobs:
         run: |
           python Release/xray-core.py artifacts/network-core --target windows
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Xray build failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File Tests/qa_stdin.ps1 -CorePath "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Shipped QA stdin regression failed.' }
           ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$PWD/artifacts/network-core/xray.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Native Xray or real TUN kill switch test failed.' }
       - name: Build signed package and installer
