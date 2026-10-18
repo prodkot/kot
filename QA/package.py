@@ -12,7 +12,7 @@ def build(publish, setup, output):
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     folder = output / 'qa-kit'
     folder.mkdir(parents=True, exist_ok=False)
-    for name in ('Start-Checks.cmd', 'Checks.ps1', 'ProcessGuard.cs', 'README-ru.txt'):
+    for name in ('Start-Checks.cmd', 'Checks.ps1', 'Report.ps1', 'ProcessGuard.cs', 'README-ru.txt'):
         # Windows PowerShell 5.1 needs a BOM for Cyrillic script literals.
         text = (root / 'QA' / name).read_text(encoding='utf-8-sig')
         (folder / name).write_text(text, encoding='utf-8-sig' if name.endswith('.ps1') else 'utf-8', newline='\r\n')

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data:; media-src 'self' https://raw.githubusercontent.com/prodkot/kot/music/music/; connect-src https://api.github.com/repos/prodkot/kot/contents/music; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
 <title>kot.</title>
 <script src="startup.js"></script>
 <style>
@@ -102,6 +102,7 @@ body.booting,body.booting *{transition:none!important}
 body.booting .main,body.booting .main *,body.booting .sidebar,body.booting .sidebar *{animation:none!important}
 body.revealing .main,body.revealing .sidebar{will-change:filter,opacity,transform}
 
+
 </style>
 <style>
 .routing-dialog{width:720px;padding:24px}.routing-header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}.routing-header h2{margin:0;font-size:23px}.routing-header button{padding:8px 12px}.routing-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.routing-toolbar button{padding:8px 12px}.routing-dialog fieldset{border:0;padding:0;margin:0;min-width:0}.routing-dialog fieldset:disabled{opacity:.65}.routing-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.routing-grid>div{min-width:0}.routing-dialog label{margin-top:14px}.routing-tabs{display:flex;gap:6px;margin:20px 0 10px}.routing-tabs button{flex:1;padding:10px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:12px}.routing-tabs button[aria-selected=true]{background:var(--raised);color:var(--detail);border-color:var(--detail)}.routing-lists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.routing-lists label{margin-top:0}.routing-lists textarea{min-height:114px;height:114px;max-height:220px;font-size:11px;line-height:1.6}.routing-lists .routing-block label{color:var(--danger)}.routing-dialog .dialog-note{margin-top:10px}.routing-source{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;font-size:12px}.routing-source summary{cursor:pointer;color:var(--muted)}.routing-source .routing-grid{grid-template-columns:1fr 120px}.routing-status{font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px;overflow-wrap:anywhere}.routing-dialog .dialog-actions{position:sticky;bottom:-24px;margin:14px -24px -24px;padding:14px 24px;background:var(--side);border-top:1px solid var(--line)}.routing-home{justify-content:center;width:100%;font-size:10px;padding:9px 0;margin:0;overflow:hidden}.routing-home span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}.routing-import textarea{min-height:130px;font-family:Manrope,sans-serif;font-size:12px}.routing-toolbar #routingRemove{color:var(--danger)}.routing-dialog select:disabled,.routing-dialog button:disabled{opacity:.5;cursor:not-allowed}.routing-dialog #routingActive{font-size:12px}.routing-source input{font-size:11px}.routing-grid input,.routing-grid select{padding:11px}
@@ -136,6 +137,9 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allo
 .subscription-edit label{margin-top:14px}
 #removeSubscriptionNote{overflow-wrap:anywhere}
 #qualityAddress{display:block;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--bg);font-size:12px;overflow-wrap:anywhere;user-select:text}
+
+.about-dialog{width:min(390px,calc(100vw - 32px))}.about-heading{display:flex;align-items:center;gap:14px;margin-bottom:20px}.about-heading img{width:44px;height:44px}.about-heading h2{margin:0}.about-version{margin-top:5px;font-size:12px;color:var(--muted)}.about-copy{font-size:13px;line-height:1.7;color:var(--muted)}
+.micro-player{margin:24px 0 20px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.micro-controls{display:flex;gap:10px;align-items:center}.micro-controls .icon-button{width:32px;height:32px;flex-shrink:0}.micro-controls .music-play{background:var(--accent);color:var(--ink);border-color:transparent}.micro-title{min-width:0;flex:1;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.micro-progress{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.micro-progress progress{width:100%;height:3px;accent-color:var(--accent)}.micro-status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}.about-credit{display:block;padding:0;background:none;border:0;color:var(--muted);font-size:10px;text-align:left;line-height:1.6}.about-credit:hover{color:var(--text);text-decoration:underline}.astra-dialog{padding:12px;width:min(600px,calc(100vw - 32px))}.astra-dialog img{display:block;width:100%;max-height:70vh;object-fit:contain;border-radius:9px}.astra-dialog .dialog-actions{margin-top:12px}
 </style>
 </head>
 <body class="booting">
@@ -267,8 +271,9 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allo
         <div class="setting-row"><span title="Блокирует прямой интернет при сбое соединения. Отключение вручную снимает блокировку.">Kill switch</span><button class="switch" role="switch" aria-checked="false" aria-label="Kill switch" data-setting="killSwitch"></button></div>
         <div class="setting-row"><span>Закрывать в трей</span><button class="switch" role="switch" aria-checked="true" aria-label="Закрывать в трей" data-setting="tray"></button></div>
         <button class="setting-row setting-action" id="statisticsButton" type="button" data-page="statistics"><span>Статистика</span><svg aria-hidden="true"><use href="#arrow"/></svg></button>
+        <button class="setting-row setting-action" id="aboutButton" type="button"><span>О приложении</span><svg aria-hidden="true"><use href="#arrow"/></svg></button>
       </div>
-      <div class="settings-tools" data-reveal><button class="settings-link" id="routingButton">Маршрутизация<svg><use href="#arrow"/></svg></button><button class="settings-link" id="automationButton">Автоматизация<svg><use href="#arrow"/></svg></button><button class="settings-link" id="advancedButton">Дополнительно<svg><use href="#arrow"/></svg></button><button class="settings-link" type="button" data-page="diagnostics">Диагностика<svg><use href="#arrow"/></svg></button><button class="settings-link" type="button" data-page="logs">Журнал<svg><use href="#arrow"/></svg></button></div>
+      <div class="settings-tools" data-reveal><button class="settings-link" id="routingButton">Маршрутизация<svg><use href="#arrow"/></svg></button><button class="settings-link" id="automationButton">Автоматизация<svg><use href="#arrow"/></svg></button><button class="settings-link" id="advancedButton">Дополнительно<svg><use href="#arrow"/></svg></button><button class="settings-link" type="button" data-page="logs">Журнал<svg><use href="#arrow"/></svg></button></div>
     </section>
   </main>
 </div>
@@ -381,6 +386,17 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allo
 <dialog class="dialog" id="serviceRemoveDialog" aria-labelledby="serviceRemoveTitle"><h2 id="serviceRemoveTitle">Удалить сервис?</h2><p class="service-note">Управляемый процесс будет остановлен, его пакет и журнал удалены. Настройки kot и результаты подбора сохранятся.</p><div class="dialog-actions"><button class="quiet-button" id="serviceRemoveCancel">Отмена</button><button class="primary" id="serviceRemoveConfirm">Удалить</button></div></dialog>
 <dialog class="dialog" id="serviceSecretDialog" aria-labelledby="serviceSecretTitle"><h2 id="serviceSecretTitle">Создать новый secret?</h2><p class="service-note">Старая ссылка перестанет работать. Если прокси запущен, он перезапустится. После этого подключите Telegram по новой ссылке.</p><div class="dialog-actions"><button class="quiet-button" id="serviceSecretCancel">Отмена</button><button class="primary" id="serviceSecretConfirm">Создать</button></div></dialog>
 
+<dialog class="dialog about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
+<div class="about-heading"><img src="brand-icon.svg" alt=""><div><h2 id="aboutTitle">kot.</h2><p class="about-version" id="aboutVersion"></p></div></div>
+<p class="about-copy">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<div class="micro-player" aria-label="Музыка"><audio id="aboutAudio" preload="none"></audio><div class="micro-controls">
+<button class="icon-button music-play" id="musicPlay" type="button" aria-label="Воспроизвести" title="Воспроизвести"><svg aria-hidden="true" viewBox="0 0 24 24"><path id="musicPlayIcon" d="m9 5 11 7-11 7Z"/></svg></button>
+<span class="micro-title" id="musicTitle">Немного музыки</span><button class="icon-button" id="musicNext" type="button" aria-label="Другой трек" title="Другой трек" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 5 10 7-10 7ZM19 5v14"/></svg></button></div>
+<div class="micro-progress"><span id="musicTime">0:00</span><progress id="musicProgress" value="0" max="1" aria-label="Воспроизведение"></progress></div><p class="micro-status" id="musicStatus" role="status" hidden></p></div>
+<button class="about-credit" id="astraCredit" type="button">Весь код был сделан GPT 6 Astra</button>
+<div class="dialog-actions"><button class="quiet-button" id="closeAbout" type="button">Закрыть</button></div></dialog>
+<dialog class="dialog astra-dialog" id="astraDialog" aria-label="GPT 6 Astra"><img src="astra.jpg" alt="Зелёноволосый персонаж в очках"><div class="dialog-actions"><button class="quiet-button" id="closeAstra" type="button">Закрыть</button></div></dialog>
+<script src="about.js"></script>
 <script src="services.js"></script>
 <script src="client-tools.js"></script>
 <script src="app.js"></script>

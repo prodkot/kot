@@ -35,6 +35,8 @@ ROUTING = {'active': 'rules', 'errors': {}, 'profiles': [{'id': 'rules', 'source
                       'dns': {'direct': 'system', 'vpn': 'cloudflare', 'blockAds': False}}}]}
 PAGES = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'services', 'settings']
 DIALOGS = [
+ ('aboutDialog', 'settings', ['#aboutButton']),
+ ('astraDialog', 'settings', ['#aboutButton', '#astraCredit']),
  ('addDialog', 'home', ['.sidebar [data-open-add]']),
  ('advancedDialog', 'settings', ['#advancedButton']),
  ('deviceDialog', 'settings', ['#advancedButton', '#hwidButton']),
@@ -116,6 +118,7 @@ with sync_playwright() as pw:
                 errors=[]
                 page.on('pageerror',lambda e:errors.append(str(e)))
                 page.add_init_script(MOCK)
+                page.route('https://api.github.com/**',lambda route:route.fulfill(json=[]))
                 try:
                     page.goto((ROOT/'Windows/ui/index.html').as_uri())
                     expect(page.locator('#startupScreen')).to_be_hidden()

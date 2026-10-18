@@ -187,7 +187,24 @@
         if (!sub) throw Error('Подписка не найдена.');
         model.activeSubscription = sub.id; model.name = sub.name; break;
       }
+      case 'readSubscription': {
+        const sub=model.subscriptions.find(s=>s.id===data.id);
+        if(!sub)throw Error('Профиль не найден.');
+        return {id:sub.id,name:sub.name,address:sub.address||'https://example.org/subscription',local:false};
+      }
+      case 'editSubscription': {
+        const sub=model.subscriptions.find(s=>s.id===data.id);
+        if(!sub)throw Error('Профиль не найден.');
+        if(typeof data.name!=='string'||!data.name.trim()||data.name.length>60)throw Error('Введите название профиля.');
+        const url=new URL(data.address);
+        if(url.protocol!=='https:'||url.username||url.password||url.hash)throw Error('Нужна HTTPS-ссылка.');
+        sub.name=data.name.trim();sub.address=data.address;
+        if(model.activeSubscription===sub.id)model.name=sub.name;
+        break;
+      }
       case 'remove': {
+        const id=data.id||model.activeSubscription;
+        if(id!==model.activeSubscription){model.subscriptions=model.subscriptions.filter(s=>s.id!==id);break;}
         stop('connect'); stopPing(); model.state = 'idle'; model.telemetry = emptyTraffic(); model.error = ''; model.settings.killSwitchActive = false;
         model.subscriptions = model.subscriptions.filter(sub => sub.id !== model.activeSubscription);
         const sub = model.subscriptions[0]; model.activeSubscription = sub?.id || ''; model.name = sub?.name || ''; model.hasSubscription = !!sub;

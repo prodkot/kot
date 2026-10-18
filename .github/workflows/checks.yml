@@ -34,6 +34,7 @@ jobs:
           python3 Tests/client_tools_ui.py
           python3 Tests/services_ui.py
           python3 Tests/ui_controls.py
+          python3 Tests/about_ui.py
           python3 Tests/ui_polish.py
           python3 Tests/ui_resilience.py
   integration:
@@ -67,6 +68,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - name: QA evidence summary
+        shell: pwsh
+        run: ./Tests/qa_summary.ps1
       - name: Core tests
         shell: pwsh
         run: |

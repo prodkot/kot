@@ -59,7 +59,7 @@ with sync_playwright() as p:
         expect(page.locator('#refreshButton')).to_be_enabled()
 
         page.locator('[data-page=settings]').click()
-        page.locator('[data-page=diagnostics]').click()
+        page.evaluate("fixtureNavigate('diagnostics')")
         expect(page.locator('#toolsNode')).to_be_disabled()
         expect(page.locator('#toolsConnectionNote')).to_contain_text('текущее VPN-соединение')
         page.locator('#runDiagnostics').click()
@@ -170,7 +170,7 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':800,'height':600})
         for section in ('statistics', 'diagnostics', 'servers'):
             if section in ('statistics', 'diagnostics'): page.locator('.nav-button[data-page=settings]').click()
-            page.locator(f'[data-page={section}]').click()
+            page.evaluate('section=>fixtureNavigate(section)',section)
             assert page.locator('#page-' + section).evaluate('(e)=>e.scrollWidth<=e.clientWidth'), section
         page.set_viewport_size({'width':1080,'height':770})
         page.locator('[data-page=home]').click(); page.wait_for_timeout(300)

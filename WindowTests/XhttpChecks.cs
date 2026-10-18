@@ -91,7 +91,7 @@ public static class XhttpChecks
                 check(await client.GetStringAsync($"http://127.0.0.1:{webPort}/", ct) == "OK", "one native Xray probe carries a real HTTP request over XHTTP");
                 check(await Latency.Http($"http://127.0.0.1:{webPort}/", probe.Port, 3000, ct) >= 0, "native XHTTP HTTP latency measurement succeeds");
             }
-            check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "XHTTP probe removes its credential-bearing configuration");
+            check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "XHTTP probe uses stdin without creating a credential configuration");
             using (var cancelled = new CancellationTokenSource())
             {
                 cancelled.Cancel(); bool rejected = false;
@@ -144,7 +144,7 @@ public static class XhttpChecks
                 var pending = failure.Connect(failedProfile);
                 await Task.Delay(300, ct); await failure.Stop(); await pending;
                 check(failure.State == "idle" && failure.Error.Length == 0, "cancelling native startup completes without a timeout error");
-                check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "success, failure and cancellation remove credential configurations");
+                check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "success, failure and cancellation leave no credential configuration files");
             }
             finally { await failure.Stop(); KillSwitch.Release(); }
             var autoProfile = new Profile { Nodes = [dnsNode, node], Selected = "auto", ConnectionMode = "proxy", KillSwitch = true };

@@ -1,5 +1,6 @@
 param([string]$InstallDirectory, [string]$ReportDirectory=$PSScriptRoot, [switch]$NonInteractive)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Report.ps1')
 $report=[ordered]@{schema=1; commit=''; version=''; os=[Environment]::OSVersion.Version.ToString(); checks=@(); manual=@(); startup=@()}
 $owned=New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]'
 $work=$null
@@ -201,18 +202,16 @@ if (!$NonInteractive -and $lock) {
     Write-Host 'Ручная часть добровольна. Вход в TUN запросит права администратора.'
     Write-Host 'Подключение, смена сети и сон временно прервут интернет. Сначала завершите важные загрузки.'
     Write-Host 'Восстановление: kot в трее > Отключить. Kill switch снимайте только для разрешения прямого интернета.'
-    $steps=@(
-        @('window-tray','Откройте kot, сверните в трей, откройте снова, повторно запустите ярлык: одно рабочее окно.'),
-        @('provider-and-auto','Подключите свой сервер в TUN, откройте сайт. Полную конфигурацию выберите вручную. В Auto должны участвовать только обычные серверы.'),
-        @('resume-and-cleanup','При подключении выполните сон/пробуждение или смену Wi-Fi. Проверьте восстановление. Затем Отключить и Выход: сеть восстановлена, значка в трее нет.')
-    )
+    $steps=Get-ManualSteps
     foreach ($step in $steps) {
         Write-Host $step[1]
         $answer=Read-Host '1 = прошло, 2 = ошибка, 3 = пропущено'
         $status=switch ($answer) {'1' {'PASS'} '2' {'FAIL'} default {'NOT_TESTED'}}
         $report.manual+=@{name=$step[0];status=$status}
+        if ($status -eq 'FAIL') { $failed=$true }
     }
 }
+Get-QaSummary $report | ForEach-Object { Write-Host $_ }
 try {
     if ($lock) {
         $out=Join-Path $ReportDirectory '.qa-report-content'

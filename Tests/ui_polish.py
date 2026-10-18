@@ -181,7 +181,7 @@ def settings_navigation(page):
     expect(page.locator('.nav-button[data-page=services]')).to_be_visible()
     assert page.locator('.setting-card').evaluate('e=>e.firstElementChild.id==="onlineUpdateButton"')
     assert abs(page.locator('#onlineUpdateButton').bounding_box()['height'] - page.locator('#statisticsButton').bounding_box()['height']) < 1
-    for target in ['diagnostics', 'logs']:
+    for target in ['logs']:
         for key in ['Enter', 'Space']:
             link = page.locator(f'.settings-tools [data-page={target}]')
             link.focus(); link.press(key)

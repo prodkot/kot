@@ -149,10 +149,17 @@ def check():
                 expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
                 frame.locator('[data-service-tab=zapret]').click()
                 frame.locator('[data-page=settings]').click()
-                frame.locator('[data-page=diagnostics]').click()
-                expect(frame.locator('#page-diagnostics')).to_be_visible()
-                frame.locator('#runDiagnostics').click()
-                expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
+                expect(frame.locator('[data-page=diagnostics]')).to_have_count(0)
+                frame.locator('#aboutButton').click()
+                expect(frame.locator('#aboutDialog')).to_be_visible()
+                expect(frame.locator('#musicPlay')).to_be_disabled()
+                frame.locator('#astraCredit').click()
+                assert frame.locator('#astraDialog img').evaluate('async i=>{await i.decode();return i.naturalWidth>0;}')
+                frame.locator('#closeAstra').click()
+                frame.locator('#closeAbout').click()
+                frame.locator('[data-page=home]').click()
+                frame.locator('#powerButton').click()
+                expect(frame.locator('#stateLabel')).to_have_text('Подключено')
                 frame.locator('[data-page=servers]').click()
                 frame.locator('#qualityButton').click()
                 expect(frame.locator('#qualityDialog')).to_be_visible()
@@ -239,8 +246,8 @@ def check():
                     holder = page.locator('.demo-holder').bounding_box()
                     window = page.locator('#demo-window').bounding_box()
                     assert abs(holder['height'] - window['height']) < 1, (width, holder, window)
-                    for section in ['servers', 'statistics', 'services', 'diagnostics', 'logs', 'settings', 'home']:
-                        if section in ['statistics', 'diagnostics', 'logs']:
+                    for section in ['servers', 'statistics', 'services', 'logs', 'settings', 'home']:
+                        if section in ['statistics', 'logs']:
                             frame.locator('.nav-button[data-page=settings]').click()
                             frame.locator('[data-page='+section+']').click()
                             expect(frame.locator('.nav-button[data-page=settings]')).to_have_attribute('aria-current', 'page')
