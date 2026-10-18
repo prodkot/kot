@@ -4,8 +4,11 @@ $ErrorActionPreference='Stop'
 # a UTF-8 console with a BOM. No provider configuration or user state is used.
 $source=Join-Path $PSScriptRoot '../QA/Checks.ps1'
 $tokens=$null;$errors=$null
-$ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) { throw 'QA syntax error' }
+# The repository is UTF-8 without BOM; packaging adds the BOM for PowerShell 5.1.
+# Read explicitly so ParseFile does not interpret Russian text as Windows ANSI.
+$text=[IO.File]::ReadAllText($source,[Text.Encoding]::UTF8)
+$ast=[Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors)
+if ($errors.Count) { throw ('QA syntax error: '+(($errors | ForEach-Object {$_.Message}) -join '; ')) }
 $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Core'},$false)
 if (!$function) { throw 'QA Core function missing' }
 . ([scriptblock]::Create($function.Extent.Text))
