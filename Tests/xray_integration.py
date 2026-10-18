@@ -75,9 +75,13 @@ class Dns(socketserver.BaseRequestHandler):
             cursor += length
         end = cursor + 5
         qtype = struct.unpack('!H', data[cursor+1:cursor+3])[0]
-        self.server.queries.append(('.'.join(labels), qtype))
-        answer = qtype == 1
-        header = data[:2] + struct.pack('!HHHHH', 0x8180, 1, int(answer), 0, 0)
+        host = '.'.join(labels)
+        self.server.queries.append((host, qtype))
+        # The OS can resolve localhost, but this provider deliberately cannot.
+        # A UseIP/system-DNS fallback would incorrectly make this request succeed.
+        refused = host == 'localhost'
+        answer = qtype == 1 and not refused
+        header = data[:2] + struct.pack('!HHHHH', 0x8183 if refused else 0x8180, 1, int(answer), 0, 0)
         response = header + data[12:end]
         if answer:
             response += b'\xc0\x0c' + struct.pack('!HHIH', 1, 1, 60, 4) + socket.inet_aton('127.0.0.1')
@@ -107,12 +111,17 @@ try:
     server = start(server_config, 'server', 19441)
     provider = json.loads((folder / 'provider.json').read_text())
     provider['dns']['servers'][-1] = {'address': '127.0.0.1', 'port': fallback.server_address[1]}
-    next(o for o in provider['outbounds'] if o['tag'] == 'direct')['streamSettings'] = {'sockopt': {'domainStrategy': 'UseIP'}}
     client = start(provider, 'provider', 19442)
     url = f'http://127.0.0.1:{web_port}/'
     check(request(19442, url) == (200, b'native-xray-traffic'), 'health traffic crosses a real VLESS server')
     for suffix in ('ru', 'xn--p1ai'):
         check(request(19443, f'http://native-fixture.{suffix}:{web_port}/') == (200, b'native-xray-traffic'), suffix + ' follows the provider direct route and provider DNS')
+    failed = False
+    try:
+        failed = request(19443, f'http://localhost:{web_port}/')[0] != 200
+    except (OSError, http.client.HTTPException):
+        failed = True
+    check(failed and any(q[0] == 'localhost' for q in dns.queries), 'direct DNS failure cannot silently fall back to the system resolver')
     status, body = request(19444, 'http://kot-metrics.internal/debug/vars', 'kot:' + 's' * 64)
     metrics = json.loads(body)
     check(status == 200 and metrics['stats']['inbound']['kot-in']['downlink'] > 0, 'authenticated native metrics expose actual user traffic')
@@ -137,6 +146,12 @@ try:
         failed = True
     check(failed, 'the health check cannot silently use a provider direct bypass')
     client.terminate(); client.wait(timeout=5)
+    imported = json.loads((folder / 'provider-imported.json').read_text())
+    imported['dns']['servers'][-1]['port'] = fallback.server_address[1]
+    imported_client = start(imported, 'provider-imported', 19442)
+    for suffix in ('ru', 'xn--p1ai'):
+        check(request(19443, f'http://imported-fixture.{suffix}:{web_port}/') == (200, b'native-xray-traffic'), suffix + ' imported subscription uses domestic DNS and direct egress with the VPN stopped')
+    imported_client.terminate(); imported_client.wait(timeout=5)
     balanced = json.loads((folder / 'provider-balanced.json').read_text())
     balanced_client = start(balanced, 'provider-balanced', 19442)
     failed = False

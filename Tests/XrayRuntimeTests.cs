@@ -47,15 +47,41 @@ public static class XrayRuntimeTests
         var saved = JsonNode.Parse("""
         {"inbounds":[{"tag":"provider-in","protocol":"socks","listen":"127.0.0.1","port":1080}],"outbounds":[{"tag":"vpn","protocol":"vless","settings":{"vnext":[{"address":"127.0.0.1","port":19441,"users":[{"id":"UUID","encryption":"none"}]}]}},{"tag":"direct","protocol":"freedom"}],"dns":{"tag":"provider-dns","servers":[{"address":"127.0.0.1","port":19445,"domains":["domain:ru","domain:xn--p1ai"],"skipFallback":true},"1.1.1.1"],"disableFallbackIfMatch":true},"routing":{"domainStrategy":"IPIfNonMatch","rules":[{"type":"field","inboundTag":["provider-dns"],"outboundTag":"direct"},{"type":"field","inboundTag":["provider-in"],"domain":["domain:ru","domain:xn--p1ai"],"outboundTag":"direct"}]}}
         """.Replace("UUID", uuid))!.AsObject();
+        saved["dns"]!["servers"]![0]!["domains"]!.AsArray().Add("full:localhost");
+        saved["routing"]!["rules"]![1]!["domain"]!.AsArray().Add("full:localhost");
         var full = XrayConfig.Parse(saved.ToJsonString()).Nodes[0];
         string original = full.FullConfig!.ToJsonString();
         var runtime = XrayRuntime.Build(full, 19442, proxyPort: 19443, metricsPort: 19444, secret: new string('s', 64));
         check(original == full.FullConfig.ToJsonString(), "provider JSON is immutable");
+        check(runtime["outbounds"]!.AsArray().Where(o => o?["protocol"]?.ToString() == "freedom").All(o => o!["streamSettings"]?["sockopt"]?["domainStrategy"]?.ToString() == "ForceIP"), "unconfigured direct outputs use provider DNS without system fallback");
+        foreach (string setting in new[] {
+            """{"streamSettings":{"sockopt":{"domainStrategy":"AsIs","tcpKeepAliveIdle":42}}}""",
+            """{"streamSettings":{"sockopt":{"domainStrategy":"ForceIPv4"}}}""",
+            """{"settings":{"domainStrategy":"UseIPv6"}}""",
+            """{"settings":{"targetStrategy":"UseIPv4v6"}}""",
+            """{"targetStrategy":"UseIPv4"}""",
+            """{"streamSettings":{"sockopt":{"dialerProxy":"vpn"}}}""",
+            """{"proxySettings":{"tag":"vpn"}}""" })
+        {
+            var provider = (JsonObject)saved.DeepClone();
+            var direct = provider["outbounds"]![1]!.AsObject();
+            foreach (var pair in JsonNode.Parse(setting)!.AsObject()) direct[pair.Key] = pair.Value?.DeepClone();
+            var preserved = XrayRuntime.Build(full with { FullConfig = provider }, 19442);
+            check(JsonNode.DeepEquals(direct, preserved["outbounds"]![1]), "explicit direct strategy or outbound chain is preserved: " + setting);
+        }
+        var socketProvider = (JsonObject)saved.DeepClone();
+        socketProvider["outbounds"]![1]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["tcpKeepAliveIdle"] = 42 } };
+        var sockets = XrayRuntime.Build(full with { FullConfig = socketProvider }, 19442);
+        check(sockets["outbounds"]![1]!["streamSettings"]!["sockopt"]!["tcpKeepAliveIdle"]!.GetValue<int>() == 42, "default direct DNS normalization retains unrelated socket options");
         var inherited = runtime["routing"]!["rules"]!.AsArray().Single(r => r?["domain"] != null);
         check(inherited!["inboundTag"]!.AsArray().Select(t => t!.ToString()).SequenceEqual(new[] { "kot-tun", "kot-in" }) && inherited["outboundTag"]!.ToString() == "direct", "provider RU and IDN rules retain their action on native inputs");
         check(JsonNode.DeepEquals(runtime["dns"], saved["dns"]), "provider DNS and empty-AAAA fallback policy survive natively");
         check(runtime["routing"]!["rules"]![1]!["outboundTag"]!.ToString() == "kot-dns-out" && runtime["routing"]!["rules"]![2]!["outboundTag"]!.ToString() == "vpn", "DNS interception and proxy-only health precede provider bypass");
         File.WriteAllText(Path.Combine(dir, "provider.json"), runtime.ToJsonString());
+        var imported = Subscriptions.Parse(links[0] + "\n#routing: " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("""{"DirectSites":[".ru",".рф"],"DomesticDNSType":"DoU","DomesticDNSIP":"127.0.0.1","RemoteDNSType":"DoU","RemoteDNSIP":"127.0.0.1","DomainStrategy":"AsIs"}"""))).Nodes.Single();
+        imported.FullConfig!["dns"]!["servers"]![0]!["port"] = 19445;
+        imported.FullConfig["dns"]!["servers"]![1]!["port"] = 19446;
+        File.WriteAllText(Path.Combine(dir, "provider-imported.json"), XrayRuntime.Build(imported, 19442, proxyPort: 19443).ToJsonString());
         foreach (bool? fallback in new bool?[] { false, null })
         {
             var provider = (JsonObject)saved.DeepClone();

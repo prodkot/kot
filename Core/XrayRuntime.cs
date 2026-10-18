@@ -34,7 +34,21 @@ public static class XrayRuntime
                 var retained = tags.Where(t => !oldTags.Contains(t?.ToString())).Select(t => t?.DeepClone()).ToArray();
                 if (replace) rule["inboundTag"] = new JsonArray(retained.Concat(new JsonNode?[] { JsonValue.Create("kot-tun"), JsonValue.Create("kot-in") }).ToArray());
             }
-        outputs.Add(new JsonObject { ["tag"] = "kot-direct", ["protocol"] = "freedom", ["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["domainStrategy"] = "UseIP" } } });
+        outputs.Add(new JsonObject { ["tag"] = "kot-direct", ["protocol"] = "freedom" });
+        foreach (var output in outputs.OfType<JsonObject>().Where(o => o["protocol"]?.ToString() == "freedom"))
+        {
+            // An unconfigured freedom uses system DNS, bypassing the provider's
+            // split DNS (and potentially recursing into the Windows TUN). Resolve
+            // inside Xray, with no implicit system fallback. Preserve explicit
+            // provider strategies, including legacy fields and chained outbounds.
+            if (output["targetStrategy"] != null || output["settings"]?["domainStrategy"] != null
+                || output["settings"]?["targetStrategy"] != null || output["proxySettings"] != null
+                || output["streamSettings"]?["sockopt"]?["domainStrategy"] != null
+                || output["streamSettings"]?["sockopt"]?["dialerProxy"] != null) continue;
+            var stream = output["streamSettings"] as JsonObject ?? new(); output["streamSettings"] = stream;
+            var sockopt = stream["sockopt"] as JsonObject ?? new(); stream["sockopt"] = sockopt;
+            sockopt["domainStrategy"] = "ForceIP";
+        }
         outputs.Add(new JsonObject { ["tag"] = "kot-block", ["protocol"] = "blackhole" });
         outputs.Add(new JsonObject { ["tag"] = "kot-dns-out", ["protocol"] = "dns" });
         JsonObject Input(int port, string tag, string? password = null) => new()
