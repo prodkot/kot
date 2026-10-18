@@ -87,13 +87,15 @@ try {
   Write-Host 'PASS native helper rejects a changed installer before replacing any files.'
 
   if ($LegacyUpdate) {
-    # This upgrades an authentic 0.6.1 installation and launches the new UI. Run only in a
-    # disposable Windows test account, never over an existing user profile.
+    # Keep the original updater compatibility fixture and also exercise the latest
+    # stable client when crossing to Xray. Only run in a disposable Windows account.
+    $sourceVersions=if ([version]$Version -ge [version]'0.8.0') { @('0.6.1','0.7.3') } else { @('0.6.1') }
+    foreach ($sourceVersion in $sourceVersions) {
     $profile=Join-Path $env:LOCALAPPDATA 'KotVPN'
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
       if (Test-Path (Join-Path $profile $name)) { throw 'Legacy update test requires a fresh Windows test account. Existing user data was left untouched.' }
     }
-    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch 'legacy client'; $parent=$null; $recoveryWork=$null
+    $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch ('legacy client '+$sourceVersion); $parent=$null; $recoveryWork=$null
     try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
@@ -106,11 +108,11 @@ try {
       [IO.File]::WriteAllBytes((Join-Path $profile 'device.bin'),$deviceBytes)
       [IO.File]::WriteAllText((Join-Path $profile 'traffic-history.json'),$traffic)
 
-      $oldSetup=Join-Path $scratch 'Kot-Setup-0.6.1-Windows-x64.exe'
-      Invoke-WebRequest 'https://github.com/prodkot/kot/releases/download/v0.6.1/Kot-Setup-0.6.1-Windows-x64.exe' -OutFile $oldSetup -TimeoutSec 120 -MaximumRetryCount 2 -RetryIntervalSec 2
+      $oldSetup=Join-Path $scratch ('Kot-Setup-'+$sourceVersion+'-Windows-x64.exe')
+      Invoke-WebRequest "https://github.com/prodkot/kot/releases/download/v$sourceVersion/Kot-Setup-$sourceVersion-Windows-x64.exe" -OutFile $oldSetup -TimeoutSec 120 -MaximumRetryCount 2 -RetryIntervalSec 2
       # The pinned publisher key validates both the old Setup and its payload.
-      Extract $oldSetup $legacy '0.6.1'
-      if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike '0.6.1*') { throw 'Legacy fixture does not contain the released 0.6.1 client.' }
+      Extract $oldSetup $legacy $sourceVersion
+      if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw "Legacy fixture does not contain the released $sourceVersion client." }
       [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
       if ([version]$Version -ge [version]'0.8.0') {
         # Released updaters require core/sing-box.exe. The Xray experiment is
@@ -153,9 +155,9 @@ try {
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
       if ([version]$Version -ge [version]'0.8.0') {
-        Write-Host 'PASS signed Setup upgrades an authentic 0.6.1 installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved.'
+        Write-Host "PASS signed Setup upgrades an authentic $sourceVersion installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved."
       } else {
-        Write-Host 'PASS authentic 0.6.1 updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved.'
+        Write-Host "PASS authentic $sourceVersion updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved."
       }
 
       # Exercise startup recovery from the actual bundled executable. Kot.exe is
@@ -204,6 +206,7 @@ try {
           if (Test-Path $backup) { Move-Item $backup $profile }
         }
       }
+    }
     }
   }
 } finally {
