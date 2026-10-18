@@ -36,6 +36,17 @@ public static class XhttpChecks
     public static async Task Run(string xray, Action<bool, string> check)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(110)); var ct = deadline.Token;
+        // The production Auto path discovers the bundled executable itself. Use
+        // that same path for the server and explicit probes: the WFP permit is
+        // deliberately restricted to one core identity, even for identical bytes.
+        string bundled = Path.Combine(AppContext.BaseDirectory, "core"); Directory.CreateDirectory(bundled);
+        string bundledCore = Path.Combine(bundled, "xray.exe");
+        if (!Path.GetFullPath(xray).Equals(bundledCore, StringComparison.OrdinalIgnoreCase))
+        {
+            File.Copy(xray, bundledCore, true);
+            File.Copy(Path.Combine(Path.GetDirectoryName(xray)!, "wintun.dll"), Path.Combine(bundled, "wintun.dll"), true);
+        }
+        xray = bundledCore;
         using var web = new TcpListener(IPAddress.Loopback, 0); web.Start(); int webPort = ((IPEndPoint)web.LocalEndpoint).Port;
         var serve = Task.Run(async () =>
         {
@@ -87,9 +98,6 @@ public static class XhttpChecks
                 try { await using var ignored = await ProbeCore.Start(node, cancelled.Token, xray); } catch (OperationCanceledException) { rejected = true; }
                 check(rejected && Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "cancelled native XHTTP startup leaves no configuration or process");
             }
-            string bundled = Path.Combine(AppContext.BaseDirectory, "core"); Directory.CreateDirectory(bundled);
-            File.Copy(xray, Path.Combine(bundled, "xray.exe"), true);
-            File.Copy(Path.Combine(Path.GetDirectoryName(xray)!, "wintun.dll"), Path.Combine(bundled, "wintun.dll"), true);
             var dnsNode = node with { FullConfig = new JsonObject { ["inbounds"] = new JsonArray(), ["outbounds"] = new JsonArray(XrayConfig.Outbound(node)), ["dns"] = new JsonObject { ["hosts"] = new JsonObject { [healthHost] = "192.0.2.123" }, ["servers"] = new JsonArray("https://1.1.1.1/dns-query") } } };
             XrayConfig.Validate(dnsNode.FullConfig!);
             var profile = new Profile { Nodes = [dnsNode], Selected = dnsNode.Id, ConnectionMode = "tun", KillSwitch = true };
@@ -144,6 +152,7 @@ public static class XhttpChecks
             try
             {
                 await automatic.Connect(autoProfile).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                if (automatic.State != "connected") Console.WriteLine(automatic.Error + "\n" + automatic.CoreDetails + "\n" + AppLog.Tail());
                 check(automatic.State == "connected" && automatic.AutomaticNode == node.Id, "Auto uses a real XHTTP HTTP probe and excludes provider configurations");
                 await automatic.Stop();
                 autoProfile.Nodes = [unreachable];
