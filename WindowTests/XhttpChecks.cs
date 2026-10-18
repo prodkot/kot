@@ -139,6 +139,20 @@ public static class XhttpChecks
                 check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "success, failure and cancellation remove credential configurations");
             }
             finally { await failure.Stop(); KillSwitch.Release(); }
+            var autoProfile = new Profile { Nodes = [dnsNode, node], Selected = "auto", ConnectionMode = "proxy", KillSwitch = true };
+            var automatic = new Tunnel([$"http://127.0.0.1:{webPort}/"], TimeSpan.FromSeconds(5));
+            try
+            {
+                await automatic.Connect(autoProfile).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                check(automatic.State == "connected" && automatic.AutomaticNode == node.Id, "Auto uses a real XHTTP HTTP probe and excludes provider configurations");
+                await automatic.Stop();
+                autoProfile.Nodes = [unreachable];
+                await automatic.Connect(autoProfile).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                check(automatic.State == "idle" && automatic.Error.Contains("Ни один сервер Авто") && !automatic.HasCore && automatic.ProxyPort == 0,
+                    "failed real Auto probes never start an arbitrary server or report connected");
+                check(KillSwitch.Detect(), "all failed Auto probes preserve the armed guard");
+            }
+            finally { await automatic.Stop(); KillSwitch.Release(); }
             fixturePermission.Dispose();
             KillSwitch.ArmForTests(Environment.ProcessPath!, xray);
             check(!await Open("1.1.1.1", 443, ct), "WFP blocks an unpermitted executable");

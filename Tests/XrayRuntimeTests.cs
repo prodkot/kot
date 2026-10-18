@@ -56,6 +56,22 @@ public static class XrayRuntimeTests
         check(JsonNode.DeepEquals(runtime["dns"], saved["dns"]), "provider DNS and empty-AAAA fallback policy survive natively");
         check(runtime["routing"]!["rules"]![1]!["outboundTag"]!.ToString() == "kot-dns-out" && runtime["routing"]!["rules"]![2]!["outboundTag"]!.ToString() == "vpn", "DNS interception and proxy-only health precede provider bypass");
         File.WriteAllText(Path.Combine(dir, "provider.json"), runtime.ToJsonString());
+        foreach (bool? fallback in new bool?[] { false, null })
+        {
+            var provider = (JsonObject)saved.DeepClone();
+            if (fallback == null) provider["dns"]!.AsObject().Remove("disableFallbackIfMatch");
+            else provider["dns"]!["disableFallbackIfMatch"] = fallback.Value;
+            var preserved = XrayRuntime.Build(full with { FullConfig = provider }, 19442);
+            check(JsonNode.DeepEquals(preserved["dns"], provider["dns"]), "provider DNS fallback policy survives: " + (fallback?.ToString() ?? "omitted"));
+        }
+        var balanced = (JsonObject)saved.DeepClone();
+        balanced["routing"]!["balancers"] = new JsonArray(new JsonObject { ["tag"] = "direct-balancer", ["selector"] = new JsonArray("direct"), ["fallbackTag"] = "direct" });
+        balanced["observatory"] = new JsonObject { ["subjectSelector"] = new JsonArray("direct"), ["probeURL"] = "http://127.0.0.1:9/", ["probeInterval"] = "1m" };
+        var balancedRuntime = XrayRuntime.Build(full with { FullConfig = balanced }, 19442, proxyPort: 19443);
+        check(JsonNode.DeepEquals(balancedRuntime["routing"]!["balancers"], balanced["routing"]!["balancers"]), "provider user-traffic balancer is preserved");
+        var health = balancedRuntime["routing"]!["rules"]!.AsArray().Single(r => r?["inboundTag"]?[0]?.ToString() == "kot-health");
+        check(health!["outboundTag"]?.ToString() == "vpn" && health["balancerTag"] == null, "a direct provider balancer cannot satisfy a VPN health check");
+        File.WriteAllText(Path.Combine(dir, "provider-balanced.json"), balancedRuntime.ToJsonString());
         var manual = new RoutingRules { DirectDomains = ["ru", "xn--p1ai"], BlockDomains = ["blocked.test"], ProxyApps = ["chrome.exe"], DirectIps = ["203.0.113.0/24"] };
         runtime = XrayRuntime.Build(full, 19442, manual: manual);
         check(!runtime.ToJsonString().Contains("provider-in") && runtime["routing"]!["rules"]!.AsArray().Any(r => r?["process"]?[0]?.ToString() == "chrome.exe"), "explicit local rules replace provider rules and translate process matching");

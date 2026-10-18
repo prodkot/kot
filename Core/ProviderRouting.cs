@@ -94,7 +94,12 @@ public static class ProviderRouting
             var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using (var doc = JsonDocument.Parse(value))
                 foreach (var property in doc.RootElement.EnumerateObject()) if (!fields.Add(property.Name)) throw new UserError("Повторяющиеся поля маршрутизации подписки.");
+            var supported = new HashSet<string>(new[] { "Name", "GlobalProxy", "FakeDNS", "DomainStrategy", "DnsHosts", "Geoipurl", "Geositeurl",
+                "DirectSites", "DirectIp", "ProxySites", "ProxyIp", "BlockSites", "BlockIp",
+                "RemoteDNSType", "RemoteDNSIP", "RemoteDns", "RemoteDNSDomain", "DomesticDNSType", "DomesticDNSIP", "DomesticDns", "DomesticDNSDomain" }, StringComparer.OrdinalIgnoreCase);
+            if (fields.Any(field => !supported.Contains(field))) throw new UserError("Профиль маршрутизации подписки содержит неподдерживаемые параметры. Правила не применены; прежняя подписка сохранена.");
             string G(string key, string fallback = "") => source.FirstOrDefault(p => p.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value?.ToString() ?? fallback;
+            if (!bool.TryParse(G("FakeDNS", "false"), out _)) throw new UserError("Неверный FakeDNS в профиле подписки.");
             if (G("FakeDNS", "false").Equals("true", StringComparison.OrdinalIgnoreCase)) throw new UserError("FakeDNS в профиле подписки пока не поддерживается. Провайдер должен выдать профиль с FakeDNS=false; прежняя подписка сохранена.");
             JsonArray List(string key)
             {

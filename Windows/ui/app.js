@@ -145,7 +145,8 @@
     const selected=data.nodes.find(n=>n.id===data.selected);
     const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
     label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
-    $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=data.favorites?.length?'Из избранного':'Быстрый доступный сервер';
+    const autoEligible=data.nodes.some(n=>!n.providerRouting&&n.protocol!=='xray'&&(!data.favorites?.length||data.favorites.includes(n.id)));
+    $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=!autoEligible?'Нет обычных серверов для Авто':data.favorites?.length?'Обычные серверы из избранного':'Обычные серверы, проверенные через VPN';
     renderSubscriptions();renderRouting();
     $('backgroundError').textContent=data.backgroundError||'';$('backgroundError').hidden=!data.backgroundError;
     $('refreshButton').disabled=refreshBusy||!data.hasSubscription||!!data.localSubscription;$('removeSubscription').hidden=!data.hasSubscription;
@@ -437,7 +438,7 @@
   }
   function renderRouting(){
     const routing=model.routing||{active:'',profiles:[]},saved=routingSaved(),active=routing.profiles.find(p=>p.id===routing.active);
-    const provider=model.nodes.some(n=>n.providerRouting&&(model.selected==='auto'||n.id===model.selected)),defaultLabel=provider?'Правила подписки':'По умолчанию';
+    const provider=model.selected!=='auto'&&model.nodes.some(n=>n.providerRouting&&n.id===model.selected),defaultLabel=provider?'Правила подписки':'По умолчанию';
     $('routingSummary').textContent='Маршрут: '+(active?.rules.name||(provider?'правила подписки':'по умолчанию'));
     $('routingActive').replaceChildren(new Option(defaultLabel,''),...routing.profiles.map(p=>new Option((p.sourceUrl?'Обновляемый · ':'')+p.rules.name,p.id)));
     $('routingActive').value=routing.active||'';$('routingActive').disabled=routingBusy||routingDirty;

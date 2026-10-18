@@ -24,7 +24,6 @@ public static class XrayRuntime
         for (int i = 0; i < outputs.Count; i++) outputs[i]!["tag"] ??= "kot-provider-" + i;
         string defaultTag = outputs[0]!["tag"]!.ToString();
         string proxyTag = outputs.OfType<JsonObject>().First(XrayConfig.IsProxy)["tag"]!.ToString();
-        string? balancer = c["routing"]?["balancers"] is JsonArray balances ? balances.OfType<JsonObject>().FirstOrDefault()?["tag"]?.ToString() : null;
         var oldTags = (c["inbounds"] as JsonArray ?? []).Select(i => i?["tag"]?.ToString()).Where(t => t != null).ToHashSet();
         var routing = c["routing"] as JsonObject ?? new(); c["routing"] = routing;
         var rules = routing["rules"] as JsonArray ?? []; routing["rules"] = rules;
@@ -62,7 +61,7 @@ public static class XrayRuntime
         });
         if (manual != null || node.FullConfig == null)
         {
-            manual?.Validate(); rules.Clear(); routing.Remove("balancers"); c.Remove("observatory"); c.Remove("burstObservatory"); balancer = null;
+            manual?.Validate(); rules.Clear(); routing.Remove("balancers"); c.Remove("observatory"); c.Remove("burstObservatory");
             routing["domainStrategy"] = "IPIfNonMatch";
             defaultTag = manual == null || manual.DefaultAction == "proxy" ? proxyTag : "kot-direct";
             rules.Add(Rule("ip", ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"], "kot-direct"));
@@ -107,8 +106,10 @@ public static class XrayRuntime
             ((JsonArray)dns["servers"]!).Insert(0, bootstrap);
             if (!tun && physicalInterface.Length > 0) rules.Insert(0, new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("kot-bootstrap-dns"), ["outboundTag"] = "kot-direct" });
         }
-        dns["disableFallbackIfMatch"] = true;
-        rules.Insert(0, new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("kot-health"), [balancer == null ? "outboundTag" : "balancerTag"] = balancer ?? proxyTag });
+        // A provider balancer can include freedom or a direct fallback. It must
+        // never make the proxy-only health check succeed without a VPN server.
+        // Preserve the provider's DNS fallback policy, including omitted values.
+        rules.Insert(0, new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("kot-health"), ["outboundTag"] = proxyTag });
         rules.Insert(0, new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("kot-tun", "kot-in"), ["port"] = "53", ["outboundTag"] = "kot-dns-out" });
         rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("kot-tun", "kot-in"), ["outboundTag"] = defaultTag });
         if (metricsPort > 0)

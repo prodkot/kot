@@ -93,7 +93,7 @@ try:
     for path in sorted(folder.glob('*.json')):
         if path.name.endswith('-live.json'): continue
         result = subprocess.run([core, 'run', '-test', '-c', str(path)], capture_output=True, timeout=15)
-        check(result.returncode == 0, 'native core accepts ' + path.name + ': ' + result.stderr.decode(errors='replace')[-500:])
+        check(result.returncode == 0, 'native core accepts ' + path.name + ': ' + (result.stdout + result.stderr).decode(errors='replace')[-1000:] if result.returncode else 'native core accepts ' + path.name)
     web = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), Web))
     web_port = web.server_address[1]
     dns = serve(socketserver.ThreadingUDPServer(('127.0.0.1', 19445), Dns)); dns.queries = []
@@ -136,6 +136,15 @@ try:
     except (OSError, http.client.HTTPException):
         failed = True
     check(failed, 'the health check cannot silently use a provider direct bypass')
+    client.terminate(); client.wait(timeout=5)
+    balanced = json.loads((folder / 'provider-balanced.json').read_text())
+    balanced_client = start(balanced, 'provider-balanced', 19442)
+    failed = False
+    try:
+        failed = request(19442, url, timeout=2)[0] != 200
+    except (OSError, http.client.HTTPException):
+        failed = True
+    check(failed, 'a direct-only provider balancer cannot hide a stopped VPN server')
     check(any(q[1] == 28 for q in dns.queries), 'provider DNS was asked for empty AAAA responses')
     check(not fallback.queries, 'an empty provider AAAA answer never falls through to the remote resolver')
     print('Native Xray integration passed.', flush=True)

@@ -54,7 +54,13 @@ public sealed class Tunnel
         if (MonotonicMilliseconds - lastAutomatic < profile.Automation.AutoMinutes * 60000L) return true;
         int generation = stopGeneration;
         int session = Session; lastAutomatic = MonotonicMilliseconds;
-        string selected = await SelectAutomatic(profile, ct);
+        string selected;
+        try { selected = await SelectAutomatic(profile, ct); }
+        catch (UserError ex)
+        {
+            if (Session == session && State == "connected") { await Stop(); Set("idle", ex.Message); }
+            return false;
+        }
         if (Session != session || State != "connected") return false;
         if (selected != AutomaticNode)
         {
@@ -66,28 +72,16 @@ public sealed class Tunnel
     }
     async Task<string> SelectAutomatic(Profile profile, CancellationToken ct)
     {
-        var nodes = Xhttp.ConnectionNodes(profile);
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct); budget.CancelAfter(TimeSpan.FromSeconds(20));
-        var results = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
-        try
+        return await AutomaticSelection.Select(profile, AutomaticNode, async (node, token) =>
         {
-            await Parallel.ForEachAsync(nodes.OrderBy(n => n.Id == AutomaticNode ? 0 : 1), new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = budget.Token }, async (node, token) =>
+            try
             {
-                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(6));
-                try
-                {
-                    await using var probe = await ProbeCore.Start(node, deadline.Token);
-                    results[node.Id] = await Latency.Http(healthTargets[0], probe.Port, 4000, deadline.Token);
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException) { AppLog.Write("auto", node.Id + ": " + ex.GetType().Name); }
-            });
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
-        ct.ThrowIfCancellationRequested();
-        string fallback = nodes.Any(n => n.Id == AutomaticNode) ? AutomaticNode : nodes[0].Id;
-        var best = results.OrderBy(p => p.Value).FirstOrDefault();
-        if (best.Key == null) return fallback;
-        return results.TryGetValue(AutomaticNode, out int current) && current <= best.Value + profile.Automation.AutoToleranceMs ? AutomaticNode : best.Key;
+                await using var probe = await ProbeCore.Start(node, token);
+                return await Latency.Http(healthTargets[0], probe.Port, 4000, token);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            { AppLog.Write("auto", node.Id + ": " + ex.GetType().Name); throw; }
+        }, ct);
     }
     async Task<string> ReadMetrics(int port, string secret, CancellationToken ct)
     {
@@ -132,7 +126,7 @@ public sealed class Tunnel
             if (core != null || State != "idle") return;
             Node? node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
             bool automatic = profile.Selected == "auto";
-            if (automatic) node = profile.Nodes.FirstOrDefault();
+            if (automatic) node = AutomaticSelection.Candidates(profile).FirstOrDefault() ?? throw new UserError(AutomaticSelection.NoCandidates);
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
@@ -157,7 +151,8 @@ public sealed class Tunnel
             {
                 string selected = preferredNode.Length > 0 ? preferredNode : await SelectAutomatic(profile, ct);
                 preferredNode = "";
-                node = profile.Nodes.FirstOrDefault(n => n.Id == selected) ?? node;
+                node = AutomaticSelection.Candidates(profile).FirstOrDefault(n => n.Id == selected)
+                    ?? throw new UserError(AutomaticSelection.NoCandidates);
             }
             activeNode = node; lastAutomatic = MonotonicMilliseconds;
             var routing = profile.ActiveRoutingProfile.Length == 0 ? null : profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules ?? throw new UserError("Профиль маршрутизации удалён.");

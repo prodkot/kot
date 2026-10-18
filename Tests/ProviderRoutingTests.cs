@@ -45,7 +45,7 @@ static class ProviderRoutingTests
         using var bad = new Handler((_, _) => WithHeader(Link, "routing", Encode("""{"DirectSites":"ru"}""")));
         rejected = false; try { await Subscriptions.Download("https://subscription.example/test", CancellationToken.None, bad); } catch (UserError) { rejected = true; }
         check(rejected, "invalid provider rules fail the entire refresh instead of silently replacing working rules");
-        foreach (string text in new[] { """{"FakeDNS":true}""", """{"RemoteDNSType":"system"}""", """{"DirectSites":["https://example.com"]}""", """{"Geoipurl":"http://unsafe.example/geoip.dat"}""" })
+        foreach (string text in new[] { """{"FakeDNS":true}""", """{"FakeDNS":"invalid"}""", """{"DirectApps":["browser.exe"]}""", """{"RemoteDNSType":"system"}""", """{"DirectSites":["https://example.com"]}""", """{"Geoipurl":"http://unsafe.example/geoip.dat"}""" })
         {
             rejected = false; try { Subscriptions.Parse(Link + "\n#routing: " + Encode(text)); } catch (UserError) { rejected = true; }
             check(rejected, "unsupported routing configuration is reported explicitly");

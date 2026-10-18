@@ -60,6 +60,7 @@ public sealed partial class MainWindow
     }
     void BrowserFailure(Exception error)
     {
+        AppLog.PersistStartupFailure("interface", error);
         AppLog.Error("interface", error); bridgeReady = false; browserLoaded = false; browserWatch.Stop();
         if (exiting || IsDisposed) return;
         web.Hide();

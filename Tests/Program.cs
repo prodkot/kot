@@ -12,6 +12,7 @@ string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
 Kot.Tests.XrayRuntimeTests.Run(Check);
+await Kot.Tests.AutomaticSelectionTests.Run(Check);
 Kot.Tests.LogTests.Run(Check);
 Kot.Tests.LoopbackPortTests.Run(Check);
 Kot.Tests.XhttpTests.Run(Check);

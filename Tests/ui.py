@@ -177,7 +177,7 @@ with sync_playwright() as p:
     page.evaluate("fixtureNavigate", "settings")
     page.set_viewport_size({'width':960,'height':640});page.locator('[data-theme=dark]').click();page.locator('[data-page=home]').click();page.evaluate("fixtureSnapshot({error:''})");page.wait_for_timeout(400);page.screenshot(path=str(root/'Tests/ui-home.png'),animations='disabled')
     page.locator('[data-page=servers]').click();page.locator('#subscriptionSelect').click();page.locator('#subscriptionOptions [data-subscription=sub2]').click();expect(page.locator('#subscriptionSelect')).to_have_attribute('data-subscription','sub2')
-    page.locator('.favorite-node').first.click();expect(page.locator('.favorite-node').first).to_have_attribute('aria-pressed','true');expect(page.locator('#autoDescription')).to_have_text('Из избранного')
+    page.locator('.favorite-node').first.click();expect(page.locator('.favorite-node').first).to_have_attribute('aria-pressed','true');expect(page.locator('#autoDescription')).to_have_text('Обычные серверы из избранного')
     page.locator('#autoServer').click();expect(page.locator('#selectedName')).to_have_text('Авто')
     page.evaluate("fixtureSnapshot({state:'waiting'})");expect(page.locator('#powerLabel')).to_have_text('Отменить');expect(page.locator('#powerButton')).to_be_enabled();page.evaluate("fixtureSnapshot({state:'idle'})")
     for width,height in [(800,600),(960,640)]:
