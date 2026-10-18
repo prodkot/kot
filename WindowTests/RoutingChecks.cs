@@ -46,7 +46,10 @@ public static class RoutingChecks
         var request = new CertificateRequest("CN=kot routing fixture", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         var san = new SubjectAlternativeNameBuilder(); foreach (string host in proxyHosts.Concat(tunHosts)) san.AddDnsName(host);
         request.CertificateExtensions.Add(san.Build());
-        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        using var signed = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        // Schannel needs an imported key container. Without PersistKeySet the
+        // temporary container is removed when this certificate is disposed.
+        using var certificate = X509CertificateLoader.LoadPkcs12(signed.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.UserKeySet);
         using var web = new TcpListener(IPAddress.Loopback, 0); web.Start();
         int webPort = ((IPEndPoint)web.LocalEndpoint).Port;
         var serve = Task.Run(async () =>
