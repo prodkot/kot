@@ -16,7 +16,7 @@ public static class ProbeTests
         using var port = new TcpListener(IPAddress.Loopback, 0); port.Start(); int vlessPort = ((IPEndPoint)port.LocalEndpoint).Port; port.Stop();
         string file = Path.Combine(Path.GetTempPath(), "kot-probe-server-" + Guid.NewGuid().ToString("N") + ".json");
         const string uuid = "11111111-1111-4111-8111-111111111111";
-        File.WriteAllText(file, $$"""{"inbounds":[{"type":"vless","listen":"127.0.0.1","listen_port":{{vlessPort}},"users":[{"uuid":"{{uuid}}"}]}],"outbounds":[{"type":"direct"}]}""");
+        File.WriteAllText(file, $$$$"""{"inbounds":[{"protocol":"vless","listen":"127.0.0.1","port":{{{{vlessPort}}}},"settings":{"clients":[{"id":"{{{{uuid}}}}"}],"decryption":"none"}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""");
         int requests = 0;
         var serve = Task.Run(async () =>
         {
@@ -34,7 +34,8 @@ public static class ProbeTests
             catch (OperationCanceledException) { }
             catch (Exception ex) when (deadline.IsCancellationRequested && ex is SocketException or ObjectDisposedException) { }
         }, deadline.Token);
-        int before = Directory.Exists(Store.Folder) ? Directory.GetFiles(Store.Folder, "probe-*.json").Length : 0;
+        int ConfigCount() => Directory.Exists(Store.Folder) ? Directory.GetFiles(Store.Folder, "probe-*.json").Length : 0;
+        int before = ConfigCount();
         NativeCore? server = null;
         try
         {
@@ -54,10 +55,10 @@ public static class ProbeTests
                 for (int i = 0; i < 10; i++) samples.Add(await Latency.Http($"http://127.0.0.1:{webPort}/", probe.Port, 3000, deadline.Token));
                 check(ConnectionTools.Summarize(samples).Successes == 10 && Volatile.Read(ref requests) == 11, "native quality check records ten real requests through the isolated core");
             }
-            check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "temporary core disposal removes its configuration");
+            check(ConfigCount() == before, "temporary core uses stdin without leaving a credential configuration");
             using var cancelled = new CancellationTokenSource(); cancelled.Cancel(); bool stopped = false;
             try { await using var probe = await ProbeCore.Start(Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{vlessPort}?security=none"), cancelled.Token, executable); } catch (OperationCanceledException) { stopped = true; }
-            check(stopped && Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "cancelled native probe leaves no process or temporary configuration");
+            check(stopped && ConfigCount() == before, "cancelled native probe leaves no process or temporary configuration");
         }
         finally
         {

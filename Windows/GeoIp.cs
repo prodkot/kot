@@ -6,8 +6,8 @@ namespace Kot.Windows;
 
 static class GeoIpStore
 {
-    public static readonly GeoIpCache Cache = new(Path.Combine(Store.Folder, "geoip"));
-    static string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "sing-box.exe");
+    public static readonly GeoIpCache Cache = new(Path.Combine(Store.Folder, "geoip-cidr"));
+    static string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
     public static async Task<string[]> Update(string[] countries, bool missingOnly, CancellationToken ct, int proxyPort = 0)
     {
         if (countries.Length == 0) return [];
@@ -50,7 +50,7 @@ public sealed partial class MainWindow
             // Download and validate the whole batch while the current tunnel keeps working.
             if (changed.Intersect(ActiveGeoIpCountries()).Any()) { await tunnel.Stop(); ResumeDesired(); }
             GeoIpStore.Cache.Prune();
-            AppLog.Write("geoip", "country databases refreshed: " + countries.Length);
+            AppLog.Write("geoip-cidr", "country databases refreshed: " + countries.Length);
         }
         catch (Exception ex)
         {

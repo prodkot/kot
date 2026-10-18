@@ -43,6 +43,9 @@ def build(destination, release):
     client = repository / "Windows" / "ui"
     shutil.copy2(client / "fonts/Manrope.ttf", destination / "assets/Manrope.ttf")
     shutil.copy2(repository / "licenses/Manrope-OFL.txt", destination / "assets/Manrope-OFL.txt")
+    demo_version = re.search(r'<Version>([^<]+)</Version>', (repository / 'Windows/Kot.Windows.csproj').read_text()).group(1)
+    landing = destination / 'index.html'
+    landing.write_text(landing.read_text(encoding='utf-8').replace('{{demo-version}}', demo_version), encoding='utf-8')
     # Reuse the real client UI in an isolated browser demo, with a mock WebView bridge.
     demo = destination / "demo"
     demo.mkdir(exist_ok=True)
@@ -50,14 +53,18 @@ def build(destination, release):
     font = base64.b64encode((client / "fonts/Manrope.ttf").read_bytes()).decode("ascii")
     markup = markup.replace('url("fonts/Manrope.ttf")', f'url("data:font/ttf;base64,{font}")')
     markup = markup.replace("style-src 'unsafe-inline'", "style-src 'self' 'unsafe-inline'")
+    markup = re.sub(r"connect-src [^;]+", "connect-src 'none'", markup)
+    markup = re.sub(r"media-src [^;]+", "media-src 'self'", markup)
     markup = markup.replace("font-src 'self'", "font-src data:")
     markup = markup.replace('</head>', '<link rel="stylesheet" href="demo.css">\n</head>')
-    markup = markup.replace('<body', f'<body data-demo-version="{html.escape(release["version"], quote=True)}"', 1)
+    markup = markup.replace('<body', f'<body data-demo-version="{html.escape(demo_version, quote=True)}"', 1)
     markup = markup.replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n<script src="client.js"></script>')
     (demo / "index.html").write_text(markup, encoding="utf-8")
     shutil.copy2(client / "app.js", demo / "client.js")
     shutil.copy2(client / "client-tools.js", demo / "client-tools.js")
     shutil.copy2(client / "services.js", demo / "services.js")
+    shutil.copy2(client / "about.js", demo / "about.js")
+    shutil.copy2(client / "astra.jpg", demo / "astra.jpg")
     shutil.copy2(client / "brand-icon.svg", demo / "brand-icon.svg")
     shutil.copy2(client / "brand-icon-light.svg", demo / "brand-icon-light.svg")
     shutil.copy2(client / "startup.js", demo / "startup.js")

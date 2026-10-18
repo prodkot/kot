@@ -10,9 +10,9 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        ApplicationConfiguration.Initialize();
         try
         {
+            ApplicationConfiguration.Initialize();
             if (args.Contains("--register-shortcuts")) { ShellIdentity.RegisterInstalledShortcuts(); return; }
             if (args.Length == 4 && args[0] == "--proxy-watch") { SystemProxy.Watch(int.Parse(args[1]), long.Parse(args[2]), args[3]); return; }
             if (args.Contains("--restore-proxy")) { SystemProxy.Restore(); return; }
@@ -72,6 +72,7 @@ static class Program
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }
                 return;
             }
+            AppLog.PersistStartupFailure("startup", ex);
             MessageBox.Show(Store.Friendly(ex), AppRuntime.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

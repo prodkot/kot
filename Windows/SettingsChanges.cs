@@ -46,5 +46,5 @@ public sealed partial class MainWindow
         }
         finally { if (restart) ResumeDesired(); }
     }
-    void ArmCurrentConnection() => KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0, tunnel.UsesXhttp);
+    void ArmCurrentConnection() => KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
 }

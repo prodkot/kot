@@ -6,18 +6,20 @@ using System.Text;
 using Kot.Core;
 using Microsoft.Win32.SafeHandles;
 namespace Kot.Windows;
-// A dedicated console lets sing-box receive a normal interrupt and release TUN/WFP.
+// A dedicated console lets Xray receive a normal interrupt and release TUN/WFP.
 // The suspended child is assigned to a kill-on-close job before any core code runs.
 public sealed class NativeCore : IDisposable
 {
     IntPtr job;
     readonly SafeProcessHandle processHandle;
     readonly AnonymousPipeServerStream output;
+    AnonymousPipeServerStream? input;
     static readonly object launchLock = new();
     readonly CoreLogBuffer log = new();
     readonly Action<string>? report;
     static readonly SemaphoreSlim consoleGate = new(1);
     Task readOutput = Task.CompletedTask;
+    Task writeInput = Task.CompletedTask;
     public Process Process { get; }
     public bool HasExited => WaitForExit(0);
     bool WaitForExit(uint milliseconds)
@@ -42,7 +44,7 @@ public sealed class NativeCore : IDisposable
         }
     }
     public NativeCore(string exe, string config, Action<string>? report = null) : this(exe, ["run", "-c", config], Path.GetDirectoryName(exe)!, "kot. VPN core", report) { }
-    public NativeCore(string exe, IEnumerable<string> arguments, string workingDirectory, string title, Action<string>? report = null, string? assetDirectory = null)
+    public NativeCore(string exe, IEnumerable<string> arguments, string workingDirectory, string title, Action<string>? report = null, string? assetDirectory = null, string? standardInput = null)
     {
         this.report = report;
         // Keep temporary inheritable client pipe handles out of other concurrent core launches.
@@ -57,7 +59,7 @@ public sealed class NativeCore : IDisposable
                 var limit = new ExtendedLimit { Basic = new BasicLimit { LimitFlags = 0x2000 } };
                 if (!SetInformationJobObject(job, 9, ref limit, (uint)Marshal.SizeOf<ExtendedLimit>())) throw new Win32Exception();
                 report?.Invoke("create inherited pipes");
-                using var input = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
+                input = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
                 var si = new StartupInfo
                 {
                     cb = Marshal.SizeOf<StartupInfo>(), dwFlags = 0x101, wShowWindow = 0, lpTitle = title,
@@ -90,11 +92,27 @@ public sealed class NativeCore : IDisposable
                     readOutput = Task.Run(ReadOutput);
                     report?.Invoke("resume core");
                     if (ResumeThread(pi.hThread) == uint.MaxValue) { var error = new Win32Exception(); TerminateProcess(pi.hProcess, 1); throw error; }
+                    // The child must be running before writing: a configuration can
+                    // exceed the pipe buffer. Closing the writer supplies Xray's EOF.
+                    if (standardInput == null) input.Dispose();
+                    else writeInput = Task.Run(() => WriteInput(standardInput));
                 }
                 finally { CloseHandle(pi.hThread); }
             }
-            catch (Exception ex) { report?.Invoke("native launch exception: " + ex); CloseHandle(job); job = IntPtr.Zero; processHandle?.Dispose(); Process?.Dispose(); output.Dispose(); log.Clear(); throw; }
+            catch (Exception ex) { report?.Invoke("native launch exception: " + ex); CloseHandle(job); job = IntPtr.Zero; processHandle?.Dispose(); Process?.Dispose(); input?.Dispose(); output.Dispose(); log.Clear(); throw; }
         }
+    }
+    async Task WriteInput(string text)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
+        try
+        {
+            await input!.WriteAsync(bytes);
+            report?.Invoke("stdin configuration delivered; bytes=" + bytes.Length);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        { report?.Invoke("input pipe closed: " + ex.GetType().Name); }
+        finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); input!.Dispose(); }
     }
     async Task ReadOutput()
     {
@@ -118,7 +136,7 @@ public sealed class NativeCore : IDisposable
     }
     public async Task<string> ReadRecentOutput(bool exited)
     {
-        if (exited) { try { await readOutput.WaitAsync(TimeSpan.FromSeconds(2)); } catch (TimeoutException) { } }
+        if (exited) { try { await Task.WhenAll(readOutput, writeInput).WaitAsync(TimeSpan.FromSeconds(2)); } catch (TimeoutException) { } }
         return log.Snapshot();
     }
     public async Task Stop()
@@ -175,7 +193,7 @@ public sealed class NativeCore : IDisposable
         if (!QueryInformationJobObject(job, 1, out BasicAccounting value, (uint)Marshal.SizeOf<BasicAccounting>(), IntPtr.Zero)) throw new Win32Exception();
         return value.ActiveProcesses;
     }
-    public void Dispose() { if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; } output.Dispose(); log.Clear(); Process?.Dispose(); processHandle.Dispose(); }
+    public void Dispose() { if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; } input?.Dispose(); output.Dispose(); log.Clear(); Process?.Dispose(); processHandle.Dispose(); }
     [StructLayout(LayoutKind.Sequential)] struct BasicAccounting { public long TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime; public uint TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses; }
     [StructLayout(LayoutKind.Sequential)] struct BasicLimit { public long PerProcessUserTimeLimit, PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass, SchedulingClass; }
     [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount; }

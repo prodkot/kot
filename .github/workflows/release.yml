@@ -13,7 +13,8 @@ permissions:
   contents: read
 jobs:
   release:
-    timeout-minutes: 20
+    timeout-minutes: 35
+    if: github.ref_type != 'tag' || !contains(github.ref_name, '-xray.')
     permissions:
       contents: write
     runs-on: windows-latest
@@ -27,6 +28,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.x'
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.27.2'
+          cache: false
       - name: Verify tag and run core tests
         shell: pwsh
         env:
@@ -37,6 +42,7 @@ jobs:
           if ($env:PUBLISH_RELEASE -eq 'true' -and $env:GITHUB_REF -ne 'refs/heads/main') { throw 'Manual publication is only allowed from main.' }
           python Tests/repository.py
           if ($LASTEXITCODE -ne 0) { throw 'Repository consistency checks failed.' }
+          ./Tests/qa_summary.ps1
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
       - name: Native Windows process launcher
@@ -65,6 +71,15 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress
+      - name: Native Xray traffic and kill switch with a real TUN
+        shell: pwsh
+        run: |
+          python Release/xray-core.py artifacts/network-core --target windows
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Xray build failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File Tests/qa_stdin.ps1 -CorePath "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Shipped QA stdin regression failed.' }
+          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$PWD/artifacts/network-core/xray.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native Xray or real TUN kill switch test failed.' }
       - name: Build signed package and installer
         shell: pwsh
         env:
@@ -76,12 +91,6 @@ jobs:
             [IO.File]::WriteAllText($key,$env:KOT_RELEASE_SIGNING_KEY)
             ./Release/release.ps1 -Key $key
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
-      - name: Temporary probe and kill switch with the bundled core and a real TUN
-        shell: pwsh
-        run: |
-          $publish=(Get-ChildItem publish-* -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-          ./artifacts/window-tests/Kot.WindowTests.exe --tunnel-test "$publish/core/sing-box.exe"
-          if ($LASTEXITCODE -ne 0) { throw 'Temporary core or real TUN kill switch test failed.' }
       - name: Install and uninstall the signed Setup
         timeout-minutes: 5
         shell: pwsh
@@ -109,6 +118,12 @@ jobs:
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
+          python QA/package.py --publish $publish --setup $setup.FullName --output artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'QA kit packaging failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File artifacts/qa-kit/Checks.ps1 -InstallDirectory $target -ReportDirectory artifacts/qa-ci -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'The shipped QA kit failed against the installed candidate.' }
+          python Tests/qa_report.py artifacts/qa-ci/qa-report.zip
+          if ($LASTEXITCODE -ne 0) { throw 'QA report privacy/schema validation failed.' }
           $legacy=Get-Content Release/legacy-documents.json -Raw | ConvertFrom-Json
           foreach ($name in $legacy) {
             if (Test-Path (Join-Path $target $name)) { throw "Unnecessary root document installed: $name" }
@@ -140,6 +155,9 @@ jobs:
           name: windows-release
           path: |
             artifacts/*.exe
+            artifacts/Kot-QA-*.zip
+            artifacts/candidate.json
+            artifacts/qa-ci/qa-report.zip
       - name: Publish release
         if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         shell: pwsh

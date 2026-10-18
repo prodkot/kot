@@ -16,6 +16,15 @@ RELEASE = {"tag_name": f"v{VERSION}", "draft": False, "prerelease": False,
 
 
 class SiteTests(unittest.TestCase):
+    def test_readme_and_site_share_description(self):
+        from re import search
+        markup = (ROOT / 'index.html').read_text(encoding='utf-8')
+        description = search(r'<meta name="description" content="([^"]+)"', markup).group(1)
+        readme = (ROOT.parent / 'README.md').read_text(encoding='utf-8')
+        self.assertIn(description, readme)
+        self.assertIn('<p>' + description + '</p>', markup)
+        self.assertIn('Твой сервер. Один клик.', readme)
+
     def test_build_cannot_overwrite_sources(self):
         for destination in (ROOT, ROOT / "demo", ROOT / "assets", ROOT.parent,
                             ROOT.parent / "Windows/ui", ROOT.parent / "Tests", ROOT.parent.parent):
@@ -72,10 +81,14 @@ class SiteTests(unittest.TestCase):
             build(dest, release_metadata(RELEASE))
             demo = (dest / "demo/index.html").read_text(encoding="utf-8")
             self.assertIn("connect-src 'none'", demo)
+            self.assertNotIn('api.github.com', demo)
+            self.assertNotIn('raw.githubusercontent.com', demo)
+            self.assertTrue((dest / 'demo/about.js').is_file())
+            self.assertTrue((dest / 'demo/astra.jpg').is_file())
             self.assertIn("form-action 'none'", demo)
             self.assertIn("frame-src 'none'", demo)
             self.assertIn("font-src data:", demo)
-            self.assertIn('data-demo-version="0.5.1"', demo)
+            self.assertIn('data-demo-version="0.8.0"', demo)
             self.assertIn("data:font/ttf;base64,", demo)
             self.assertNotIn('fonts/Manrope.ttf', demo)
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))

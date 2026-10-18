@@ -13,8 +13,7 @@ public static class Xhttp
     public static IReadOnlyList<Node> ConnectionNodes(Profile profile)
     {
         if (profile.Selected != "auto") return profile.Nodes.Where(n => n.Id == profile.Selected).ToArray();
-        var selected = profile.Nodes.Where(n => profile.Favorites.Count == 0 || profile.Favorites.Contains(n.Id)).ToArray();
-        return selected.Length > 0 ? selected : profile.Nodes;
+        return AutomaticSelection.Candidates(profile);
     }
     public static JsonObject Transport(string host, string path, string mode = "", string extra = "")
     {

@@ -39,7 +39,7 @@ public static class ReleasePackage
         try { manifest = JsonSerializer.Deserialize(manifestData, PackageJsonContext.Default.ReleaseManifest) ?? throw new UserError("Пустой манифест."); }
         catch (JsonException) { throw new UserError("Некорректный манифест обновления."); }
         if (!Version.TryParse(manifest.Version, out var version) || (current != null && version <= current)) throw new UserError("В архиве нет более новой версии kot.");
-        if (manifest.Files == null || !manifest.Files.ContainsKey("Kot.exe") || !manifest.Files.ContainsKey("core/sing-box.exe") || entries.Count != manifest.Files.Count + 2)
+        if (manifest.Files == null || !manifest.Files.ContainsKey("Kot.exe") || !manifest.Files.ContainsKey(version >= new Version(0, 8, 0) ? "core/xray.exe" : "core/sing-box.exe") || (version >= new Version(0, 8, 0) && !manifest.Files.ContainsKey("core/wintun.dll")) || entries.Count != manifest.Files.Count + 2)
             throw new UserError("Неполная сборка обновления.");
         var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in manifest.Files)

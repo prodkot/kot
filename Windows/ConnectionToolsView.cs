@@ -13,10 +13,8 @@ public sealed partial class MainWindow
     Task toolsRunning = Task.CompletedTask;
     string toolsKind = "", toolsStatus = "", toolsError = "", toolsServer = "";
     QualitySummary? qualitySummary;
-    DownloadSample? qualityDownload;
-    string qualitySpeedError = "";
-    long qualityBytes;
-    object ToolsModel() => new { busy = toolsAttempt != null, kind = toolsKind, status = toolsStatus, error = toolsError, server = toolsServer, steps = diagnosticSteps.ToArray(), samples = qualitySamples.ToArray(), quality = qualitySummary, download = qualityDownload, speedError = qualitySpeedError, bytes = qualityBytes };
+    string checkAddress = "";
+    object ToolsModel() => new { busy = toolsAttempt != null, kind = toolsKind, status = toolsStatus, error = toolsError, server = toolsServer, steps = diagnosticSteps.ToArray(), samples = qualitySamples.ToArray(), quality = qualitySummary, address = checkAddress };
     Node ToolNode(string id = "")
     {
         bool automatic = id.Length == 0 || id == "auto";
@@ -28,7 +26,7 @@ public sealed partial class MainWindow
         if (toolsAttempt != null) throw new UserError("Дождитесь проверки или остановите её.");
         var node = ToolNode(data.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "");
         Uri website = ConnectionTools.Website(data.TryGetProperty("url", out var url) ? url.GetString() ?? "" : "https://www.gstatic.com/generate_204");
-        diagnosticSteps.Clear(); qualitySamples.Clear(); qualitySummary = null; qualityDownload = null; qualityBytes = 0; qualitySpeedError = "";
+        diagnosticSteps.Clear(); qualitySamples.Clear(); qualitySummary = null; checkAddress = "";
         toolsKind = kind; toolsStatus = "Подготовка проверки"; toolsError = "";
         int activePort = kind == "diagnostics" && tunnel.State == "connected" ? tunnel.ProxyPort : 0;
         if (activePort > 0) node = ToolNode();
@@ -65,28 +63,48 @@ public sealed partial class MainWindow
                 await Step("Сайт через VPN", async () => { int ms = await Latency.Http(website.AbsoluteUri, activePort, 8000, ct); return website.IdnHost + " доступен · " + ms + " мс"; });
                 toolsStatus = diagnosticSteps.Any(s => s.Status == "error") ? "Проверка завершена: есть ошибки" : "Все проверки прошли";
             }
-            else
-            {
-                for (int i = 0; i < 10; i++)
-                {
-                    ct.ThrowIfCancellationRequested(); toolsStatus = $"HTTP-проверка {i + 1} из 10"; Snapshot();
-                    try { qualitySamples.Add(await Latency.Http(website.AbsoluteUri, activePort, 5000, ct)); }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-                    catch (Exception ex) { qualitySamples.Add(null); AppLog.Error("quality sample", ex); }
-                    qualitySummary = ConnectionTools.Summarize(qualitySamples); Snapshot(); if (i < 9) await Task.Delay(250, ct);
-                }
-                toolsStatus = "Загрузка 1 МиБ через сервер"; Snapshot(); long progressAt = 0;
-                try { qualityDownload = await ConnectionTools.Download(client, ct, bytes => { qualityBytes = bytes; long now = Tunnel.MonotonicMilliseconds; if (now - progressAt >= 250) { progressAt = now; Snapshot(); } }); }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-                catch (Exception ex) { qualitySpeedError = ConnectionTools.Explain(ex); AppLog.Error("quality download", ex); }
-                toolsStatus = "Проверка качества завершена";
-            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { toolsStatus = "Проверка отменена"; }
         catch (Exception ex) { AppLog.Error("connection tools", ex); toolsError = ConnectionTools.Explain(ex); toolsStatus = "Не удалось завершить проверку"; }
         finally
         {
             if (probe != null) await probe.DisposeAsync();
+            if (toolsAttempt == owner) toolsAttempt = null; owner.Dispose(); if (!exiting) Snapshot();
+        }
+    }
+    void StartConnectionCheck()
+    {
+        if (toolsAttempt != null) throw new UserError("Дождитесь проверки или остановите её.");
+        if (tunnel.State != "connected" || tunnel.ProxyPort == 0) throw new UserError("Сначала подключите VPN.");
+        var options = ConnectionCheck.Options(profile.Ping);
+        int session = tunnel.Session, port = tunnel.ProxyPort;
+        diagnosticSteps.Clear(); qualitySamples.Clear(); qualitySummary = null;
+        toolsKind = "connection"; toolsStatus = $"HTTP-проверка 1 из {options.Attempts}"; toolsError = "";
+        toolsServer = "Текущее VPN-соединение"; checkAddress = options.Url;
+        var owner = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); toolsAttempt = owner;
+        toolsRunning = RunConnectionCheck(options, session, port, owner);
+    }
+    async Task RunConnectionCheck(PingOptions options, int session, int port, CancellationTokenSource owner)
+    {
+        bool SameConnection() => tunnel.State == "connected" && tunnel.Session == session && tunnel.ProxyPort == port;
+        void ConnectionChanged() { if (!SameConnection()) owner.Cancel(); }
+        tunnel.Changed += ConnectionChanged;
+        try
+        {
+            qualitySummary = await ConnectionCheck.Run(port, options, SameConnection, ms =>
+            {
+                qualitySamples.Add(ms); qualitySummary = ConnectionTools.Summarize(qualitySamples);
+                toolsStatus = $"HTTP-проверка {Math.Min(qualitySamples.Count + 1, options.Attempts)} из {options.Attempts}"; Snapshot();
+            }, owner.Token);
+            toolsStatus = qualitySummary.Successes == options.Attempts ? "Адрес доступен через VPN" : "Проверка завершена: есть ошибки";
+            if (qualitySummary.Successes < options.Attempts) toolsError = "Часть запросов не получила успешный HTTP-ответ. Проверьте адрес и соединение.";
+        }
+        catch (OperationCanceledException) when (owner.IsCancellationRequested)
+        { toolsStatus = SameConnection() ? "Проверка отменена" : "Соединение изменилось. Запустите проверку снова."; }
+        catch (Exception ex) { toolsError = ConnectionTools.Explain(ex); toolsStatus = "Проверка не завершена"; AppLog.Error("connection check", ex); }
+        finally
+        {
+            tunnel.Changed -= ConnectionChanged;
             if (toolsAttempt == owner) toolsAttempt = null; owner.Dispose(); if (!exiting) Snapshot();
         }
     }

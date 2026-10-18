@@ -26,12 +26,15 @@ jobs:
           python3 -m playwright install --with-deps chromium
           python3 site/demo_browser_check.py
           python3 Tests/ui.py
+          python3 Tests/journal_ui.py
           python3 Tests/flags_ui.py
           python3 Tests/subscriptions_ui.py
           python3 Tests/routing_ui.py
           python3 Tests/statistics_ui.py
           python3 Tests/client_tools_ui.py
           python3 Tests/services_ui.py
+          python3 Tests/ui_controls.py
+          python3 Tests/about_ui.py
           python3 Tests/ui_polish.py
           python3 Tests/ui_resilience.py
   integration:
@@ -44,16 +47,17 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.27.2'
+          cache: false
       - name: Generate fixtures and check core logic
-        run: dotnet run --project Tests/Kot.Tests.csproj -c Release -- integration
-      - name: Validate configurations and a real local VLESS chain
+        run: dotnet run --project Tests/Kot.Tests.csproj -c Release
+      - name: Build the pinned official Xray and exercise real native traffic
         run: |
-          mkdir -p artifacts/core
-          curl --fail --location --retry 3 https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-linux-amd64.tar.gz --output artifacts/core.tar.gz
-          echo 'a684484d7477d1437282ee411f4d131d0340aaad60a7868841ebd5d87dd8a0c6  artifacts/core.tar.gz' | sha256sum --check
-          tar -xzf artifacts/core.tar.gz -C artifacts/core
-          dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/sing-box-1.14.2-linux-amd64/sing-box
-          python3 Tests/integration.py --core artifacts/core/sing-box-1.14.2-linux-amd64/sing-box
+          python3 Release/xray-core.py artifacts/core --target linux
+          dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray
+          python3 Tests/xray_integration.py --core artifacts/core/xray
   tests:
     timeout-minutes: 10
     runs-on: windows-latest
@@ -64,6 +68,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - name: QA evidence summary
+        shell: pwsh
+        run: ./Tests/qa_summary.ps1
       - name: Core tests
         shell: pwsh
         run: |

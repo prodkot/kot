@@ -1,6 +1,6 @@
 # Сборка
 
-Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.10+ и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
+Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.12+, Go 1.27.2 и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
 
 Из корня репозитория:
 
@@ -8,11 +8,11 @@
 pwsh ./build.ps1
 ```
 
-Готовая программа появится в новой папке `publish-…`. Скрипт сначала проверяет согласованность репозитория, затем собирает клиент, проверяет хеш архива sing-box и подпись установщика WebView2. Ранее созданная папка не используется повторно. Профили и настройки пользователей не входят в сборку.
+Готовая программа появится в новой папке `publish-…`. Скрипт сначала проверяет согласованность репозитория, затем собирает клиент, собирает закреплённый официальный Xray, проверяет SHA256 исходников и Wintun и подпись установщика WebView2. Ранее созданная папка не используется повторно. Профили и настройки пользователей не входят в сборку.
 
 ## Структура
 
-- `Core/`: подписки, конфигурации sing-box, пинг, резервные копии и проверка обновлений.
+- `Core/`: подписки, конфигурации Xray, пинг, резервные копии и проверка обновлений.
 - `Windows/`: окно, запуск ядра, хранение профиля и интеграция с Windows.
 - `Windows/ui/`: HTML, JavaScript, флаги и общий локальный шрифт.
 - `Tests/`: основная логика, интерфейс и проверка состава репозитория.
@@ -20,7 +20,7 @@ pwsh ./build.ps1
 - `WindowTests/`: окно, трей, реальные настройки прокси и WFP-фильтры.
 - `Release/`, `Installer/`: подпись пакетов, публикация и установщик.
 - `site/`: статический сайт и изолированное интерактивное демо клиента.
-- `licenses/`, `upstream/`: обязательные уведомления и соответствующие исходники sing-box.
+- `licenses/`, `upstream/`: обязательные уведомления и соответствующие исходники Xray.
 
 ## Проверки
 
@@ -62,17 +62,18 @@ dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 -p:SelfC
 ./artifacts/window-tests/Kot.WindowTests.exe artifacts/window-ui
 ```
 
-Для реальной локальной VLESS-цепочки скачай официальный sing-box 1.14.2 для своей платформы и проверь его контрольную сумму. Тест не создаёт TUN и не меняет маршруты компьютера:
+Реальные локальные цепочки используют то же закреплённое ядро, что и Setup. Из корня репозитория на Linux:
 
-```powershell
-dotnet run --project Tests/Kot.Tests.csproj -c Release -- integration
-python Tests/integration.py --core 'C:\tools\sing-box.exe'
-dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core 'C:\tools\sing-box.exe'
+```sh
+python3 Release/xray-core.py artifacts/core --target linux
+dotnet run --project Tests/Kot.Tests.csproj -c Release
+python3 Tests/xray_integration.py --core artifacts/core/xray
+dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray
 ```
 
-Порты 19441–19443 должны быть свободны. На Linux-хосте, запрещающем netlink, live-проверка может завершиться кодом 77; это пропуск, а не успешная проверка соединения. В CI цепочка должна пройти полностью.
+На Windows опусти `--target linux` и укажи `artifacts/core/xray.exe`. Реальные TUN/WFP-проверки запускаются на отдельной Windows-машине с правами администратора: `Kot.WindowTests.exe --tunnel-test /path/to/core/xray.exe`. Рядом должен находиться `wintun.dll` из проверенной сборки. Порты 19441-19445 для локальных тестов должны быть свободны.
 
-Режим `geoip-core` создаёт IPv4/IPv6 SRS, проверяет реальные конфигурации с правилами стран в TUN и системном прокси, отклоняет повреждённые и содержащие домены файлы. Дополнительным аргументом можно передать скачанный официальный `geoip-ru.srs` для проверки той же командой. Этот тест не меняет сетевые настройки и не требует доступа к интернету.
+Режим `geoip-core` проверяет CIDR IPv4/IPv6 и нативные конфигурации правил стран. Старые генераторы и фикстуры sing-box в `Core/Configuration.cs` и отдельных тестах сохранены как справочные проверки совместимости прежнего формата хранения; рабочий клиент их не запускает и sing-box не поставляет.
 
 ## Выпуск
 

@@ -9,6 +9,7 @@ static class InstallerUiTests
 {
     delegate bool EnumWindow(IntPtr window, IntPtr parameter);
     [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct Point { public int X,Y; }
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
@@ -27,6 +28,12 @@ static class InstallerUiTests
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, int message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr window, IntPtr dc, int flags);
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr window,IntPtr rect,IntPtr region,uint flags);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out Point point);
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool ReadSystemFlag(uint action,uint parameter,out bool value,uint flags);
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW")] static extern bool SetSystemFlag(uint action,uint parameter,IntPtr value,uint flags);
     static bool Button(IntPtr window) { var name=new StringBuilder(64); GetClassName(window,name,name.Capacity); return name.ToString()=="Button"; }
     static string Text(IntPtr window)
     {
@@ -74,6 +81,105 @@ static class InstallerUiTests
         // ReleaseCapture and cancel the next button's press.
         PostMessage(button,0x201,(IntPtr)1,center);
         PostMessage(button,0x202,IntPtr.Zero,center);
+    }
+    static Bitmap ButtonImage(IntPtr button)
+    {
+        // PrintWindow is not reliable for another process's child HWND.
+        // Capture the composited desktop so the assertion sees real frames.
+        RedrawWindow(button,IntPtr.Zero,IntPtr.Zero,0x101);
+        DwmFlush();
+        GetWindowRect(button,out var bounds);
+        var bitmap=new Bitmap(bounds.Right-bounds.Left,bounds.Bottom-bounds.Top);
+        using(var graphics=Graphics.FromImage(bitmap)) graphics.CopyFromScreen(bounds.Left,bounds.Top,0,0,bitmap.Size);
+        return bitmap;
+    }
+    static void MotionPreference(IntPtr window,bool enabled)
+    {
+        // No profile write or broadcast. Restore the runner's original value
+        // in Run's finally, including when an assertion fails.
+        if(!SetSystemFlag(0x1043,0,enabled?(IntPtr)1:IntPtr.Zero,0)) throw new Exception("Cannot set installer animation test preference");
+        if(window!=IntPtr.Zero) SendMessage(window,0x1A,IntPtr.Zero,IntPtr.Zero);
+    }
+    static void MotionStates(IntPtr window,string folder,Action<bool,string> check)
+    {
+        SetForegroundWindow(window);
+        var next=GetDlgItem(window,1);
+        void Pointer(bool inside)
+        {
+            // TrackMouseEvent uses the physical cursor, even when WM_MOUSEMOVE
+            // was sent by automation. Keep both in agreement throughout capture.
+            GetWindowRect(next,out var rect);
+            if(!SetCursorPos(inside?(rect.Left+rect.Right)/2:rect.Left-40,inside?(rect.Top+rect.Bottom)/2:rect.Top-40))
+                throw new Exception("Installer animation checks require an interactive Windows desktop");
+        }
+        Pointer(false);
+        SendMessage(window,0x28,next,(IntPtr)1);
+        SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
+        Thread.Sleep(250);
+        float scale=GetDpiForWindow(next)/96f;
+        GetClientRect(next,out var bounds);
+        var center=(IntPtr)((bounds.Bottom/2<<16)|(bounds.Right/2));
+        using var idle=ButtonImage(next);
+        Color sample(Bitmap bitmap)=>bitmap.GetPixel((int)(12*scale),bitmap.Height/2);
+        var initial=sample(idle);
+        Pointer(true); SendMessage(next,0x200,IntPtr.Zero,center);
+        HashSet<int> colors=[initial.ToArgb()];
+        var watch=Stopwatch.StartNew();
+        while(watch.ElapsedMilliseconds<250)
+        {
+            using var frame=ButtonImage(next); colors.Add(sample(frame).ToArgb()); Thread.Sleep(15);
+        }
+        using var hover=ButtonImage(next);
+        check(colors.Count>=3&&sample(hover).R>initial.R,"installer hover displays intermediate frames before reaching its brighter color");
+        hover.Save(Path.Combine(folder,"setup-button-hover.png"),ImageFormat.Png);
+        try
+        {
+            SendMessage(next,0x201,(IntPtr)1,center); Thread.Sleep(180);
+            using var pressed=ButtonImage(next);
+            check(sample(pressed).R<initial.R,"installer press settles into the darker pressed fill");
+            check(pressed.GetPixel((int)(4*scale),pressed.Height/2).ToArgb()==sample(pressed).ToArgb(),"mouse focus adds no inner button outline");
+        }
+        finally
+        {
+            Pointer(false);
+            SendMessage(next,0x200,IntPtr.Zero,(IntPtr)(-1)); SendMessage(next,0x202,IntPtr.Zero,(IntPtr)(-1)); SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
+        }
+        Thread.Sleep(250);
+        SendMessage(window,0x28,next,(IntPtr)1);
+        SendMessage(next,0x127,(IntPtr)0x10002,IntPtr.Zero); // UIS_CLEAR, UISF_HIDEFOCUS
+        using(var keyboard=ButtonImage(next))
+            check(keyboard.GetPixel((int)(4*scale),keyboard.Height/2).ToArgb()!=sample(keyboard).ToArgb(),"keyboard focus remains visibly distinguishable");
+        SendMessage(next,0x127,(IntPtr)0x10001,IntPtr.Zero); // UIS_SET, UISF_HIDEFOCUS
+        var cancel=GetDlgItem(window,2);
+        using(var secondary=ButtonImage(cancel))
+            check(secondary.GetPixel(0,secondary.Height/2).R<=secondary.GetPixel((int)(12*scale),secondary.Height/2).R+1,"secondary button has no contrasting outer outline");
+        MotionPreference(window,false);
+        try
+        {
+            Pointer(true); SendMessage(next,0x200,IntPtr.Zero,center);
+            using var immediate=ButtonImage(next);
+            check(sample(immediate).ToArgb()==sample(hover).ToArgb(),"Windows reduced motion applies hover immediately");
+            Pointer(false); SendMessage(next,0x2A3,IntPtr.Zero,IntPtr.Zero);
+            using var resting=ButtonImage(next);
+            check(sample(resting).ToArgb()==initial.ToArgb(),"Windows reduced motion applies mouse leave immediately");
+        }
+        finally { MotionPreference(window,true); }
+    }
+    static void ToggleMotion(IntPtr toggle,Action<bool,string> check)
+    {
+        Thread.Sleep(250);
+        int original=(int)SendMessage(toggle,0xF0,IntPtr.Zero,IntPtr.Zero);
+        SendMessage(toggle,0xF1,(IntPtr)(1-original),IntPtr.Zero);
+        HashSet<int> colors=[]; var watch=Stopwatch.StartNew();
+        while(watch.ElapsedMilliseconds<250)
+        {
+            using var frame=ButtonImage(toggle);
+            colors.Add(frame.GetPixel(frame.Width-(int)(35*GetDpiForWindow(toggle)/96f),frame.Height/2).ToArgb());
+            Thread.Sleep(15);
+        }
+        check(colors.Count>=3,"shortcut toggle renders intermediate thumb positions and colors");
+        check((int)SendMessage(toggle,0xF0,IntPtr.Zero,IntPtr.Zero)==1-original,"animated toggle preserves native checked state");
+        SendMessage(toggle,0xF1,(IntPtr)original,IntPtr.Zero);
     }
     static void ButtonStates(IntPtr window,string folder,string stage,Action<bool,string> check)
     {
@@ -223,10 +329,13 @@ static class InstallerUiTests
         Directory.CreateDirectory(folder);
         string target=Path.Combine(Path.GetTempPath(),"kot-setup-ui-"+Guid.NewGuid().ToString("N"),"Проверка kot");
         List<Process> processes=[];
+        if(!ReadSystemFlag(0x1042,0,out bool originalAnimations,0)) throw new Exception("Cannot read Windows animation preference");
+        if(!GetCursorPos(out var originalPointer)) throw new Exception("Cannot read Windows cursor position");
         try
         {
+            MotionPreference(IntPtr.Zero,true);
             var cancel=Start(setup,"/D="+target); processes.Add(cancel); var window=Window(cancel);
-            Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"welcome"); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
+            Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"welcome"); MotionStates(window,folder,check); ButtonStates(window,folder,"setup-welcome",check); Capture(window,folder,"setup-welcome",check);
             Click(GetDlgItem(window,9009)); Close(cancel,false);
             check(!Directory.Exists(target),"cancelling custom Setup before installation creates no application files");
             string damaged=Path.Combine(folder,"damaged-setup.exe"); File.Copy(setup,damaged,true);
@@ -252,6 +361,7 @@ static class InstallerUiTests
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"valid directory restores Next");
             check(true,"native directory validation rejects a relative path and accepts Unicode again");
             var desktop=ById(window,1008); check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==(IntPtr)1,"desktop shortcut starts enabled");
+            ToggleMotion(desktop,check);
             MouseClick(desktop); Wait(()=>SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"native checkbox mouse toggle");
             check(true,"native checkbox click toggles the desktop option");
             MouseClick(GetDlgItem(window,3)); Wait(()=>ByText(window,"Установка kot.")!=IntPtr.Zero,"back to welcome");
@@ -264,6 +374,8 @@ static class InstallerUiTests
             check(SendMessage(desktop,0xF0,IntPtr.Zero,IntPtr.Zero)==IntPtr.Zero,"desktop option survives Back and Next");
             SendMessage(desktop,0xF1,(IntPtr)1,IntPtr.Zero); ButtonStates(window,folder,"setup-options",check); Capture(window,folder,"setup-options",check);
             Click(GetDlgItem(window,1)); Wait(()=>ById(window,1004)!=IntPtr.Zero,"progress"); Capture(window,folder,"setup-progress",check);
+            var progress=ById(window,1004); GetWindowRect(progress,out var progressWindow); GetClientRect(progress,out var progressClient);
+            check(progressClient.Right==progressWindow.Right-progressWindow.Left&&progressClient.Bottom==progressWindow.Bottom-progressWindow.Top,"progress track fills its window without a native non-client outline");
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
             Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка завершена")!=IntPtr.Zero,"finish");
             ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
@@ -295,6 +407,8 @@ static class InstallerUiTests
         }
         finally
         {
+            SetCursorPos(originalPointer.X,originalPointer.Y);
+            MotionPreference(IntPtr.Zero,originalAnimations);
             foreach(var process in processes) {try {if(!process.HasExited){process.Kill(true);process.WaitForExit(10000);}}finally{process.Dispose();}}
             if(Directory.Exists(Path.GetDirectoryName(target))) Directory.Delete(Path.GetDirectoryName(target)!,true);
         }

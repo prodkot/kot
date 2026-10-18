@@ -5,6 +5,9 @@ static class LogTests
 {
     public static void Run(Action<bool, string> check)
     {
+        string startup = StartupDiagnostics.Capture("interface", new IOException("secret-password https://secret.example/sub private-user", new InvalidOperationException("private-token")));
+        check(startup.Contains("System.IO.IOException") && startup.Contains("System.InvalidOperationException") && startup.Contains("hresult")
+            && !startup.Contains("secret") && !startup.Contains("private"), "pre-profile startup diagnostics keep exception types and codes without private messages");
         Node Server(string password, string host) => Subscriptions.ParseNode($"trojan://{password}@{host}:443?sni={host}");
         var log = new RedactedSessionLog(4096);
         var old = Server("old-private-password", "old.private.example");

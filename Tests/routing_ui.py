@@ -27,6 +27,7 @@ window.chrome={webview:{addEventListener:(_,cb)=>callback=cb,postMessage:msg=>se
  const find=()=>model.routing.profiles.find(p=>p.id===msg.data.id);
  if(msg.action.startsWith('routing')||msg.action.startsWith('geoIp'))window.routingRequests.push(structuredClone(msg));
  switch(msg.action){
+ case 'select':model.selected=msg.data.id;break;
  case 'routingSave':
    if(window.fixtureSaveError){reply(false,'Введите имена приложений без пути.');return;}
    const saved={id:msg.data.id||'route'+(++sequence),rules:msg.data.rules,sourceUrl:msg.data.sourceUrl,refreshHours:msg.data.refreshHours,updated:null};
@@ -229,6 +230,9 @@ with sync_playwright() as p:
         page.locator('#closeRouting').click()
         page.locator('[data-page=servers]').click()
         expect(page.locator('.qr-node')).to_be_disabled()
+        expect(page.locator('#autoDescription')).to_have_text('Нет обычных серверов для Авто')
+        page.locator('#autoServer').click()
+        expect(page.locator('#routingSummary')).not_to_have_text('Маршрут: правила подписки')
         assert not errors, errors
         print('PASS routing UI: profiles, country rules, GeoIP updates/rollback/intervals, keyboard tabs, snapshots, errors, import/export, removal and responsive themes')
     finally:

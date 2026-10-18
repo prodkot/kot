@@ -29,7 +29,7 @@ public sealed class TrayMenu : ContextMenuStrip
         Items.Add(new ToolStripSeparator());
         Add("Серверы", "servers", () => this.navigate("servers"));
         Add("Статистика", "statistics", () => this.navigate("statistics"));
-        Add("Логи и соединения", "logs", () => this.navigate("logs"));
+        Add("Журнал", "logs", () => this.navigate("logs"));
         Add("Настройки", "settings", () => this.navigate("settings"));
         Items.Add(new ToolStripSeparator());
         Add("Выйти из приложения", "exit", () => _ = Run(this.exit));

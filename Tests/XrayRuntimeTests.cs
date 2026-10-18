@@ -1,0 +1,124 @@
+using Kot.Core;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+namespace Kot.Tests;
+public static class XrayRuntimeTests
+{
+    public static void Run(Action<bool, string> check)
+    {
+        const string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
+        string dir = "Tests/generated/native-xray"; Directory.CreateDirectory(dir);
+        var links = new[] {
+            $"vless://{uuid}@127.0.0.1:19441?security=none",
+            $"vless://{uuid}@example.com:443?security=tls&type=ws&host=cdn.example.com&path=%2Fws%3Fed%3D2048",
+            $"vless://{uuid}@example.com:443?security=tls&type=grpc&serviceName=example",
+            $"vless://{uuid}@example.com:443?security=tls&type=httpupgrade&host=example.com&path=%2Fup",
+            $"vless://{uuid}@example.com:443?security=tls&type=xhttp&path=%2Fx&mode=auto",
+            "trojan://password@example.com:443?sni=example.com",
+            "ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@example.com:8388",
+            "hysteria2://password@example.com:443?sni=example.com",
+            "vmess://" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("{\"v\":\"2\",\"add\":\"example.com\",\"port\":\"443\",\"id\":\"" + uuid + "\",\"aid\":\"0\",\"net\":\"tcp\",\"tls\":\"tls\"}"))
+        };
+        int i = 0;
+        foreach (string link in links)
+        {
+            var n = Subscriptions.ParseNode(link); string before = n.Outbound.ToJsonString();
+            var c = XrayRuntime.Build(n, 19442, proxyPort: 19443, metricsPort: 19444, secret: new string('s', 64));
+            check(n.Outbound.ToJsonString() == before, "native generator preserves stored node " + i);
+            check(c["outbounds"]!.AsArray().All(o => o?["protocol"] != null) && !c.ToJsonString().Contains("dialerProxy"), "native node needs no transport bridge " + i);
+            File.WriteAllText(Path.Combine(dir, "transport-" + i++ + ".json"), c.ToJsonString());
+        }
+        var node = Subscriptions.ParseNode(links[0]);
+        foreach (string host in new[] { "127.0.0.1", "[::1]", "localhost" })
+        {
+            var local = XrayRuntime.Build(Subscriptions.ParseNode($"vless://{uuid}@{host}:19441?security=none"), 19442, physicalInterface: "Ethernet");
+            check(local["outbounds"]!.AsArray().First(o => o?["protocol"]?.ToString() == "vless")!["streamSettings"]?["sockopt"]?["interface"] == null, "temporary native probe preserves loopback dialing: " + host);
+        }
+        var bound = XrayRuntime.Build(Subscriptions.ParseNode(links[1]), 19442, physicalInterface: "Ethernet");
+        check(bound["outbounds"]!.AsArray().First(o => o?["protocol"]?.ToString() == "vless")!["streamSettings"]!["sockopt"]!["interface"]!.ToString() == "Ethernet", "temporary native probe keeps remote transports outside the active TUN");
+        var tun = XrayRuntime.Build(node, 19442, true);
+        var tunSettings = tun["inbounds"]!.AsArray().Single(o => o?["protocol"]?.ToString() == "tun")!["settings"]!;
+        var localAddresses = tunSettings["gateway"]!.AsArray().Select(v => System.Net.IPAddress.Parse(v!.ToString().Split('/')[0])).ToArray();
+        var resolvers = tunSettings["dns"]!.AsArray().Select(v => System.Net.IPAddress.Parse(v!.ToString())).ToArray();
+        check(resolvers.Length == 2 && resolvers.All(r => !localAddresses.Contains(r)), "TUN DNS uses peer addresses, never the Windows adapter's local addresses");
+        check(resolvers.All(r => new[] { System.Net.IPNetwork.Parse("172.28.231.0/30"), System.Net.IPNetwork.Parse("fdfe:dcba:231::/126") }.Any(network => network.Contains(r))), "both DNS peers remain inside their directly connected TUN subnets");
+        check(tun["inbounds"]!.AsArray().Single(o => o?["protocol"]?.ToString() == "tun")!["settings"]!["autoOutboundsInterface"]!.ToString() == "auto", "native TUN installs both routes with physical socket binding");
+        File.WriteAllText(Path.Combine(dir, "tun.json"), tun.ToJsonString());
+        var saved = JsonNode.Parse("""
+        {"inbounds":[{"tag":"provider-in","protocol":"socks","listen":"127.0.0.1","port":1080}],"outbounds":[{"tag":"vpn","protocol":"vless","settings":{"vnext":[{"address":"127.0.0.1","port":19441,"users":[{"id":"UUID","encryption":"none"}]}]}},{"tag":"direct","protocol":"freedom"}],"dns":{"tag":"provider-dns","servers":[{"address":"127.0.0.1","port":19445,"domains":["domain:ru","domain:xn--p1ai"],"skipFallback":true},"1.1.1.1"],"disableFallbackIfMatch":true},"routing":{"domainStrategy":"IPIfNonMatch","rules":[{"type":"field","inboundTag":["provider-dns"],"outboundTag":"direct"},{"type":"field","inboundTag":["provider-in"],"domain":["domain:ru","domain:xn--p1ai"],"outboundTag":"direct"}]}}
+        """.Replace("UUID", uuid))!.AsObject();
+        saved["dns"]!["servers"]![0]!["domains"]!.AsArray().Add("full:localhost");
+        saved["routing"]!["rules"]![1]!["domain"]!.AsArray().Add("full:localhost");
+        var full = XrayConfig.Parse(saved.ToJsonString()).Nodes[0];
+        string original = full.FullConfig!.ToJsonString();
+        var runtime = XrayRuntime.Build(full, 19442, proxyPort: 19443, metricsPort: 19444, secret: new string('s', 64));
+        check(original == full.FullConfig.ToJsonString(), "provider JSON is immutable");
+        check(runtime["outbounds"]!.AsArray().Where(o => o?["protocol"]?.ToString() == "freedom").All(o => o!["streamSettings"]?["sockopt"]?["domainStrategy"]?.ToString() == "ForceIP"), "unconfigured direct outputs use provider DNS without system fallback");
+        foreach (string setting in new[] {
+            """{"streamSettings":{"sockopt":{"domainStrategy":"AsIs","tcpKeepAliveIdle":42}}}""",
+            """{"streamSettings":{"sockopt":{"domainStrategy":"ForceIPv4"}}}""",
+            """{"settings":{"domainStrategy":"UseIPv6"}}""",
+            """{"settings":{"targetStrategy":"UseIPv4v6"}}""",
+            """{"targetStrategy":"UseIPv4"}""",
+            """{"streamSettings":{"sockopt":{"dialerProxy":"vpn"}}}""",
+            """{"proxySettings":{"tag":"vpn"}}""" })
+        {
+            var provider = (JsonObject)saved.DeepClone();
+            var direct = provider["outbounds"]![1]!.AsObject();
+            foreach (var pair in JsonNode.Parse(setting)!.AsObject()) direct[pair.Key] = pair.Value?.DeepClone();
+            var preserved = XrayRuntime.Build(full with { FullConfig = provider }, 19442);
+            check(JsonNode.DeepEquals(direct, preserved["outbounds"]![1]), "explicit direct strategy or outbound chain is preserved: " + setting);
+        }
+        var socketProvider = (JsonObject)saved.DeepClone();
+        socketProvider["outbounds"]![1]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["tcpKeepAliveIdle"] = 42 } };
+        var sockets = XrayRuntime.Build(full with { FullConfig = socketProvider }, 19442);
+        check(sockets["outbounds"]![1]!["streamSettings"]!["sockopt"]!["tcpKeepAliveIdle"]!.GetValue<int>() == 42, "default direct DNS normalization retains unrelated socket options");
+        socketProvider["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"] = new JsonObject { ["tryDelayMs"] = 0, ["prioritizeIPv6"] = true };
+        sockets = XrayRuntime.Build(full with { FullConfig = socketProvider }, 19442);
+        check(JsonNode.DeepEquals(sockets["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"], socketProvider["outbounds"]![1]!["streamSettings"]!["sockopt"]!["happyEyeballs"]), "explicit provider address racing policy is preserved, including disabled racing");
+        var multiIp = (JsonObject)saved.DeepClone();
+        var unavailable = Enumerable.Range(2, 16).Select(n => (JsonNode?)JsonValue.Create("127.0.0." + n)).ToArray();
+        multiIp["dns"]!["hosts"] = new JsonObject {
+            ["multi-v4.ru"] = new JsonArray(unavailable.Select(n => n!.DeepClone()).Concat(new JsonNode?[] { JsonValue.Create("::1"), JsonValue.Create("127.0.0.1") }).ToArray()),
+            ["multi-v6.ru"] = new JsonArray(unavailable.Select(n => n!.DeepClone()).Append(JsonValue.Create("::1")).ToArray()),
+            ["multi-offline.ru"] = new JsonArray("127.0.0.2", "::1")
+        };
+        File.WriteAllText(Path.Combine(dir, "provider-multi-ip.json"), XrayRuntime.Build(full with { FullConfig = multiIp }, 19442, proxyPort: 19443).ToJsonString());
+        var inherited = runtime["routing"]!["rules"]!.AsArray().Single(r => r?["domain"] != null);
+        check(inherited!["inboundTag"]!.AsArray().Select(t => t!.ToString()).SequenceEqual(new[] { "kot-tun", "kot-in" }) && inherited["outboundTag"]!.ToString() == "direct", "provider RU and IDN rules retain their action on native inputs");
+        check(JsonNode.DeepEquals(runtime["dns"], saved["dns"]), "provider DNS and empty-AAAA fallback policy survive natively");
+        check(runtime["routing"]!["rules"]![1]!["outboundTag"]!.ToString() == "kot-dns-out" && runtime["routing"]!["rules"]![2]!["outboundTag"]!.ToString() == "vpn", "DNS interception and proxy-only health precede provider bypass");
+        File.WriteAllText(Path.Combine(dir, "provider.json"), runtime.ToJsonString());
+        var imported = Subscriptions.Parse(links[0] + "\n#routing: " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("""{"DirectSites":[".ru",".рф"],"DomesticDNSType":"DoU","DomesticDNSIP":"127.0.0.1","RemoteDNSType":"DoU","RemoteDNSIP":"127.0.0.1","DomainStrategy":"AsIs"}"""))).Nodes.Single();
+        imported.FullConfig!["dns"]!["servers"]![0]!["port"] = 19445;
+        imported.FullConfig["dns"]!["servers"]![1]!["port"] = 19446;
+        File.WriteAllText(Path.Combine(dir, "provider-imported.json"), XrayRuntime.Build(imported, 19442, proxyPort: 19443).ToJsonString());
+        foreach (bool? fallback in new bool?[] { false, null })
+        {
+            var provider = (JsonObject)saved.DeepClone();
+            if (fallback == null) provider["dns"]!.AsObject().Remove("disableFallbackIfMatch");
+            else provider["dns"]!["disableFallbackIfMatch"] = fallback.Value;
+            var preserved = XrayRuntime.Build(full with { FullConfig = provider }, 19442);
+            check(JsonNode.DeepEquals(preserved["dns"], provider["dns"]), "provider DNS fallback policy survives: " + (fallback?.ToString() ?? "omitted"));
+        }
+        var balanced = (JsonObject)saved.DeepClone();
+        balanced["routing"]!["balancers"] = new JsonArray(new JsonObject { ["tag"] = "direct-balancer", ["selector"] = new JsonArray("direct"), ["fallbackTag"] = "direct" });
+        balanced["observatory"] = new JsonObject { ["subjectSelector"] = new JsonArray("direct"), ["probeURL"] = "http://127.0.0.1:9/", ["probeInterval"] = "1m" };
+        var balancedRuntime = XrayRuntime.Build(full with { FullConfig = balanced }, 19442, proxyPort: 19443);
+        check(JsonNode.DeepEquals(balancedRuntime["routing"]!["balancers"], balanced["routing"]!["balancers"]), "provider user-traffic balancer is preserved");
+        var health = balancedRuntime["routing"]!["rules"]!.AsArray().Single(r => r?["inboundTag"]?[0]?.ToString() == "kot-health");
+        check(health!["outboundTag"]?.ToString() == "vpn" && health["balancerTag"] == null, "a direct provider balancer cannot satisfy a VPN health check");
+        File.WriteAllText(Path.Combine(dir, "provider-balanced.json"), balancedRuntime.ToJsonString());
+        var manual = new RoutingRules { DirectDomains = ["ru", "xn--p1ai"], BlockDomains = ["blocked.test"], ProxyApps = ["chrome.exe"], DirectIps = ["203.0.113.0/24"] };
+        runtime = XrayRuntime.Build(full, 19442, manual: manual);
+        check(!runtime.ToJsonString().Contains("provider-in") && runtime["routing"]!["rules"]!.AsArray().Any(r => r?["process"]?[0]?.ToString() == "chrome.exe"), "explicit local rules replace provider rules and translate process matching");
+        File.WriteAllText(Path.Combine(dir, "manual.json"), runtime.ToJsonString());
+        var stats = ConnectionSnapshot.ParseXray("""{"stats":{"inbound":{"kot-tun":{"downlink":500,"uplink":200},"kot-in":{"downlink":20,"uplink":10},"kot-health":{"downlink":9999,"uplink":9999}}}}""");
+        check(stats.DownloadTotal == 520 && stats.UploadTotal == 210 && stats.Count == -1, "native counters exclude health traffic and never invent connection detail");
+        bool invalid = false; try { ConnectionSnapshot.ParseXray("""{"stats":{"inbound":{"kot-in":{"downlink":-1,"uplink":10}}}}"""); } catch (JsonException) { invalid = true; }
+        check(invalid, "negative native counters rejected");
+        check(GeoIp.Prefixes("1.1.1.0/24\n2001:db8::/32\n").Length == 2, "native GeoIP validates both address families");
+        invalid = false; try { GeoIp.Prefixes("<html>not a database</html>"); } catch (UserError) { invalid = true; } check(invalid, "native GeoIP rejects error pages");
+        File.WriteAllText(Path.Combine(dir, "server.json"), """{"inbounds":[{"protocol":"vless","listen":"127.0.0.1","port":19441,"settings":{"clients":[{"id":"UUID"}],"decryption":"none"}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""".Replace("UUID", uuid));
+    }
+}

@@ -9,7 +9,7 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
   function nodeOptions(){
     const model=getModel(),nodes=model.nodes||[],key=JSON.stringify(nodes.map(n=>[n.id,n.name]));
     if(key===lastNodeKey)return;lastNodeKey=key;
-    for(const id of ['toolsNode','qualityNode']){
+    for(const id of ['toolsNode']){
       const el=$(id),selected=el.value;el.replaceChildren(...nodes.map(n=>{const option=document.createElement('option');option.value=n.id;option.textContent=n.name;return option;}));
       el.value=nodes.some(n=>n.id===selected)?selected:nodes.some(n=>n.id===model.selected)?model.selected:nodes[0]?.id||'';
     }
@@ -23,33 +23,37 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     $('subscriptionWarning').hidden=u?.daysLeft==null||u.daysLeft>3;$('subscriptionWarning').textContent=u?.daysLeft<=0?'Срок подписки закончился.':u?.daysLeft!=null?'Подписка заканчивается через '+u.daysLeft+' дн.':'';
   }
   function render(){
-    nodeOptions();renderSubscription();const model=getModel(),t=model.tools||{},busy=!!t.busy||toolsStarting,quality=t.kind==='quality';
-    $('qualityButton').disabled=!model.nodes?.length;
+    nodeOptions();renderSubscription();const model=getModel(),t=model.tools||{},busy=!!t.busy||toolsStarting,quality=t.kind==='connection';
+    $('qualityButton').disabled=model.state!=='connected';$('qualityButton').title=model.state==='connected'?'Проверить адрес через подключённый VPN':'Сначала подключите VPN';
     $('toolsNode').disabled=busy||model.state==='connected';$('toolsWebsite').disabled=busy;
     $('toolsConnectionNote').textContent=model.state==='connected'?'Проверяется текущее VPN-соединение.':'При отключённом VPN проверяется выбранный сервер без изменения подключения.';
     $('runDiagnostics').disabled=busy||!model.nodes?.length;$('cancelTools').hidden=!t.busy;$('copyDiagnostics').disabled=!t.steps?.length||busy;
     $('toolsStatus').textContent=t.status?(t.server?t.server+' · ':'')+t.status:'Запустите проверку, чтобы найти причину проблем с соединением.';
     $('toolsError').textContent=t.error||'';$('toolsError').hidden=!t.error;
     const key=JSON.stringify(t.steps||[]);if(key!==lastResultKey){lastResultKey=key;$('toolsResults').replaceChildren(...(t.steps||[]).map(s=>{const row=document.createElement('div');row.className='tool-result';row.dataset.status=s.status;const name=document.createElement('strong');name.textContent=s.name+(s.status==='ok'?' · OK':s.status==='error'?' · Ошибка':s.status==='checking'?' · Проверка':s.status==='cancelled'?' · Отменено':'');const detail=document.createElement('p');detail.textContent=s.detail;row.append(name,detail);return row;}));}
-    $('testQuality').disabled=busy||!model.nodes?.length;$('qualityNode').disabled=busy;$('cancelQuality').hidden=!t.busy||!quality;
-    const q=quality?t.quality:null,d=quality?t.download:null;
+    $('testQuality').disabled=busy||model.state!=='connected';$('cancelQuality').hidden=!t.busy||!quality;
+    const q=quality?t.quality:null,settings=model.ping?.settings||{};
+    $('qualityAddress').textContent=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
+    $('qualityNote').textContent=model.state==='connected'?'HTTP-проверка через подключённый VPN. Адрес, число попыток и таймаут берутся из настроек пинга.':'Подключите VPN, чтобы проверить адрес.';
     $('qualityMedian').textContent=q?.medianMs!=null?q.medianMs+' мс':'Нет данных';
     $('qualitySuccess').textContent=q?q.successes+' / '+q.attempts+' ('+Math.round(q.successes/q.attempts*100)+'%)':'Нет данных';
-    $('qualityJitter').textContent=q?.jitterMs!=null?Math.round(q.jitterMs)+' мс':'Нет данных';$('qualityJitter').title=q?.minMs!=null?'Минимум '+q.minMs+' мс · максимум '+q.maxMs+' мс':'';
-    $('qualitySpeed').textContent=d?new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1}).format(d.megabitsPerSecond)+' Мбит/с':'Нет данных';
     $('qualitySamples').replaceChildren(...(quality?t.samples||[]:[]).map((ms,i)=>{const el=document.createElement('span');el.textContent=ms==null?'Таймаут / ошибка':ms+' мс';el.dataset.error=ms==null;el.title='Запрос '+(i+1);return el;}));
-    $('qualityProgress').hidden=!quality||!t.busy||!q||q.attempts<10;$('qualityProgress').value=t.bytes||0;
-    $('qualityStatus').textContent=quality?(t.server?t.server+' · ':'')+(t.status||'')+(d?' · получено '+formatBytes(d.bytes):''):'';
-    $('qualityError').textContent=quality?[t.error,t.speedError].filter(Boolean).join('\n'):'';$('qualityError').hidden=!$('qualityError').textContent;
+    $('qualityStatus').textContent=quality?(t.server?t.server+' · ':'')+(t.status||''):'';
+    $('qualityError').textContent=quality?t.error||'':'';$('qualityError').hidden=!$('qualityError').textContent;
   }
-  $('qualityButton').addEventListener('click',()=>{nodeOptions();const selected=getModel().selected;if([...$('qualityNode').options].some(o=>o.value===selected))$('qualityNode').value=selected;render();openDialog($('qualityDialog'));});
+  $('qualityButton').addEventListener('click',()=>{render();openDialog($('qualityDialog'));startCheck();});
   $('closeQuality').addEventListener('click',()=>closeDialog($('qualityDialog')));
-  $('qualityDialog').addEventListener('close',()=>{if(getModel().tools?.busy&&getModel().tools.kind==='quality')perform('cancelTools');});
+  $('qualityDialog').addEventListener('close',()=>{if(getModel().tools?.busy&&getModel().tools.kind==='connection')perform('cancelTools');});
   for(const id of ['cancelTools','cancelQuality'])$(id).addEventListener('click',()=>perform('cancelTools'));
   $('copyDiagnostics').addEventListener('click',async()=>{try{await rpc('copyDiagnostics');toast('Результат скопирован');}catch(e){toast(e.message);}});
   async function start(action,id){if(toolsStarting||getModel().tools?.busy)return;const text=$('toolsWebsite').value.trim();try{const url=new URL(text);if(text.length>2048||url.protocol!=='https:'||url.username||url.password||url.hash)throw new Error();}catch{toast('Нужен HTTPS-адрес без логина, пароля и фрагмента');return;}toolsStarting=true;render();try{await rpc(action,{id,url:text});}catch(e){toast(e.message);}finally{toolsStarting=false;render();}}
   $('toolsForm').addEventListener('submit',e=>{e.preventDefault();start('runDiagnostics',$('toolsNode').value);});
-  $('testQuality').addEventListener('click',()=>start('testQuality',$('qualityNode').value));
+  async function startCheck(){
+    if(toolsStarting||getModel().tools?.busy||getModel().state!=='connected')return;
+    toolsStarting=true;render();
+    try{await rpc('testConnection');}catch(e){toast(e.message);}finally{toolsStarting=false;render();}
+  }
+  $('testQuality').addEventListener('click',startCheck);
   async function share(id){
     if(sharing)return;sharing=true;qrNode=id;const attempt=++qrAttempt;$('shareQrImage').hidden=true;$('shareQrImage').removeAttribute('src');$('shareQrLink').value='';$('shareQrError').textContent='';$('shareQrTitle').textContent='QR сервера';openDialog($('shareQrDialog'));
     try{const result=await rpc('readNodeQr',{id});if(attempt!==qrAttempt||!$('shareQrDialog').open)return;$('shareQrTitle').textContent=result.name;$('shareQrLink').value=result.link;$('shareQrImage').src=result.image;$('shareQrImage').hidden=false;}

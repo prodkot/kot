@@ -23,7 +23,7 @@ HANDLER = r'''
  window.statisticsRequests.push(msg);setTimeout(()=>{
  let data;
  if(msg.action==='runDiagnostics')model.tools={busy:true,kind:'diagnostics',server:'DE',status:'DNS Windows для сервера',steps:[{name:'DNS Windows для сервера',status:'checking',detail:'Проверка'}],samples:[]};
- if(msg.action==='testQuality')model.tools={busy:true,kind:'quality',server:'DE',status:'HTTP-проверка 1 из 10',steps:[],samples:[]};
+ if(msg.action==='testConnection')model.tools={busy:true,kind:'connection',server:'Текущее VPN-соединение',address:model.ping.settings.url,status:'HTTP-проверка 1 из 2',steps:[],samples:[]};
  if(msg.action==='cancelTools'){model.tools.busy=false;model.tools.status='Проверка отменена';}
  if(msg.action==='readNodeQr')data={name:'DE',link:'vless://11111111-1111-4111-8111-111111111111@example.com:443?security=tls#DE',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='};
  if(msg.action==='readQrFile'||msg.action==='readQrClipboard')data={text:window.cancelQr?null:'https://provider.example/qr-subscription'};
@@ -59,7 +59,7 @@ with sync_playwright() as p:
         expect(page.locator('#refreshButton')).to_be_enabled()
 
         page.locator('[data-page=settings]').click()
-        page.locator('[data-page=diagnostics]').click()
+        page.evaluate("fixtureNavigate('diagnostics')")
         expect(page.locator('#toolsNode')).to_be_disabled()
         expect(page.locator('#toolsConnectionNote')).to_contain_text('текущее VPN-соединение')
         page.locator('#runDiagnostics').click()
@@ -87,21 +87,35 @@ with sync_playwright() as p:
         page.clock.run_for(5000)
         page.screenshot(path=str(ROOT / 'Tests/ui-diagnostics-dark.png'), animations='disabled')
 
-        page.locator('[data-page=servers]').click(); page.locator('#qualityButton').click()
+        page.locator('[data-page=servers]').click()
+        expect(page.locator('#qualityButton')).to_have_text('Проверка')
+        expect(page.locator('#qualityButton')).to_be_disabled()
+        page.evaluate("fixtureStatistics({state:'connected',ping:{settings:{url:'https://configured.example/check',attempts:2,timeoutMs:3500}}})")
+        page.locator('#qualityButton').click()
         expect(page.locator('#qualityDialog')).to_be_visible()
-        expect(page.locator('#qualityDialog')).to_contain_text('1 МиБ')
-        page.locator('#testQuality').click()
+        expect(page.locator('#qualityAddress')).to_have_text('https://configured.example/check')
+        expect(page.locator('#qualityNote')).to_contain_text('подключённый VPN')
         expect(page.locator('#testQuality')).to_be_disabled()
-        expect(page.locator('#qualityStatus')).to_contain_text('HTTP-проверка 1 из 10')
-        page.evaluate("fixtureStatistics({tools:{busy:false,kind:'quality',status:'Проверка качества завершена',server:'DE',steps:[],samples:[90,100,null,110,90,100,95,105,100,110],quality:{attempts:10,successes:9,medianMs:100,minMs:90,maxMs:110,jitterMs:12.5},download:{bytes:1048576,megabitsPerSecond:8.4},speedError:''}})")
-        expect(page.locator('#qualitySuccess')).to_have_text('9 / 10 (90%)')
+        expect(page.locator('#qualityStatus')).to_contain_text('HTTP-проверка 1 из 2')
+        assert page.evaluate("statisticsRequests.filter(r=>r.action==='testConnection').length")==1
+        assert page.evaluate("statisticsRequests.find(r=>r.action==='testConnection').data")=={}
+        assert page.locator('#qualityNode,#qualitySpeed,#qualityProgress').count()==0
+        page.evaluate("fixtureStatistics({tools:{busy:false,kind:'connection',status:'Проверка завершена: есть ошибки',server:'Текущее VPN-соединение',address:'https://configured.example/check',steps:[],samples:[100,null],quality:{attempts:2,successes:1,medianMs:100},error:'Нет успешного ответа'}})")
+        expect(page.locator('#qualitySuccess')).to_have_text('1 / 2 (50%)')
         expect(page.locator('#qualityMedian')).to_have_text('100 мс')
-        expect(page.locator('#qualitySpeed')).to_have_text('8,4 Мбит/с')
-        assert page.locator('#qualitySamples span').count() == 10
+        assert page.locator('#qualitySamples span').count() == 2
         expect(page.locator('#qualitySamples [data-error=true]')).to_have_text('Таймаут / ошибка')
+        expect(page.locator('#qualityError')).to_have_text('Нет успешного ответа')
         page.locator('#testQuality').click(); expect(page.locator('#cancelQuality')).to_be_visible()
         page.locator('#closeQuality').click(); expect(page.locator('#qualityDialog')).not_to_be_visible()
         expect(page.locator('#toolsStatus')).to_contain_text('отменена')
+        page.locator('#qualityButton').click()
+        page.evaluate("fixtureStatistics({state:'idle',tools:{busy:false,kind:'connection',status:'Соединение изменилось'}})")
+        expect(page.locator('#testQuality')).to_be_disabled()
+        expect(page.locator('#qualityNote')).to_contain_text('Подключите VPN')
+        page.locator('#closeQuality').click(); expect(page.locator('#qualityDialog')).not_to_be_visible()
+        expect(page.locator('#qualityButton')).to_be_disabled()
+        page.evaluate("fixtureStatistics({state:'connected'})")
 
         page.locator('.qr-node').first.click(); expect(page.locator('#shareQrImage')).to_be_visible()
         expect(page.locator('#shareQrLink')).to_have_value('vless://11111111-1111-4111-8111-111111111111@example.com:443?security=tls#DE')
@@ -156,7 +170,7 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':800,'height':600})
         for section in ('statistics', 'diagnostics', 'servers'):
             if section in ('statistics', 'diagnostics'): page.locator('.nav-button[data-page=settings]').click()
-            page.locator(f'[data-page={section}]').click()
+            page.evaluate('section=>fixtureNavigate(section)',section)
             assert page.locator('#page-' + section).evaluate('(e)=>e.scrollWidth<=e.clientWidth'), section
         page.set_viewport_size({'width':1080,'height':770})
         page.locator('[data-page=home]').click(); page.wait_for_timeout(300)
@@ -164,4 +178,4 @@ with sync_playwright() as p:
         assert not errors, errors
     finally:
         browser.close()
-print('PASS client tools: diagnostics/cancellation, provider metadata, quality metrics, QR/YAML flows, safe text, calendar app statistics, graphs, themes and minimum window size')
+print('PASS client tools: diagnostics/cancellation, provider metadata, active tunnel checks, QR/YAML flows, safe text, calendar app statistics, graphs, themes and minimum window size')

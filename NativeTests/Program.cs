@@ -1,5 +1,21 @@
 using Kot.Windows;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
+
+if (args.Length == 1 && args[0] == "--stdin-hash")
+{
+    using var source = Console.OpenStandardInput();
+    Console.WriteLine(Convert.ToHexString(await SHA256.HashDataAsync(source))); return 0;
+}
+if (args.Length == 1 && args[0] == "--stdin-ignore")
+{
+    Console.WriteLine("ignoring-input"); await Task.Delay(30000); return 0;
+}
+if (args.Length == 1 && args[0] == "--stdin-reject")
+{
+    Console.Error.WriteLine("FATAL rejected-before-reading"); return 23;
+}
 
 if (args.Length == 2 && args[0] == "--service-assets")
 {
@@ -68,6 +84,32 @@ async Task NaturalExit(int code)
 }
 try
 {
+    string payload = string.Concat(Enumerable.Repeat("конфигурация 出口 ", 32768));
+    await Task.WhenAll(Enumerable.Range(0, 3).Select(async i =>
+    {
+        using var child = new NativeCore(fixtureExe, ["--stdin-hash"], folder, "stdin fixture", standardInput: payload + i);
+        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        string expected = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload + i)));
+        Check(child.ExitCode == 0 && (await child.ReadRecentOutput(true)).Trim() == expected,
+            "concurrent native stdin transmits complete large UTF-8 payloads and EOF without mixing workers");
+    }));
+    using (var child = new NativeCore(fixtureExe, ["--stdin-reject"], folder, "stdin reject", standardInput: payload))
+    {
+        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Check(child.ExitCode == 23 && (await child.ReadRecentOutput(true)).Contains("rejected-before-reading"),
+            "an early child exit releases a blocked stdin writer and preserves the original error");
+    }
+    var inputReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var child = new NativeCore(fixtureExe, ["--stdin-ignore"], folder, "stdin cancellation",
+        line => { if (line == "ignoring-input") inputReady.TrySetResult(); }, standardInput: payload))
+    {
+        await inputReady.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var observer = System.Diagnostics.Process.GetProcessById(child.Process.Id);
+        var ended = observer.WaitForExitAsync();
+        await child.Stop().WaitAsync(TimeSpan.FromSeconds(15));
+        await ended.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(true, "stopping a child that never reads stdin releases the process and pipe writer");
+    }
     string? originalAssets = Environment.GetEnvironmentVariable("XRAY_LOCATION_ASSET");
     await Task.WhenAll(Enumerable.Range(0, 2).Select(async i =>
     {

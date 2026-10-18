@@ -22,4 +22,14 @@ public static class AppLog
     public static void Error(string source, Exception error) => journal.Error(source, error);
     public static string Tail() => journal.Tail();
     public static string Snapshot() => journal.Snapshot();
+    public static void PersistStartupFailure(string stage, Exception error)
+    {
+        try
+        {
+            Directory.CreateDirectory(Store.Folder);
+            // One bounded structured record replaces the previous failure.
+            File.WriteAllText(Path.Combine(Store.Folder, "startup-error.json"), StartupDiagnostics.Capture(stage, error));
+        }
+        catch { /* Logging cannot prevent the recovery UI from opening. */ }
+    }
 }

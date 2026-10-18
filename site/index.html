@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111515">
-  <meta name="description" content="kot. Бесплатный клиент для Windows на базе sing-box и Xray. Подписки, TUN, маршрутизация, статистика и работа в фоне. Скачай или попробуй интерфейс прямо на сайте.">
+  <meta name="description" content="Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.">
   <meta property="og:title" content="kot. / Твой сервер. Один клик.">
-  <meta property="og:description" content="Твои серверы. Удобный клиент. Подписки, маршрутизация и работа в фоне на Windows. Попробуй интерфейс без установки.">
+  <meta property="og:description" content="Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ru_RU">
   <meta property="og:url" content="https://prodkot.github.io/kot/">
   <meta property="og:image" content="https://prodkot.github.io/kot/assets/social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="kot. Твой сервер. Один клик. Клиент для Windows на базе sing-box и Xray.">
+  <meta property="og:image:alt" content="kot. Твой сервер. Один клик. Клиент для Windows.">
   <meta name="twitter:card" content="summary_large_image">
   <title>kot. / Твой сервер. Один клик.</title>
   <link rel="canonical" href="https://prodkot.github.io/kot/">
@@ -39,7 +39,7 @@
       <div class="hero-top"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> ТВОИ СЕРВЕРЫ. ТВОЙ ИНТЕРНЕТ.</p><a class="release-pill" href="https://github.com/prodkot/kot/releases/latest"><span data-release-version>Последний релиз</span><span aria-hidden="true">↗</span></a></div>
       <h1 id="hero-title">Твой сервер. <span>Один клик.</span></h1>
       <div class="hero-copy">
-        <p>Клиент для Windows, который берёт подключение на себя. Добавь свою подписку, выбери сервер и возвращайся к делам.</p>
+        <p>Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
         <div class="hero-actions"><div class="action-row"><a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a><a class="try-demo" href="#demo">Попробовать демо <span aria-hidden="true">↘</span></a></div><p class="download-meta">Windows 10 / 11, x64 <span aria-hidden="true">·</span> Бесплатно <span aria-hidden="true">·</span> Открытый код</p></div>
       </div>
       <div class="hero-screen" id="demo">
@@ -49,42 +49,32 @@
           <div id="demo-slot"><iframe id="client-demo" src="demo/index.html" title="Интерактивная демо-версия интерфейса kot." sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" aria-describedby="demo-note"></iframe></div>
           <noscript><style>#demo-slot,.demo-toolbar{display:none}.demo-holder{height:auto}</style><img src="assets/home.png" width="1440" height="960" alt="Главный экран kot. в тёмной теме"><p class="demo-nojs">Для интерактивного демо нужен JavaScript. Скачать приложение можно и без него.</p></noscript>
         </dialog></div>
-        <div class="demo-bottom"><p id="demo-note">Демонстрационные серверы и трафик. Реального подключения нет, данные остаются в этом окне.</p><a href="#inside">Рассмотреть поближе <span aria-hidden="true">↓</span></a></div>
+        <div class="demo-bottom"><p id="demo-note">Демо {{demo-version}} с примерными данными, без подключения к VPN. Скачать можно стабильную версию.</p><a href="#inside">Рассмотреть поближе <span aria-hidden="true">↓</span></a></div>
       </div>
-      <div class="platform-strip" aria-label="О приложении"><span>СВОЯ ПОДПИСКА</span><span>TUN / СИСТЕМНЫЙ ПРОКСИ</span><span>SING-BOX + XRAY</span><a href="https://github.com/prodkot/kot">КОД ОТКРЫТ <span aria-hidden="true">↗</span></a></div>
-    </section>
-    <section class="background wrap" aria-labelledby="background-title">
-      <div class="section-heading"><p class="eyebrow">НЕ ТРЕБУЕТ ПОСТОЯННОГО ВНИМАНИЯ</p><h2 id="background-title">Один раз настроил.<br>Дальше в фоне.</h2><p>Окно можно закрыть в трей.<br>Подключение продолжит работать.</p><a class="text-link" href="https://github.com/prodkot/kot/blob/main/docs/GUIDE.md#восстановление-и-работа-в-фоне">Как настроить работу в фоне <span aria-hidden="true">↗</span></a></div>
-      <ol class="background-list">
-        <li><span class="list-mark" aria-hidden="true">01</span><div><h3>Готов к началу дня</h3><p>Включи запуск с Windows и автоподключение. kot. откроется и подключится к выбранному серверу.</p></div></li>
-        <li><span class="list-mark" aria-hidden="true">02</span><div><h3>Восстанавливает соединение</h3><p>После успешного подключения повторяет попытки при сетевых сбоях. Ручное отключение останавливает восстановление.</p></div></li>
-        <li><span class="list-mark" aria-hidden="true">03</span><div><h3>Возвращается, когда нужен</h3><p>Статус и управление остаются в трее. Статистика собирается в фоне, настройки сохраняются между запусками.</p></div></li>
-      </ol>
+      <div class="platform-strip" aria-label="О приложении"><span>СВОЯ ПОДПИСКА</span><span>TUN / СИСТЕМНЫЙ ПРОКСИ</span><span>WINDOWS 10 / 11</span><a href="https://github.com/prodkot/kot">КОД ОТКРЫТ <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="inside wrap" id="inside" aria-labelledby="inside-title">
-      <div class="section-heading section-heading-row"><div><p class="eyebrow">КОГДА ХОЧЕТСЯ РАЗОБРАТЬСЯ</p><h2 id="inside-title">Всё перед глазами.</h2></div><p>От быстрого выбора сервера<br>до подробностей каждого соединения.</p></div>
+      <div class="section-heading section-heading-row"><div><p class="eyebrow">КОГДА ХОЧЕТСЯ РАЗОБРАТЬСЯ</p><h2 id="inside-title">Всё перед глазами.</h2></div><p>От быстрого выбора сервера<br>до настроек подключения.</p></div>
       <div class="showcase">
         <div class="showcase-text">
           <div class="tabs" role="tablist" aria-label="Посмотреть интерфейс">
             <button id="tab-servers" class="feature-tab" role="tab" aria-selected="true" aria-controls="panel-servers" tabindex="0" data-description="Проверь задержку, найди сервер и сохрани избранное. Режим «Авто» выбирает доступный сервер с подходящей задержкой."><span class="tab-number">01</span><span><strong>Серверы</strong><small>Поиск, пинг и избранное.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
             <button id="tab-statistics" class="feature-tab" role="tab" aria-selected="false" aria-controls="panel-statistics" tabindex="-1" data-description="Время подключения, скачивание и отправка за сеанс, 7 дней, 30 дней или всё время. История сохраняется между запусками."><span class="tab-number">02</span><span><strong>Статистика</strong><small>Сеансы и история трафика.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
-            <button id="tab-connections" class="feature-tab" role="tab" aria-selected="false" aria-controls="panel-connections" tabindex="-1" data-description="Адреса, процессы и маршруты текущих соединений. Переключись на журнал, чтобы найти ошибку или скопировать полный лог."><span class="tab-number">03</span><span><strong>Соединения</strong><small>Что, куда и по какому маршруту.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
             <button id="tab-settings" class="feature-tab" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" data-description="Светлая и тёмная темы, запуск с Windows, автоподключение и трей. Маршрутизация, диагностика и резервная копия доступны отсюда же."><span class="tab-number">04</span><span><strong>Настройки</strong><small>Приложение под твой сценарий.</small></span><span class="tab-arrow" aria-hidden="true">↗</span></button>
           </div>
           <p class="feature-description" id="feature-description">Проверь задержку, найди сервер и сохрани избранное. Режим «Авто» выбирает доступный сервер с подходящей задержкой.</p>
         </div>
         <div class="showcase-screens">
-          <div id="panel-servers" role="tabpanel" aria-labelledby="tab-servers"><img src="assets/servers.png" width="1440" height="1080" alt="kot. 0.7.1: список серверов, пинг и избранное в тёмной теме" loading="lazy"></div>
-          <div id="panel-statistics" role="tabpanel" aria-labelledby="tab-statistics" hidden><img src="assets/statistics.png" width="1440" height="1080" alt="kot. 0.7.1: время подключения, периоды статистики и учёт трафика" loading="lazy"></div>
-          <div id="panel-connections" role="tabpanel" aria-labelledby="tab-connections" hidden><img src="assets/connections.png" width="1440" height="1080" alt="kot. 0.7.1: текущие соединения с процессами и маршрутами" loading="lazy"></div>
-          <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><img src="assets/settings.png" width="1440" height="1080" alt="kot. 0.7.1: светлая тема, автоподключение и настройки работы в фоне" loading="lazy"></div>
+          <div id="panel-servers" role="tabpanel" aria-labelledby="tab-servers"><img src="assets/servers.png" width="1440" height="1080" alt="kot. 0.8.0: список серверов, пинг и избранное в тёмной теме" loading="lazy"></div>
+          <div id="panel-statistics" role="tabpanel" aria-labelledby="tab-statistics" hidden><img src="assets/statistics.png" width="1440" height="1080" alt="kot. 0.8.0: время подключения, периоды статистики и учёт трафика" loading="lazy"></div>
+          <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><img src="assets/settings.png" width="1440" height="1080" alt="kot. 0.8.0: светлая тема, автоподключение и настройки работы в фоне" loading="lazy"></div>
         </div>
       </div>
-      <p class="screenshot-note">Снимки интерфейса 0.7.1. Серверы, пинг и трафик показаны для примера.</p>
+      <p class="screenshot-note">Снимки интерфейса 0.8.0. Серверы, пинг и трафик показаны для примера.</p>
       <div class="extras">
         <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h6l4 14h6M4 19h6l4-14h6M17 2l3 3-3 3m0 8 3 3-3 3"/></svg><h3>Твой маршрут</h3><p>Сайты, приложения, подсети и страны: напрямую, через VPN или блокировать. Отдельные настройки DNS.</p><a href="https://github.com/prodkot/kot/blob/main/docs/ROUTING.md">Маршрутизация <span aria-hidden="true">↗</span></a></article>
         <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 8 3v5c0 5-8 10-8 10S4 16 4 11V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg><h3>Защита при сбое</h3><p>Kill switch блокирует прямые соединения при ошибке подключения. Включается вручную, учитывает исключения.</p><a href="https://github.com/prodkot/kot/blob/main/docs/GUIDE.md#kill-switch">Как работает защита <span aria-hidden="true">↗</span></a></article>
-        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><h3>Понятнее, что случилось</h3><p>Диагностика сети, проверка качества соединения и журнал помогают найти причину, когда что-то пошло не так.</p><a href="https://github.com/prodkot/kot/blob/main/docs/CLIENT-TOOLS.md">Инструменты клиента <span aria-hidden="true">↗</span></a></article>
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><h3>Понятнее, что случилось</h3><p>Проверка соединения и журнал помогают разобраться, когда что-то пошло не так.</p><a href="https://github.com/prodkot/kot/blob/main/docs/CLIENT-TOOLS.md">Инструменты клиента <span aria-hidden="true">↗</span></a></article>
       </div>
       <div class="more-features"><p>И ещё под рукой</p><a href="https://github.com/prodkot/kot/blob/main/docs/XHTTP.md">XHTTP и REALITY ↗</a><a href="https://github.com/prodkot/kot/blob/main/docs/SERVICES.md">zapret и Telegram-прокси ↗</a><a href="https://github.com/prodkot/kot/blob/main/docs/GUIDE.md">Резервные копии ↗</a></div>
     </section>
@@ -102,10 +92,9 @@
       <div class="faq-list">
         <details><summary>На какой Windows работает?</summary><p>На Windows 10 и 11, x64. Для подключения через TUN нужны права администратора. Необходимые компоненты входят в Setup.</p></details>
         <details><summary>В чём разница между TUN и прокси?</summary><p>TUN направляет трафик устройства через виртуальный интерфейс с учётом правил маршрутизации. Системный прокси работает с приложениями, которые его поддерживают. Режим выбирается на главном экране.</p></details>
-        <details><summary>Нужно ли что-то покупать в kot.?</summary><p>Приложение бесплатное, код открыт по лицензии MIT. Доступ к серверу или подписку ты добавляешь сам: kot. их не продаёт и не выдаёт.</p></details>
         <details><summary>Какие ссылки можно добавить?</summary><p>VLESS, VMess, Trojan, Shadowsocks и Hysteria2. Есть импорт подписок и QR-кодов, поддержка XHTTP и REALITY для совместимых серверов. Детали транспорта собраны в <a href="https://github.com/prodkot/kot/blob/main/docs/XHTTP.md">руководстве по XHTTP</a>.</p></details>
         <details><summary>Как приходят обновления?</summary><p>kot. проверяет GitHub при запуске и раз в сутки. Загрузка и установка начинаются после нажатия «Обновить», перед установкой проверяются подписи. Можно выбрать «Не сейчас». Подписки и настройки сохраняются.</p></details>
-        <details><summary>Что происходит, если включён Kill switch?</summary><p>При ошибке подключения или падении программы прямой интернет остаётся заблокирован. Подключись снова или выключи защиту в настройках. Ручное отключение и обычный выход снимают блокировку. Явно настроенные прямые маршруты sing-box продолжают действовать.</p></details>
+        <details><summary>Что происходит, если включён Kill switch?</summary><p>При ошибке подключения или падении программы прямой интернет остаётся заблокирован. Подключись снова или выключи защиту в настройках. Ручное отключение и обычный выход снимают блокировку. Явно настроенные прямые маршруты продолжают действовать.</p></details>
         <details><summary>Где сообщить о проблеме?</summary><p>Открой <a href="https://github.com/prodkot/kot/issues/new/choose">Issues на GitHub</a> и опиши шаги, версию kot. и Windows. Перед публикацией лога убери личные данные, ключи и ссылки на подписки.</p></details>
       </div>
     </section>
@@ -114,6 +103,6 @@
       <div class="download-actions"><a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a><p class="download-meta"><span data-release-version>Последняя версия</span><span aria-hidden="true">·</span><span id="download-size">Windows x64</span></p><a class="changelog" href="https://github.com/prodkot/kot/releases/latest">Что нового в релизе <span aria-hidden="true">↗</span></a></div>
     </section>
   </main>
-  <footer class="footer wrap"><a class="wordmark" href="#" aria-label="kot. На главную">kot<span>.</span></a><p>На базе <a href="https://sing-box.sagernet.org/">sing-box</a> и <a href="https://github.com/XTLS/Xray-core">Xray</a>.</p><div><a href="https://github.com/prodkot/kot/blob/main/docs/README.md">Документация ↗</a><a href="https://github.com/prodkot/kot">GitHub ↗</a><a href="https://github.com/prodkot/kot/blob/main/LICENSE.txt">MIT</a></div></footer>
+  <footer class="footer wrap"><a class="wordmark" href="#" aria-label="kot. На главную">kot<span>.</span></a><p>Клиент для Windows с открытым кодом.</p><div><a href="https://github.com/prodkot/kot/blob/main/docs/README.md">Документация ↗</a><a href="https://github.com/prodkot/kot">GitHub ↗</a><a href="https://github.com/prodkot/kot/blob/main/LICENSE.txt">MIT</a></div></footer>
 </body>
 </html>

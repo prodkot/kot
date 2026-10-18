@@ -32,18 +32,14 @@ def servers(page):
     expect(button).to_be_focused()
 
 
-def connections(page):
-    connection = {'id': 'one', 'destination': 'example.com:443', 'process': 'browser.exe',
-                  'network': 'tcp', 'chains': ['proxy'], 'download': 10, 'upload': 20}
-    page.evaluate('c=>fixtureSnapshot({state:"connected",telemetry:{connections:[c],count:1}})', connection)
+def journal_focus(page):
+    page.evaluate('fixtureSnapshot({journal:"[app] ready"})')
     page.evaluate("fixtureNavigate('logs')")
-    summary = page.locator('#connectionList summary')
-    summary.click()
-    summary.focus()
-    connection['download'] = 30
-    page.evaluate('c=>fixtureSnapshot({telemetry:{connections:[c],count:1}})', connection)
-    expect(summary).to_be_focused()
-    expect(page.locator('#connectionList details')).to_have_attribute('open', '')
+    journal = page.locator('#journalText')
+    journal.focus()
+    page.evaluate('fixtureSnapshot({journal:"[app] ready\\n[app] connected"})')
+    expect(journal).to_be_focused()
+    expect(journal).to_contain_text('connected')
 
 
 def toast_layer(page):
@@ -185,7 +181,7 @@ def settings_navigation(page):
     expect(page.locator('.nav-button[data-page=services]')).to_be_visible()
     assert page.locator('.setting-card').evaluate('e=>e.firstElementChild.id==="onlineUpdateButton"')
     assert abs(page.locator('#onlineUpdateButton').bounding_box()['height'] - page.locator('#statisticsButton').bounding_box()['height']) < 1
-    for target in ['diagnostics', 'logs']:
+    for target in ['logs']:
         for key in ['Enter', 'Space']:
             link = page.locator(f'.settings-tools [data-page={target}]')
             link.focus(); link.press(key)
@@ -219,7 +215,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, connections, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, settings_navigation, startup_loading]:
+        for test in [servers, journal_focus, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, settings_navigation, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
