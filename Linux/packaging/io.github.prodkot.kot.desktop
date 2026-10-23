@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Name=kot.
+Comment=VPN client — Linux preview
+Comment[ru]=VPN-клиент — предварительный Linux-порт
+Exec=kot
+Icon=io.github.prodkot.kot
+Terminal=false
+Categories=Network;Security;
+StartupNotify=true
+StartupWMClass=io.github.prodkot.kot
+Actions=RestoreProxy;RecoverNetwork;
+
+[Desktop Action RestoreProxy]
+Name=Restore GNOME proxy
+Name[ru]=Восстановить прокси GNOME
+Exec=/usr/lib/kot/Kot.Linux --restore-proxy
+
+[Desktop Action RecoverNetwork]
+Name=Release kot. network protection
+Name[ru]=Снять сетевую защиту kot.
+Exec=pkexec /usr/lib/kot/network-helper.py recover

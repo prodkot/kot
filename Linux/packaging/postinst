@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    if ! getent passwd kot-core >/dev/null; then
+        adduser --system --group --no-create-home --home /nonexistent --shell /usr/sbin/nologin kot-core
+    fi
+    uid=$(id -u kot-core)
+    if [ "$uid" -eq 0 ] || [ "$uid" -ge 1000 ]; then
+        echo "Unsafe kot-core account; installation refused" >&2
+        exit 1
+    fi
+fi

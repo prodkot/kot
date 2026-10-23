@@ -1,0 +1,86 @@
+name: Ubuntu desktop preview
+on:
+  push:
+    branches: [main, 'port/**', 'dev/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: linux-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-secret-1 gnome-keyring dbus-x11 xvfb xauth iproute2 nftables systemd-resolved pkexec
+          mkdir -p /tmp/opencode artifacts/linux/evidence
+      - name: Existing portable tests and real pinned core
+        run: |
+          python3 Tests/repository.py
+          dotnet run --project Tests/Kot.Tests.csproj -c Release > artifacts/linux/evidence/core-tests.txt
+          python3 Release/xray-core.py artifacts/core --target linux
+          python3 Tests/xray_integration.py --core artifacts/core/xray
+          dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray
+      - name: Linux process, storage, proxy and real VLESS tests
+        run: |
+          python3 LinuxTests/helper.py
+          python3 LinuxTests/security.py
+          python3 LinuxTests/process_tree.py
+          dotnet run --project LinuxTests/Kot.LinuxTests.csproj -c Release -- artifacts/core/xray
+          python3 LinuxTests/gnome.py
+      - name: Isolated native TUN and nftables (never host network)
+        run: KOT_HOST_NETNS=$(readlink /proc/self/ns/net) unshare -Urnm python3 LinuxTests/network_namespace.py
+      - name: Build and install deb
+        run: |
+          python3 Linux/build.py
+          sudo apt-get install -y ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb
+      - name: Installed native GTK app with real backend and Secret Service
+        timeout-minutes: 3
+        run: |
+          dotnet run --project LinuxTests/Kot.LinuxTests.csproj -c Release --no-build -- --services-backup-fixture /tmp/opencode/services-fixture.kotbackup
+          dbus-run-session -- bash -euc '
+            export XDG_RUNTIME_DIR=$(mktemp -d)
+            export XDG_DATA_HOME=$(mktemp -d)
+            export XDG_CONFIG_HOME=$(mktemp -d)
+            eval "$(printf "kot-ci-test\n" | gnome-keyring-daemon --unlock --components=secrets)"
+            xvfb-run -a timeout 70s /usr/bin/python3 LinuxTests/gui.py /usr/lib/kot artifacts/linux/evidence
+            timeout 50s /usr/bin/python3 LinuxTests/no_services.py /usr/lib/kot /tmp/opencode/services-fixture.kotbackup
+          '
+      - name: Reinstall, package upgrade and removal preserve user data
+        run: |
+          mkdir -p "$HOME/.local/share/kot"
+          printf 'ci-preserve\n' > "$HOME/.local/share/kot/ci-sentinel"
+          sudo dpkg -i ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb
+          dpkg-deb -R ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb artifacts/linux/upgrade-test
+          sed -i 's/Version: 0.8.0~linux0.2/Version: 0.8.0~linux0.3/' artifacts/linux/upgrade-test/DEBIAN/control
+          dpkg-deb --root-owner-group --build artifacts/linux/upgrade-test artifacts/linux/upgrade-test.deb
+          sudo dpkg -i artifacts/linux/upgrade-test.deb
+          sudo apt-get remove -y kot
+          grep -qx ci-preserve "$HOME/.local/share/kot/ci-sentinel"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: kot-linux-${{ matrix.os }}
+          path: |
+            artifacts/linux/*.deb
+            artifacts/linux/*.sha256
+            artifacts/linux/evidence/
+          retention-days: 14

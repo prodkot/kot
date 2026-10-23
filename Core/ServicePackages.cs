@@ -5,7 +5,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 namespace Kot.Core;
 
-public sealed record ServiceRelease(string Id, string Version, Uri Download, long Size, string Sha256, Uri Page);
+public enum ServicePlatform { Windows, Linux }
+public sealed record ServiceRelease(string Id, string Version, Uri Download, long Size, string Sha256, Uri Page, ServicePlatform Platform = ServicePlatform.Windows);
 public static class ServicePackages
 {
     static readonly uint[] CrcTable = Enumerable.Range(0, 256).Select(value =>
@@ -24,37 +25,40 @@ public static class ServicePackages
     public static string Page(string id) => "https://github.com/" + Repository(id);
     public static bool ValidVersion(string version) => Regex.IsMatch(version, @"^v?\d{1,4}\.\d{1,4}\.\d{1,4}$");
     public static bool Newer(string latest, string installed) => ValidVersion(latest) && (!ValidVersion(installed) || Version.Parse(latest.TrimStart('v')) > Version.Parse(installed.TrimStart('v')));
-    public static ServiceRelease Parse(string id, string json)
+    static string AssetName(string id, string version, ServicePlatform platform) => platform == ServicePlatform.Linux
+        ? id == "telegram" ? "TgWsProxy_linux_amd64" : throw new UserError("Для Linux zapret нужен отдельный nfqws/tpws-пакет и Linux-стратегии; Windows BAT не используются.")
+        : id == "zapret" ? $"zapret-discord-youtube-{version.TrimStart('v')}.zip" : "TgWsProxy_windows.exe";
+    public static ServiceRelease Parse(string id, string json, ServicePlatform platform = ServicePlatform.Windows)
     {
         string repository = Repository(id);
         using var document = JsonDocument.Parse(json); var release = document.RootElement;
         string version = release.GetProperty("tag_name").GetString() ?? "";
         if (!ValidVersion(version) || release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean()) throw new UserError("Не найден стабильный выпуск сервиса.");
-        string name = id == "zapret" ? $"zapret-discord-youtube-{version.TrimStart('v')}.zip" : "TgWsProxy_windows.exe";
+        string name = AssetName(id, version, platform);
         var assets = release.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == name).ToArray();
-        if (assets.Length != 1) throw new UserError("В выпуске нет подходящей Windows-сборки.");
+        if (assets.Length != 1) throw new UserError("В выпуске нет подходящей сборки для выбранной платформы.");
         var asset = assets[0]; string digest = asset.GetProperty("digest").GetString() ?? "";
         long size = asset.GetProperty("size").GetInt64();
         var download = new Uri(asset.GetProperty("browser_download_url").GetString() ?? "");
         var expected = new Uri($"https://github.com/{repository}/releases/download/{version}/{name}");
         if (!download.AbsoluteUri.Equals(expected.AbsoluteUri, StringComparison.OrdinalIgnoreCase) || download.UserInfo.Length > 0 || size is <= 0 or > MaxDownload || !Regex.IsMatch(digest, "^sha256:[a-fA-F0-9]{64}$"))
             throw new UserError("Выпуск не содержит проверяемый официальный пакет и SHA-256.");
-        return new(id, version, download, size, digest[7..].ToLowerInvariant(), new Uri($"https://github.com/{repository}/releases/tag/{version}"));
+        return new(id, version, download, size, digest[7..].ToLowerInvariant(), new Uri($"https://github.com/{repository}/releases/tag/{version}"), platform);
     }
-    public static async Task<ServiceRelease> Latest(string id, CancellationToken ct, HttpMessageHandler? transport = null, int proxyPort = 0)
+    public static async Task<ServiceRelease> Latest(string id, CancellationToken ct, HttpMessageHandler? transport = null, int proxyPort = 0, ServicePlatform platform = ServicePlatform.Windows)
     {
         using var http = Client(transport, proxyPort);
         using var response = await http.GetAsync($"https://api.github.com/repos/{Repository(id)}/releases/latest", HttpCompletionOption.ResponseHeadersRead, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden || (int)response.StatusCode == 429) throw new UserError("GitHub временно ограничил проверки. Попробуйте позже.");
         response.EnsureSuccessStatusCode();
         var bytes = await ReadLimited(response.Content, 1024 * 1024, ct);
-        return Parse(id, System.Text.Encoding.UTF8.GetString(bytes));
+        return Parse(id, System.Text.Encoding.UTF8.GetString(bytes), platform);
     }
     static HttpClient Client(HttpMessageHandler? handler, int proxyPort) { var client = new HttpClient(handler ?? NetworkRequests.Handler(proxyPort)) { Timeout = TimeSpan.FromSeconds(90) }; client.DefaultRequestHeaders.UserAgent.ParseAdd("kot-services/" + ClientIdentity.Version); return client; }
     public static async Task Download(ServiceRelease release, string path, IProgress<double>? progress, CancellationToken ct, HttpMessageHandler? transport = null, int proxyPort = 0)
     {
         // Revalidate the descriptor even when it came from a local test or manifest.
-        if (!ValidVersion(release.Version) || release.Download.AbsoluteUri != $"https://github.com/{Repository(release.Id)}/releases/download/{release.Version}/{(release.Id == "zapret" ? "zapret-discord-youtube-" + release.Version.TrimStart('v') + ".zip" : "TgWsProxy_windows.exe")}" || release.Size is <= 0 or > MaxDownload || !Regex.IsMatch(release.Sha256, "^[a-f0-9]{64}$")) throw new UserError("Некорректный пакет сервиса.");
+        if (!ValidVersion(release.Version) || release.Download.AbsoluteUri != $"https://github.com/{Repository(release.Id)}/releases/download/{release.Version}/{AssetName(release.Id, release.Version, release.Platform)}" || release.Size is <= 0 or > MaxDownload || !Regex.IsMatch(release.Sha256, "^[a-f0-9]{64}$")) throw new UserError("Некорректный пакет сервиса.");
         using var http = Client(transport, proxyPort); Uri url = release.Download; bool created = false;
         try
         {

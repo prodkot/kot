@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+# Never replace a running privileged executable, or open traffic by deleting rules.
+if [ -e /run/kot-network/lock ]; then
+    if ! flock -n /run/kot-network/lock true; then
+        echo "Exit kot. and stop its VPN before changing the package." >&2
+        exit 1
+    fi
+fi
+if [ -e /run/kot-network/guard ]; then
+    echo "kot. protection is retained. Explicitly recover the network first:" >&2
+    echo "pkexec /usr/lib/kot/network-helper.py recover" >&2
+    exit 1
+fi
+# XDG profiles/keyring and the dedicated UID are deliberately preserved.

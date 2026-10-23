@@ -1,6 +1,9 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
+  // Hosts may omit optional features; Windows keeps the existing default.
+  const servicesEnabled=window.kotCapabilities?.services!==false;
+  if(!servicesEnabled)document.querySelectorAll('[data-page="services"],#page-services,#serviceSettingsDialog,#zapretTestDialog,#serviceRemoveDialog,#serviceSecretDialog').forEach(el=>el.remove());
   function startupTheme(theme){
     const light=theme==='light';
     document.documentElement.classList.toggle('theme-light',light);
@@ -115,12 +118,12 @@
   }
   function moveNav(){const active=document.querySelector('.nav-button[aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
   function page(name){
-    if(name===current||!$('page-'+name))return;
+    if(name===current||!$('page-'+name)||name==='services'&&!servicesEnabled)return;
     const previous=$('page-'+current);for(const el of motions.keys())if(el===previous||previous.contains(el))cancelMotion(el);current=name;
     closeSubscriptions();
     document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='page-'+name);
     document.querySelectorAll('[data-page]').forEach(el=>{if(el.dataset.page===(el.classList.contains('nav-button')&&['statistics','diagnostics','logs'].includes(name)?'settings':name))el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
-    const main=document.querySelector('.main');main.dataset.view=name;main.scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(true); if(name==='servers')renderServers(); if(name==='statistics'||name==='home')renderStatistics();clientTools.render();serviceTools.render();
+    const main=document.querySelector('.main');main.dataset.view=name;main.scrollTop=0; moveNav(); request('view',{page:name}); if(name==='logs')renderLogs(true); if(name==='servers')renderServers(); if(name==='statistics'||name==='home')renderStatistics();clientTools.render();serviceTools?.render();
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
@@ -157,7 +160,7 @@
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;
     $('pingError').hidden=!ping.error;$('pingError').textContent=ping.error||'';
-    clientTools.render();serviceTools.render();renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs')renderLogs(true);
+    clientTools.render();serviceTools?.render();renderTraffic(); renderStatistics(true); renderUpdate(); if(current==='logs')renderLogs(true);
     setState(data.state,old);const renderKey=JSON.stringify([data.nodes,data.selected,data.favorites,data.ping?.settings?.sort,data.ping?.busy]);if(renderKey!==renderedServers){renderedServers=renderKey;renderServers();}
     if(!initialSnapshot){initialSnapshot=true;finishStartup();}
   }
@@ -630,7 +633,7 @@
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
   $('statisticsBack').addEventListener('click',()=>{page('settings');$('statisticsButton').focus({preventScroll:true});});
   document.querySelectorAll('[data-back-settings]').forEach(button=>button.addEventListener('click',()=>{const from=current;page('settings');document.querySelector('.settings-tools [data-page='+from+']').focus({preventScroll:true});}));
-  const serviceTools=window.KotServices({getModel:()=>model,getPage:()=>current,rpc,toast,openDialog,closeDialog});
+  const serviceTools=servicesEnabled?window.KotServices({getModel:()=>model,getPage:()=>current,rpc,toast,openDialog,closeDialog}):null;
   window.KotAbout({getModel:()=>model,openDialog,closeDialog});
   const clientTools=window.KotClientTools({getModel:()=>model,getPage:()=>current,getPeriod:()=>statisticsPeriod,rpc,toast,openDialog,closeDialog,page});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();

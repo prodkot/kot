@@ -10,9 +10,12 @@ public static class XrayRuntime
     public const string Revision = "0f3d884786f9";
     public static JsonObject Build(Node node, int healthPort, bool tun = false, int proxyPort = 0,
         int metricsPort = 0, string secret = "", bool smart = false, string[]? bypass = null,
-        RoutingRules? manual = null, IReadOnlyDictionary<string, string>? geoIpPaths = null, string physicalInterface = "")
+        RoutingRules? manual = null, IReadOnlyDictionary<string, string>? geoIpPaths = null, string physicalInterface = "",
+        XrayPlatform platform = XrayPlatform.Windows)
     {
         NodeSecurity.Validate(node);
+        if (platform == XrayPlatform.Linux && manual != null && manual.DirectApps.Concat(manual.ProxyApps).Concat(manual.BlockApps).Any())
+            throw new UserError("Правила приложений Windows .exe не поддерживаются в Linux. Удалите их из активного профиля; правила сайтов и IP доступны.");
         Port(healthPort);
         if (proxyPort != 0) Port(proxyPort);
         if (metricsPort != 0) { Port(metricsPort); if (secret.Length < 32) throw new UserError("Небезопасные настройки статистики."); }
@@ -27,6 +30,8 @@ public static class XrayRuntime
         var oldTags = (c["inbounds"] as JsonArray ?? []).Select(i => i?["tag"]?.ToString()).Where(t => t != null).ToHashSet();
         var routing = c["routing"] as JsonObject ?? new(); c["routing"] = routing;
         var rules = routing["rules"] as JsonArray ?? []; routing["rules"] = rules;
+        if (platform == XrayPlatform.Linux && rules.OfType<JsonObject>().Any(rule => rule["process"] is JsonArray apps && apps.Count > 0))
+            throw new UserError("Маршрутизация по процессам в полном конфиге не поддерживается изолированным Linux-ядром. Нужна отдельная Linux-политика приложений.");
         foreach (var rule in rules.OfType<JsonObject>())
             if (rule["inboundTag"] is JsonArray tags)
             {
@@ -66,19 +71,14 @@ public static class XrayRuntime
         {
             ["tag"] = "kot-tun", ["protocol"] = "tun", ["settings"] = new JsonObject
             {
-                ["name"] = "kot-tun", ["desc"] = "kot. Xray", ["mtu"] = 1500,
-                ["gateway"] = new JsonArray("172.28.231.1/30", "fdfe:dcba:231::1/126"),
-                // gateway is the Windows adapter's own address. DNS must use the
-                // peer address so queries enter Wintun instead of local delivery.
-                ["dns"] = new JsonArray("172.28.231.2", "fdfe:dcba:231::2"),
-                ["autoSystemRoutingTable"] = new JsonArray("0.0.0.0/0", "::/0"), ["autoOutboundsInterface"] = "auto",
-                ["autoSystemWfpBlockLeak"] = new JsonArray("dns", "misconfigtun")
+                ["name"] = "kot-tun", ["mtu"] = 1500
             },
             // Keep the sniffed destination for egress as well as routing. Otherwise
             // a browser-selected unreachable IPv6 survives into freedom/VLESS,
             // and neither split DNS nor address racing can recover via IPv4.
             ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls", "quic"), ["routeOnly"] = false }
         });
+        if (tun) XrayTunSettings.Apply(inputs.OfType<JsonObject>().Single(i => i["tag"]?.ToString() == "kot-tun")["settings"]!.AsObject(), platform);
         if (manual != null || node.FullConfig == null)
         {
             manual?.Validate(); rules.Clear(); routing.Remove("balancers"); c.Remove("observatory"); c.Remove("burstObservatory");
@@ -111,6 +111,14 @@ public static class XrayRuntime
         }
         var dns = c["dns"] as JsonObject ?? new(); c["dns"] = dns;
         if (dns["servers"] is not JsonArray dnsServers || dnsServers.Count == 0) dns["servers"] = new JsonArray("https://1.1.1.1/dns-query");
+        if (tun && platform == XrayPlatform.Linux)
+            foreach (var server in dns["servers"]!.AsArray())
+            {
+                string address = server is JsonObject entry ? entry["address"]?.ToString() ?? "" : server?.ToString() ?? "";
+                string host = Uri.TryCreate(address, UriKind.Absolute, out var uri) && address.Contains("://") ? uri.Host.Trim('[', ']') : address.Trim('[', ']');
+                if (!IPAddress.TryParse(host, out var ip) || IPAddress.IsLoopback(ip) || ip.Equals(IPAddress.Any) || ip.Equals(IPAddress.IPv6Any))
+                    throw new UserError("Linux TUN требует DNS с явным IP-адресом, без системного/localhost bootstrap. Используйте IP-based DNS или режим системного прокси для этого полного конфига.");
+            }
         // Resolve transport endpoints independently of the tunnel they establish.
         HashSet<string> endpoints = [];
         void Find(JsonNode? value)
