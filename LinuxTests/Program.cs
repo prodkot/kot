@@ -63,6 +63,14 @@ fake["org.gnome.system.proxy.https/host"] = "'user-change.test'";
 await proxy.Restore();
 Check(fake["org.gnome.system.proxy/mode"] == "'auto'" && fake["org.gnome.system.proxy.http/port"] == "9000", "GNOME compare-and-restore returns owned settings");
 Check(fake["org.gnome.system.proxy.https/host"] == "'user-change.test'", "GNOME restore preserves intervening user change");
+string proxyReceipt = Path.Combine(Paths.Config, "gnome-proxy.json");
+string beforeInvalidReceipt = System.Text.Json.JsonSerializer.Serialize(fake);
+Paths.Atomic(proxyReceipt, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new GnomeProxy.Receipt(
+    new() { ["foreign/key"] = "invalid", ["org.gnome.system.proxy/mode"] = "'none'" },
+    new() { ["foreign/key"] = "invalid", ["org.gnome.system.proxy/mode"] = "'auto'" })));
+try { await proxy.Restore(); throw new Exception("invalid proxy receipt accepted"); } catch (UserError) { }
+Check(System.Text.Json.JsonSerializer.Serialize(fake) == beforeInvalidReceipt && File.Exists(proxyReceipt), "corrupt proxy receipt rejected before any setting changes; journal preserved");
+File.Delete(proxyReceipt);
 Paths.Atomic(Path.Combine(Paths.Config, "guard-active"), "retained protection"u8.ToArray());
 var retained = new Tunnel(proxy, new XrayAssets(Path.Combine(Paths.Cache, "guard-assets")), new GeoIpCache(Path.Combine(Paths.Cache, "guard-geo")));
 await retained.Connect(profile);

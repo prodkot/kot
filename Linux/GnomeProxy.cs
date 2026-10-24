@@ -36,10 +36,15 @@ public sealed class GnomeProxy
         if (!File.Exists(path)) return;
         if (new FileInfo(path).Length > 16384) throw new UserError("Повреждён журнал прокси; требуется ручное восстановление.");
         var receipt = JsonSerializer.Deserialize<Receipt>(File.ReadAllBytes(path)) ?? throw new UserError("Повреждён журнал прокси.");
+        // Validate the whole receipt before the first write. A corrupt late key
+        // must not leave an already partially restored proxy configuration.
+        if (receipt.Original == null || receipt.Applied == null || receipt.Applied.Count == 0
+            || !receipt.Original.Keys.ToHashSet().SetEquals(receipt.Applied.Keys)
+            || receipt.Applied.Any(pair => !Allowed(pair.Key) || pair.Value == null || receipt.Original[pair.Key] == null))
+            throw new UserError("Неверный журнал прокси; настройки не изменены.");
         // Restore each key only if unchanged. A user's intervening change wins.
         foreach (var (key, value) in receipt.Applied.Reverse())
         {
-            if (!Allowed(key) || !receipt.Original.ContainsKey(key)) throw new UserError("Неверный журнал прокси.");
             if (await Read(key) == value) await Write(key, receipt.Original[key]);
         }
         File.Delete(path);

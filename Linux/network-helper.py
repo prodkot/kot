@@ -77,8 +77,12 @@ def validate(envelope):
             for child in value:
                 walk(child)
         elif isinstance(value, str):
-            if '\x00' in value or 'ext:' in value or value.startswith(('unix:', 'file:', '/proc/', '/dev/')):
+            if '\x00' in value or value.startswith(('unix:', 'file:', '/proc/', '/dev/')):
                 raise ValueError('external file reference')
+            if value.startswith('ext:'):
+                parts = value.split(':', 2)
+                if len(parts) != 3 or parts[1] not in {'geoip.dat', 'geosite.dat'} or not parts[2]:
+                    raise ValueError('external file reference')
     walk(config)
     assets = envelope.get('assets', {})
     if not isinstance(assets, dict) or set(assets) - {'geoip.dat', 'geosite.dat'}:

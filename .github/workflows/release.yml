@@ -30,7 +30,7 @@ jobs:
           python-version: '3.x'
       - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
           cache: false
       - name: Verify tag and run core tests
         shell: pwsh

@@ -55,6 +55,18 @@ class Validation(unittest.TestCase):
         with self.assertRaises(ValueError):
             helper.validate(request)
 
+    def test_only_bundled_external_geofiles_are_allowed(self):
+        for value in ('ext:geoip.dat:private', 'ext:geosite.dat:category-ads-all'):
+            request = self.envelope()
+            request['config']['routing'] = {'rules': [{'domain': [value]}]}
+            helper.validate(request)
+        for value in ('ext:/etc/shadow:x', 'ext:../../geoip.dat:private', 'ext:other.dat:x', 'ext:geoip.dat:'):
+            with self.subTest(value=value):
+                request = self.envelope()
+                request['config']['routing'] = {'rules': [{'domain': [value]}]}
+                with self.assertRaises(ValueError):
+                    helper.validate(request)
+
 
 class RoutingPolicy(unittest.TestCase):
     def test_only_core_uid_bypasses_tun_in_both_families(self):

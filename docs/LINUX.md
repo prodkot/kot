@@ -12,7 +12,7 @@
 
 ## Сборка
 
-Нужны Ubuntu x86_64, .NET SDK **10.0.401**, Go **1.27.2**, Python 3.12+ и dpkg-dev.
+Нужны Ubuntu x86_64, .NET SDK **10.0.401**, Go **1.27.3**, Python 3.12+ и dpkg-dev.
 Зависимости NuGet закреплены в `Linux/packages.lock.json`, Go — в закреплённом
 архиве Xray с SHA-256 и `go.sum`. Не отключайте TLS или проверку Go checksum DB.
 
