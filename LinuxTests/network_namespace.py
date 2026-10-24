@@ -45,6 +45,9 @@ command('/usr/sbin/ip', 'link', 'add', 'test-dummy', 'type', 'dummy')
 command('/usr/sbin/ip', 'link', 'set', 'test-dummy', 'up')
 command('/usr/sbin/ip', 'addr', 'add', '198.18.0.1/24', 'dev', 'test-dummy')
 command('/usr/sbin/ip', '-6', 'addr', 'add', '2001:db8:1::1/64', 'dev', 'test-dummy', 'nodad')
+# More-specific physical routes must not bypass the application's routing rules.
+command('/usr/sbin/ip', 'route', 'add', '203.0.113.0/24', 'dev', 'test-dummy')
+command('/usr/sbin/ip', '-6', 'route', 'add', '2001:db8:2::/64', 'dev', 'test-dummy')
 command('/usr/sbin/nft', 'add', 'table', 'inet', 'foreign_test')
 before = command('/usr/sbin/nft', 'list', 'table', 'inet', 'foreign_test').stdout
 fd = h.prepare(0)
@@ -56,6 +59,10 @@ try:
         result = command('/usr/sbin/ip', family, 'route', 'get', address, 'uid', '12345').stdout
         assert b'kot-tun' in result, result
     print('PASS IPv4/IPv6 policy route selected for non-core UID')
+    for family, address in (('-4', '198.18.0.2'), ('-6', '2001:db8:1::2')):
+        result = command('/usr/sbin/ip', family, 'route', 'get', address, 'uid', '12345').stdout
+        assert b'kot-tun' in result, result
+    print('PASS connected and more-specific physical routes cannot bypass Xray policy')
     # A test-only mark selects the same policy for sockets in this one-UID userns.
     for family in ('-4', '-6'):
         command('/usr/sbin/ip', family, 'rule', 'add', 'pref', '10779', 'fwmark', '123', 'lookup', h.TABLE)

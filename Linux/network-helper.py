@@ -178,7 +178,10 @@ def prepare(uid):
         for family in ('-4', '-6'):
             command('/usr/sbin/ip', family, 'route', 'add', 'default', 'dev', 'kot-tun', 'table', TABLE)
             command('/usr/sbin/ip', family, 'rule', 'add', 'pref', '10780', 'uidrange', f'{uid}-{uid}', 'lookup', 'main')
-            command('/usr/sbin/ip', family, 'rule', 'add', 'pref', '10781', 'lookup', 'main', 'suppress_prefixlength', '0')
+            # Only the core may bypass the tunnel. A main-table lookup with a
+            # suppressed default also accepts every more-specific physical route,
+            # silently bypassing Xray's proxy/block policy (including DHCP routes).
+            # LAN/direct decisions belong to Xray, whose UID uses main above.
             command('/usr/sbin/ip', family, 'rule', 'add', 'pref', '10782', 'lookup', TABLE)
         command('/usr/bin/resolvectl', 'dns', 'kot-tun', '172.28.231.2')
         command('/usr/bin/resolvectl', 'domain', 'kot-tun', '~.')
