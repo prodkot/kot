@@ -13,7 +13,7 @@ import time
 
 app = Path(sys.argv[1]).resolve()
 fixture = Path(sys.argv[2]).resolve()
-root = Path(tempfile.mkdtemp(prefix='kot-no-services-', dir='/tmp/opencode'))
+root = Path(tempfile.mkdtemp(prefix='kot-no-services-'))
 env = dict(os.environ)
 for key in ('XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'):
     path = root / key

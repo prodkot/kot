@@ -11,7 +11,7 @@ import threading
 appdir = Path(sys.argv[1]).resolve()
 evidence = Path(sys.argv[2]).resolve()
 evidence.mkdir(parents=True, exist_ok=True)
-isolation = Path(tempfile.mkdtemp(prefix='kot-gui-', dir='/tmp/opencode'))
+isolation = Path(tempfile.mkdtemp(prefix='kot-gui-'))
 for key in ('XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'):
     os.environ[key] = str(isolation / key)
 spec = importlib.util.spec_from_file_location('kot_shell', appdir / 'shell.py')

@@ -28,7 +28,7 @@ if os.geteuid() != 0 or os.readlink('/proc/self/ns/net') == os.environ.get('KOT_
 spec = importlib.util.spec_from_file_location('helper', ROOT / 'Linux/network-helper.py')
 h = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(h)
-h.STATE = Path(tempfile.mkdtemp(prefix='kot-netns-', dir='/tmp/opencode'))
+h.STATE = Path(tempfile.mkdtemp(prefix='kot-netns-'))
 real_command = h.command
 
 

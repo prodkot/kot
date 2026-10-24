@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-root = tempfile.mkdtemp(prefix='kot-dconf-', dir='/tmp/opencode')
+root = tempfile.mkdtemp(prefix='kot-dconf-')
 env = dict(os.environ, KOT_TEST_ROOT=root, KOT_ISOLATED_DBUS='1')
 for key in ('XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
     path = Path(root) / key

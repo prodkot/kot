@@ -25,7 +25,7 @@ if (args.FirstOrDefault() == "--verify-services-backup")
     return;
 }
 
-string root = Environment.GetEnvironmentVariable("KOT_TEST_ROOT") ?? Path.Combine("/tmp/opencode", "kot-linux-tests-" + Guid.NewGuid().ToString("N"));
+string root = Environment.GetEnvironmentVariable("KOT_TEST_ROOT") ?? Path.Combine(Path.GetTempPath(), "kot-linux-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 foreach (string name in new[] { "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR" }) Environment.SetEnvironmentVariable(name, Path.Combine(root, name));
 void Check(bool ok, string name) { if (!ok) throw new Exception("FAIL " + name); Console.WriteLine("PASS " + name); }

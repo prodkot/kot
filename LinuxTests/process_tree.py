@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 
-root = Path(tempfile.mkdtemp(prefix='kot-process-test-', dir='/tmp/opencode'))
+root = Path(tempfile.mkdtemp(prefix='kot-process-test-'))
 pidfile = root / 'pids.json'
 launcher = Path(__file__).resolve().parents[1] / 'Linux/process-launcher.py'
 worker = "import os,subprocess,time,json,pathlib; c=subprocess.Popen(['/bin/sleep','60']); pathlib.Path(" + repr(str(pidfile)) + ").write_text(json.dumps([os.getpid(),c.pid])); time.sleep(60)"
