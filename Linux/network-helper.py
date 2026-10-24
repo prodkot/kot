@@ -192,6 +192,22 @@ def prepare(uid):
         raise
 
 
+def wait_for_stop(child, input_fd=0):
+    """Only an explicit complete stop request permits releasing protection."""
+    with selectors.DefaultSelector() as selector:
+        selector.register(input_fd, selectors.EVENT_READ)
+        control = bytearray()
+        while child.poll() is None:
+            if selector.select(0.25):
+                block = os.read(input_fd, 64)
+                if not block:
+                    return False
+                control.extend(block)
+                if b'\n' in control or len(control) >= 64:
+                    return control == b'stop\n'
+    return False
+
+
 def main():
     os.umask(0o077)
     if os.geteuid() != 0 or not os.environ.get('PKEXEC_UID', '').isdecimal():
@@ -248,6 +264,7 @@ def main():
         for name, encoded in envelope.get('assets', {}).items():
             (assets / name).write_bytes(base64.b64decode(encoded, validate=True))
             (assets / name).chmod(0o644)
+        supervisor_pid = os.getpid()
         def demote():
             os.setgroups([])
             os.setgid(account.pw_gid)
@@ -255,6 +272,8 @@ def main():
             # setuid clears PR_SET_PDEATHSIG: set it AFTER dropping credentials.
             if ctypes.CDLL(None).prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
                 os._exit(1)
+            if os.getppid() != supervisor_pid or ctypes.CDLL(None).prctl(38, 1, 0, 0, 0) != 0:
+                os._exit(1)  # close the parent-death race; forbid gaining privileges
         # /run/kot-network is private, assets are exposed by an FD-relative path.
         assetfd = os.open(assets, os.O_RDONLY | os.O_DIRECTORY)
         env = dict(ENV, XRAY_LOCATION_ASSET=f'/proc/self/fd/{assetfd}')
@@ -276,18 +295,7 @@ def main():
             except (BrokenPipeError, OSError):
                 pass
         threading.Thread(target=drain, daemon=True).start()
-        selector = selectors.DefaultSelector()
-        selector.register(sys.stdin, selectors.EVENT_READ)
-        control = bytearray()
-        while child.poll() is None:
-            if selector.select(0.25):
-                block = os.read(0, 64)
-                if not block:
-                    break  # EOF means GUI/backend crash: retain guard
-                control.extend(block)
-                if b'\n' in control or len(control) >= 64:
-                    normal = control == b'stop\n'
-                    break
+        normal = wait_for_stop(child)
     finally:
         if child is not None and child.poll() is None:
             os.killpg(child.pid, signal.SIGTERM)
@@ -305,6 +313,10 @@ def main():
             release_guard()
         for path in (STATE / 'assets').glob('*.dat'):
             path.unlink()
+    if not normal:
+        # A zero exit status is a receipt of successful explicit disconnection.
+        # EOF/core death must not let the client clear its retained-guard marker.
+        raise RuntimeError('core stopped without an explicit disconnect')
 
 
 if __name__ == '__main__':

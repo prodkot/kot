@@ -63,6 +63,12 @@ fake["org.gnome.system.proxy.https/host"] = "'user-change.test'";
 await proxy.Restore();
 Check(fake["org.gnome.system.proxy/mode"] == "'auto'" && fake["org.gnome.system.proxy.http/port"] == "9000", "GNOME compare-and-restore returns owned settings");
 Check(fake["org.gnome.system.proxy.https/host"] == "'user-change.test'", "GNOME restore preserves intervening user change");
+Paths.Atomic(Path.Combine(Paths.Config, "guard-active"), "retained protection"u8.ToArray());
+var retained = new Tunnel(proxy, new XrayAssets(Path.Combine(Paths.Cache, "guard-assets")), new GeoIpCache(Path.Combine(Paths.Cache, "guard-geo")));
+await retained.Connect(profile);
+Check(retained.State == "idle" && retained.Guard && File.Exists(Path.Combine(Paths.Config, "guard-active")) && retained.Error.Contains("аварийная блокировка"), "retained kill switch cannot be silently cleared by a connection without protection");
+File.Delete(Path.Combine(Paths.Config, "guard-active"));
+if (args.Contains("--managed-only")) return;
 using (var timeout = new CancellationTokenSource(250))
 {
     var watch = System.Diagnostics.Stopwatch.StartNew();

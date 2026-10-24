@@ -109,6 +109,7 @@ public sealed class Tunnel
             if (State != "idle") return;
             attempt = new CancellationTokenSource(TimeSpan.FromSeconds(90)); var ct = attempt.Token;
             Set("connecting");
+            if (Guard && !profile.KillSwitch) throw new UserError("Сохранена аварийная блокировка. Явно отключите Kill switch в настройках перед подключением без защиты.");
             var node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
             if (profile.Selected == "auto")
             {
@@ -166,8 +167,10 @@ public sealed class Tunnel
         }
         catch (Exception ex)
         {
-            await StopCore(false);
-            Set("idle", ex is OperationCanceledException ? "Подключение отменено или истекло время ожидания." : ex is UserError ? ex.Message : "Ошибка подключения: " + ex.GetType().Name);
+            string error = ex is OperationCanceledException ? "Подключение отменено или истекло время ожидания." : ex is UserError ? ex.Message : "Ошибка подключения: " + ex.GetType().Name;
+            try { await StopCore(false); }
+            catch { error += " Восстановление сети не подтверждено; требуется явное восстановление."; }
+            Set("idle", error);
         }
         finally { attempt?.Dispose(); attempt = null; gate.Release(); }
     }
@@ -198,6 +201,7 @@ public sealed class Tunnel
     {
         Cancel(); await gate.WaitAsync();
         try { Set("disconnecting"); await StopCore(normal); Set("idle"); }
+        catch { Set("idle", "Остановка не подтверждена. Защита считается активной; повторите отключение для явного восстановления сети."); throw; }
         finally { gate.Release(); }
     }
     async Task StopCore(bool normal)
@@ -208,19 +212,27 @@ public sealed class Tunnel
         try { await proxy.Restore(); }
         finally
         {
+            bool released = false;
             if (old != null)
             {
-                if (helper && !old.Exited)
+                try
                 {
-                    if (normal) await old.Write("stop\n", CancellationToken.None);
-                    old.CloseInput();
-                    using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await old.Wait(wait.Token);
+                    if (helper && !old.Exited)
+                    {
+                        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                        try { if (normal) await old.Write("stop\n", wait.Token); }
+                        finally { old.CloseInput(); }
+                        await old.Wait(wait.Token);
+                    }
+                    if (helper && normal)
+                    {
+                        if (old.ExitCode != 0) throw new UserError("Helper не подтвердил восстановление сети. Kill switch считается активным; повторите отключение для явного восстановления.");
+                        released = true;
+                    }
                 }
-                try { if (helper && normal && old.ExitCode != 0) throw new UserError("Helper не подтвердил восстановление сети. Kill switch считается активным; выполните явное восстановление."); }
                 finally { await old.DisposeAsync(); }
             }
-            if (normal && Guard && old == null)
+            if (normal && Guard && !released)
                 await OwnedProcess.Run("/usr/bin/pkexec", ["/usr/lib/kot/network-helper.py", "recover"]);
             if (normal) { Guard = false; File.Delete(GuardReceipt); }
         }

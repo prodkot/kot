@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('helper', Path(__file__).resolve().parents[1] / 'Linux/network-helper.py')
 helper = importlib.util.module_from_spec(spec)
@@ -78,6 +78,27 @@ class RoutingPolicy(unittest.TestCase):
                                    'lookup', helper.TABLE), calls)
                 self.assertFalse(any('suppress_prefixlength' in args for args in calls))
                 self.assertEqual(json.loads((Path(directory) / 'network').read_text())['ifindex'], 42)
+
+
+class Disconnect(unittest.TestCase):
+    def control(self, blocks, exited=False):
+        child = Mock()
+        child.poll.return_value = 1 if exited else None
+        selector = Mock()
+        selector.select.return_value = [True]
+        with patch.object(helper.selectors, 'DefaultSelector') as factory, \
+                patch.object(helper.os, 'read', side_effect=blocks):
+            factory.return_value.__enter__.return_value = selector
+            return helper.wait_for_stop(child)
+
+    def test_only_complete_explicit_stop_releases_guard(self):
+        self.assertTrue(self.control([b'st', b'op\n']))
+        for blocks in ([b''], [b'stop', b''], [b'anything\n'], [b'stop\nextra'], [b'x' * 64]):
+            with self.subTest(blocks=blocks):
+                self.assertFalse(self.control(blocks))
+
+    def test_core_crash_is_not_a_successful_disconnect(self):
+        self.assertFalse(self.control([], exited=True))
 
 
 if __name__ == '__main__':
