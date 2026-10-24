@@ -1,7 +1,7 @@
 name: Ubuntu desktop preview
 on:
   push:
-    branches: [main, 'port/**', 'dev/**']
+    branches: [main, 'port/**', 'dev/**', 'audit/**']
   pull_request:
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-secret-1 gnome-keyring dbus-x11 xvfb xauth iproute2 nftables systemd-resolved pkexec
-          mkdir -p /tmp/opencode artifacts/linux/evidence
+          mkdir -p artifacts/linux/evidence
       - name: Existing portable tests and real pinned core
         run: |
           python3 Tests/repository.py
@@ -39,6 +39,11 @@ jobs:
           python3 Release/xray-core.py artifacts/core --target linux
           python3 Tests/xray_integration.py --core artifacts/core/xray
           dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray
+      - name: Reachable Go and transitive NuGet vulnerabilities
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -C ".build-cache/xray-source/Xray-core-$(python3 -c 'import json; print(json.load(open("upstream/xray-experiment.json"))["commit"])')" ./main
+          dotnet list Linux/Kot.Linux.csproj package --vulnerable --include-transitive --format json > artifacts/linux/evidence/nuget-vulnerabilities.json
+          python3 -c 'import json; r=json.load(open("artifacts/linux/evidence/nuget-vulnerabilities.json")); assert not r.get("errors"), r; assert not any(p.get("vulnerabilities") for project in r["projects"] for framework in project.get("frameworks", []) for group in ("topLevelPackages", "transitivePackages") for p in framework.get(group, [])), r'
       - name: Linux process, storage, proxy and real VLESS tests
         run: |
           python3 LinuxTests/helper.py
@@ -47,30 +52,32 @@ jobs:
           dotnet run --project LinuxTests/Kot.LinuxTests.csproj -c Release -- artifacts/core/xray
           python3 LinuxTests/gnome.py
       - name: Isolated native TUN and nftables (never host network)
-        run: KOT_HOST_NETNS=$(readlink /proc/self/ns/net) unshare -Urnm python3 LinuxTests/network_namespace.py
+        run: sudo env KOT_HOST_NETNS="$(readlink /proc/self/ns/net)" unshare -nm python3 LinuxTests/network_namespace.py
       - name: Build and install deb
         run: |
           python3 Linux/build.py
-          sudo apt-get install -y ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb
+          sudo apt-get install -y ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb
+      - name: Installed privileged supervisor and core crash safety (isolated)
+        run: sudo env KOT_HOST_NETNS="$(readlink /proc/self/ns/net)" KOT_TEST_CALLER_UID="$(id -u)" unshare -nm python3 LinuxTests/privileged_namespace.py
       - name: Installed native GTK app with real backend and Secret Service
         timeout-minutes: 3
         run: |
-          dotnet run --project LinuxTests/Kot.LinuxTests.csproj -c Release --no-build -- --services-backup-fixture /tmp/opencode/services-fixture.kotbackup
+          dotnet run --project LinuxTests/Kot.LinuxTests.csproj -c Release --no-build -- --services-backup-fixture ${{ runner.temp }}/services-fixture.kotbackup
           dbus-run-session -- bash -euc '
             export XDG_RUNTIME_DIR=$(mktemp -d)
             export XDG_DATA_HOME=$(mktemp -d)
             export XDG_CONFIG_HOME=$(mktemp -d)
             eval "$(printf "kot-ci-test\n" | gnome-keyring-daemon --unlock --components=secrets)"
             xvfb-run -a timeout 70s /usr/bin/python3 LinuxTests/gui.py /usr/lib/kot artifacts/linux/evidence
-            timeout 50s /usr/bin/python3 LinuxTests/no_services.py /usr/lib/kot /tmp/opencode/services-fixture.kotbackup
+            timeout 50s /usr/bin/python3 LinuxTests/no_services.py /usr/lib/kot ${{ runner.temp }}/services-fixture.kotbackup
           '
       - name: Reinstall, package upgrade and removal preserve user data
         run: |
           mkdir -p "$HOME/.local/share/kot"
           printf 'ci-preserve\n' > "$HOME/.local/share/kot/ci-sentinel"
-          sudo dpkg -i ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb
-          dpkg-deb -R ./artifacts/linux/kot_0.8.0~linux0.2_amd64.deb artifacts/linux/upgrade-test
-          sed -i 's/Version: 0.8.0~linux0.2/Version: 0.8.0~linux0.3/' artifacts/linux/upgrade-test/DEBIAN/control
+          sudo dpkg -i ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb
+          dpkg-deb -R ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb artifacts/linux/upgrade-test
+          sed -i 's/Version: 0.8.0~linux0.3/Version: 0.8.0~linux0.4/' artifacts/linux/upgrade-test/DEBIAN/control
           dpkg-deb --root-owner-group --build artifacts/linux/upgrade-test artifacts/linux/upgrade-test.deb
           sudo dpkg -i artifacts/linux/upgrade-test.deb
           sudo apt-get remove -y kot

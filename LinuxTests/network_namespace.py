@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Run ONLY through unshare -Urnm. No host resolved/D-Bus is touched.
+"""Run ONLY as root through unshare -nm. No host resolved/D-Bus is touched.
 
 Proves native TUN FD traffic and IPv4/IPv6 nft blocking in a disposable netns.
 Does not prove polkit, dedicated UID drop, resolved, UFW or clean Ubuntu install.
@@ -63,7 +63,7 @@ try:
         result = command('/usr/sbin/ip', family, 'route', 'get', address, 'uid', '12345').stdout
         assert b'kot-tun' in result, result
     print('PASS connected and more-specific physical routes cannot bypass Xray policy')
-    # A test-only mark selects the same policy for sockets in this one-UID userns.
+    # A test-only mark selects the same policy for sockets in this isolated netns.
     for family in ('-4', '-6'):
         command('/usr/sbin/ip', family, 'rule', 'add', 'pref', '10779', 'fwmark', '123', 'lookup', h.TABLE)
 

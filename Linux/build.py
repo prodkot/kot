@@ -29,7 +29,7 @@ def build(output):
     app.mkdir(parents=True)
     run(['dotnet', 'publish', 'Linux/Kot.Linux.csproj', '-c', 'Release', '-r', 'linux-x64',
          '--self-contained', 'true', '-p:PublishSingleFile=false', '-p:ContinuousIntegrationBuild=true',
-         '-p:RestoreLockedMode=true', '-p:PathMap=' + str(ROOT) + '=/_/kot', '-o', str(app)])
+         '-p:RestoreLockedMode=true', '-m:1', '-p:UseSharedCompilation=false', '-p:PathMap=' + str(ROOT) + '=/_/kot', '-o', str(app)])
     run(['python3', 'Release/xray-core.py', str(app / 'core'), '--target', 'linux'])
     shutil.copytree(ROOT / 'Windows/ui', app / 'ui', ignore=shutil.ignore_patterns('services.js'))
     for name in ('shell.py', 'keyring.py', 'network-helper.py'):
@@ -45,6 +45,7 @@ def build(output):
         ('LINUX_PORT.md', 'usr/share/doc/kot/LINUX_PORT.md'),
         ('LINUX_TEST_REPORT.md', 'usr/share/doc/kot/LINUX_TEST_REPORT.md'),
         ('docs/LINUX.md', 'usr/share/doc/kot/LINUX.md'),
+        ('docs/LINUX_AUDIT.md', 'usr/share/doc/kot/LINUX_AUDIT.md'),
     ):
         target = staging / destination
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +56,7 @@ def build(output):
     control.mkdir()
     size = sum(f.stat().st_size for f in staging.rglob('*') if f.is_file()) // 1024
     (control / 'control').write_text(f'''Package: kot
-Version: 0.8.0~linux0.2
+Version: 0.8.0~linux0.3
 Section: net
 Priority: optional
 Architecture: amd64
@@ -81,7 +82,7 @@ Description: kot. Linux desktop VPN client (incomplete preview)
     for path in [staging, *staging.rglob('*')]:
         path.chmod(0o755 if path.is_dir() or path.relative_to(staging).as_posix() in executables else 0o644)
         os.utime(path, (epoch, epoch), follow_symlinks=False)
-    package = output / 'kot_0.8.0~linux0.2_amd64.deb'
+    package = output / 'kot_0.8.0~linux0.3_amd64.deb'
     run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(staging), str(package)],
         env=dict(os.environ, SOURCE_DATE_EPOCH=str(epoch)))
     digest = hashlib.sha256(package.read_bytes()).hexdigest()

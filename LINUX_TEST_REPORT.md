@@ -1,5 +1,8 @@
 # Linux test report
 
+Latest routing/security audit and linux0.3 validation: [docs/LINUX_AUDIT.md](docs/LINUX_AUDIT.md).
+The older results below describe the original preview.
+
 Status: DEVELOPMENT PREVIEW — not a completed/full Linux port.
 
 ## linux0.2 change: remove Services in Linux only
