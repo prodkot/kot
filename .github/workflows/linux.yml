@@ -56,7 +56,7 @@ jobs:
       - name: Build and install deb
         run: |
           python3 Linux/build.py
-          sudo apt-get install -y ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb
+          sudo apt-get install -y ./artifacts/linux/kot_0.8.0~linux0.4_amd64.deb
       - name: Installed privileged supervisor and core crash safety (isolated)
         run: sudo env KOT_HOST_NETNS="$(readlink /proc/self/ns/net)" KOT_TEST_CALLER_UID="$(id -u)" unshare -nm python3 LinuxTests/privileged_namespace.py
       - name: Installed native GTK app with real backend and Secret Service
@@ -75,9 +75,9 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/share/kot"
           printf 'ci-preserve\n' > "$HOME/.local/share/kot/ci-sentinel"
-          sudo dpkg -i ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb
-          dpkg-deb -R ./artifacts/linux/kot_0.8.0~linux0.3_amd64.deb artifacts/linux/upgrade-test
-          sed -i 's/Version: 0.8.0~linux0.3/Version: 0.8.0~linux0.4/' artifacts/linux/upgrade-test/DEBIAN/control
+          sudo dpkg -i ./artifacts/linux/kot_0.8.0~linux0.4_amd64.deb
+          dpkg-deb -R ./artifacts/linux/kot_0.8.0~linux0.4_amd64.deb artifacts/linux/upgrade-test
+          sed -i 's/Version: 0.8.0~linux0.4/Version: 0.8.0~linux0.5/' artifacts/linux/upgrade-test/DEBIAN/control
           dpkg-deb --root-owner-group --build artifacts/linux/upgrade-test artifacts/linux/upgrade-test.deb
           sudo dpkg -i artifacts/linux/upgrade-test.deb
           sudo apt-get remove -y kot

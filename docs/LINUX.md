@@ -29,7 +29,7 @@ python3 Linux/build.py
 ## Установка и запуск
 
 ```sh
-sudo apt install './artifacts/linux/kot_0.8.0~linux0.3_amd64.deb'
+sudo apt install './artifacts/linux/kot_0.8.0~linux0.4_amd64.deb'
 kot
 ```
 

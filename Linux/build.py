@@ -56,7 +56,7 @@ def build(output):
     control.mkdir()
     size = sum(f.stat().st_size for f in staging.rglob('*') if f.is_file()) // 1024
     (control / 'control').write_text(f'''Package: kot
-Version: 0.8.0~linux0.3
+Version: 0.8.0~linux0.4
 Section: net
 Priority: optional
 Architecture: amd64
@@ -82,7 +82,7 @@ Description: kot. Linux desktop VPN client (incomplete preview)
     for path in [staging, *staging.rglob('*')]:
         path.chmod(0o755 if path.is_dir() or path.relative_to(staging).as_posix() in executables else 0o644)
         os.utime(path, (epoch, epoch), follow_symlinks=False)
-    package = output / 'kot_0.8.0~linux0.3_amd64.deb'
+    package = output / 'kot_0.8.0~linux0.4_amd64.deb'
     run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(staging), str(package)],
         env=dict(os.environ, SOURCE_DATE_EPOCH=str(epoch)))
     digest = hashlib.sha256(package.read_bytes()).hexdigest()

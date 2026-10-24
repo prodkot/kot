@@ -129,7 +129,12 @@ public sealed class Backend
                     throw new UserError("Неизвестная страница.");
                 return null;
             case "toggle":
-                if (tunnel.State != "idle" || desired) { desired = false; established = false; await tunnel.Stop(); }
+                // An idle tunnel is not connected even when desired is still
+                // true after a failed reconnect. The UI shows "Подключить"
+                // in that state, so it must retry the connection instead of
+                // treating the retained guard as an active session and
+                // silently releasing it through Stop().
+                if (tunnel.State != "idle") { desired = false; established = false; await tunnel.Stop(); }
                 else { desired = true; established = false; await Connect(); }
                 return null;
             case "import": case "refresh": case "importText": await Import(action, data); return null;
@@ -224,11 +229,12 @@ public sealed class Backend
             string path = Path.Combine(folder, "autostart/io.github.prodkot.kot.desktop"); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (value.GetBoolean()) Paths.Atomic(path, "[Desktop Entry]\nType=Application\nName=kot.\nExec=/usr/bin/kot --startup\nTerminal=false\n"u8.ToArray()); else if (File.Exists(path)) File.Delete(path);
         }
-        if (key == "killSwitch" && !value.GetBoolean())
-        {
-            await tunnel.Stop();
-            await OwnedProcess.Run("/usr/bin/pkexec", ["/usr/lib/kot/network-helper.py", "recover"]);
-        }
+        // Stop() already releases the guard through the helper (or performs
+        // the explicit recover itself when the helper is gone). The extra
+        // unconditional pkexec recover prompted a second time and, when
+        // canceled, aborted the profile edit after the VPN was already
+        // stopped, leaving the saved profile inconsistent.
+        if (key == "killSwitch" && !value.GetBoolean()) await tunnel.Stop();
         void Edit() => Save(p =>
         {
             switch (key)
