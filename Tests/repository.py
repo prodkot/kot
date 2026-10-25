@@ -2,6 +2,7 @@
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import json
+import hashlib
 import re
 import shutil
 import subprocess
@@ -37,6 +38,20 @@ def check():
             "Release notes differ from the current changelog entry")
     sdk = json.loads(read("global.json"))["sdk"]["version"]
     require(bool(re.fullmatch(r"10\.\d+\.\d+", sdk)), "Pin a stable .NET 10 SDK")
+    pin = json.loads(read("upstream/xray-experiment.json"))
+    require(bool(re.fullmatch(r"[0-9a-f]{40}", pin["commit"])), "Pin the full Xray commit")
+    require(bool(re.fullmatch(r"[0-9a-f]{64}", pin["sourceSha256"])), "Pin the Xray source SHA256")
+    require(bool(re.fullmatch(r"go\d+\.\d+\.\d+", pin["goVersion"])), "Pin a stable Go compiler")
+    require(bool(re.fullmatch(r"\d+\.\d+\.\d+", pin["version"])), "Pin the Xray release version")
+    archive = ROOT / ("upstream/Xray-core-" + pin["commit"] + "-source.tar.gz")
+    require(archive.is_file(), "Pinned Xray source archive is missing")
+    if archive.is_file():
+        require(hashlib.sha256(archive.read_bytes()).hexdigest() == pin["sourceSha256"], "Xray source archive SHA256 differs")
+    runtime = read("Core/XrayRuntime.cs")
+    require(f'Revision = "{pin["commit"][:12]}"' in runtime, "Xray diagnostic revision differs")
+    require(f'Version = "{pin["version"]}"' in runtime, "Xray diagnostic version differs")
+    notices = read("licenses/Xray-Go-NOTICES.txt")
+    require(pin["commit"] in notices and "Go " + pin["goVersion"][2:] in notices, "Xray notices describe another build")
     for package in project.findall("ItemGroup/PackageReference") + ET.fromstring(read("Core/Kot.Core.csproj")).findall("ItemGroup/PackageReference"):
         require(bool(re.fullmatch(r"\d+(?:\.\d+){2,3}", package.get("Version", ""))),
                 f"Pin a stable package version: {package.get('Include')}")
@@ -72,12 +87,14 @@ def check():
                         f"Unpinned GitHub Action: {name}: {action}")
             if "actions/setup-dotnet@" in read(name):
                 require("global-json-file: global.json" in read(name), f"SDK selection must use global.json: {name}")
+            if "actions/setup-go@" in read(name):
+                require(f"go-version: '{pin['goVersion'][2:]}'" in read(name), f"Go compiler differs from the Xray pin: {name}")
 
     for name in ("LICENSE.txt", "THIRD-PARTY.txt", "SECURITY.md", "licenses/GPL-3.0.txt",
                  "licenses/Manrope-OFL.txt", "licenses/flag-icons-MIT.txt", "licenses/sing-box-Go-NOTICES.txt",
                  "licenses/YamlDotNet-MIT.txt", "licenses/ZXing-Net-Apache-2.0.txt",
                  "upstream/sing-box-1.14.2-source.tar.gz", "licenses/Xray-MPL-2.0.txt",
-                 "licenses/Xray-Go-NOTICES.txt", "upstream/Xray-core-0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e-source.tar.gz", "licenses/Wintun.txt", "upstream/xray-experiment.json"):
+                 "licenses/Xray-Go-NOTICES.txt", "licenses/Wintun.txt", "upstream/xray-experiment.json"):
         require((ROOT / name).is_file(), f"Required notice or corresponding source missing: {name}")
     require(not (ROOT / "site/assets/Manrope.ttf").exists(), "Site must use the canonical client font")
     if errors:

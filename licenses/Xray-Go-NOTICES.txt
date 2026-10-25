@@ -1,8 +1,8 @@
-Third-party notices for the pinned unmodified official Xray core 0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e, Windows amd64.
-Built with Go 1.27.2. Module list obtained from go version -m on the shipped executable.
+Third-party notices for the pinned unmodified official Xray core 1b1647cd9ddf0abc34b981d4611fc03bcac1ca74, Windows amd64.
+Built with Go 1.27.3. Module list obtained from go version -m on the shipped executable.
 
-Go 1.27.2 standard library license
-Source: https://raw.githubusercontent.com/golang/go/go1.27.2/LICENSE
+Go 1.27.3 standard library license
+Source: https://raw.githubusercontent.com/golang/go/go1.27.3/LICENSE
 
 Copyright 2009 The Go Authors.
 
@@ -893,12 +893,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 ========================================================================
-github.com/klauspost/cpuid/v2 v2.4.0
-Source archive: https://proxy.golang.org/github.com/klauspost/cpuid/v2/@v/v2.4.0.zip
-
+github.com/klauspost/cpuid/v2 v2.4.1
+Source archive: https://proxy.golang.org/github.com/klauspost/cpuid/v2/@v/v2.4.1.zip
 
 Notice file: LICENSE
-
 The MIT License (MIT)
 
 Copyright (c) 2015 Klaus Post
@@ -920,8 +918,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
 
 ========================================================================
 github.com/koron/go-ssdp v0.0.4
@@ -2456,12 +2452,10 @@ shall terminate as of the date such litigation is filed.
 
 
 ========================================================================
-golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582
-Source archive: https://proxy.golang.org/golang.org/x/crypto/x509roots/fallback/@v/v0.0.0-20261005185213-c3db4df58582.zip
-
+golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a
+Source archive: https://proxy.golang.org/golang.org/x/crypto/x509roots/fallback/@v/v0.0.0-20261020153306-9f2b28d4331a.zip
 
 Notice file: LICENSE
-
 Copyright 2009 The Go Authors.
 
 Redistribution and use in source and binary forms, with or without
@@ -2489,7 +2483,6 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 
 ========================================================================
 golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842

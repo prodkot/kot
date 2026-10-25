@@ -7,7 +7,9 @@ namespace Kot.Core;
 // schema so existing installations and backups need no destructive conversion.
 public static class XrayRuntime
 {
-    public const string Revision = "0f3d884786f9";
+    public const string Revision = "1b1647cd9ddf";
+    public const string Version = "26.10.21";
+    public const string Description = "Xray " + Version + " (" + Revision + ")";
     public static JsonObject Build(Node node, int healthPort, bool tun = false, int proxyPort = 0,
         int metricsPort = 0, string secret = "", bool smart = false, string[]? bypass = null,
         RoutingRules? manual = null, IReadOnlyDictionary<string, string>? geoIpPaths = null, string physicalInterface = "",

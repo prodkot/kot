@@ -79,6 +79,11 @@ public static class UpdateTests
         check(truncated,"download rejects bytes differing from advertised release size");
         string json="{\"tag_name\":\"v0.4.1\",\"prerelease\":true,\"assets\":[]}";
         check(RemoteUpdates.Parse(json,new Version("0.4.0"))==null,"automatic channel ignores GitHub prereleases");
+        foreach (string flag in new[] { "draft", "prerelease" })
+        {
+            string preview = "{\"tag_name\":\"v0.9.0-xray.1\",\"" + flag + "\":true,\"assets\":[]}";
+            check(RemoteUpdates.Parse(preview, new Version("0.8.0")) == null, "automatic channel ignores a " + flag + " with a preview suffix");
+        }
     }
     sealed class Fixture:HttpMessageHandler { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent([1,2,3])}); }
 }

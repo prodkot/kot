@@ -6,6 +6,7 @@ namespace Kot.Core;
 // never overwrites the files used by the currently saved subscription.
 public sealed class XrayAssets(string root)
 {
+    readonly SemaphoreSlim prepareGate = new(1, 1);
     public const int MaxBytes = 64 * 1024 * 1024;
     public string DirectoryFor(Node node)
     {
@@ -20,6 +21,13 @@ public sealed class XrayAssets(string root)
     public bool Available(Node node) => node.FullConfig == null || XrayConfig.GeoFiles(node.FullConfig).All(f => File.Exists(Path.Combine(DirectoryFor(node), f)));
     public async Task Prepare(IEnumerable<Node> nodes, HttpClient client, CancellationToken ct)
     {
+        // Import, reconnect and background checks share this cache instance.
+        await prepareGate.WaitAsync(ct);
+        try { await PrepareLocked(nodes, client, ct); }
+        finally { prepareGate.Release(); }
+    }
+    async Task PrepareLocked(IEnumerable<Node> nodes, HttpClient client, CancellationToken ct)
+    {
         foreach (var node in nodes.Where(n => n.FullConfig != null).DistinctBy(n => DirectoryFor(n) + string.Join(',', XrayConfig.GeoFiles(n.FullConfig!))))
         {
             foreach (string file in XrayConfig.GeoFiles(node.FullConfig!))
@@ -30,10 +38,14 @@ public sealed class XrayAssets(string root)
                 string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 try
                 {
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    deadline.CancelAfter(client.Timeout == Timeout.InfiniteTimeSpan ? TimeSpan.FromSeconds(45)
+                        : TimeSpan.FromMilliseconds(Math.Min(45000, client.Timeout.TotalMilliseconds)));
+                    var token = deadline.Token;
                     var uri = RoutingProfiles.Source(Source(node, file));
                     for (int redirects = 0; ; redirects++)
                     {
-                        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
+                        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
                         if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
                         {
                             if (redirects >= 5 || response.Headers.Location == null) throw new UserError("Слишком много перенаправлений геобазы Xray.");
@@ -41,19 +53,20 @@ public sealed class XrayAssets(string root)
                         }
                         if (!response.IsSuccessStatusCode) throw new UserError($"Геобаза Xray вернула HTTP {(int)response.StatusCode}.");
                         if (response.Content.Headers.ContentLength > MaxBytes) throw new UserError("Геобаза Xray больше 64 МиБ.");
-                        await using var input = await response.Content.ReadAsStreamAsync(ct);
+                        await using var input = await response.Content.ReadAsStreamAsync(token);
                         await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true))
                         {
                             byte[] buffer = new byte[65536]; int count, total = 0;
-                            while ((count = await input.ReadAsync(buffer, ct)) > 0)
+                            while ((count = await input.ReadAsync(buffer, token)) > 0)
                             {
                                 total += count; if (total > MaxBytes) throw new UserError("Геобаза Xray больше 64 МиБ.");
-                                await output.WriteAsync(buffer.AsMemory(0, count), ct);
+                                await output.WriteAsync(buffer.AsMemory(0, count), token);
                             }
                             if (total < 4) throw new UserError("Пустая геобаза Xray.");
                         }
                         // Both official protobuf lists start with field 1, length-delimited.
                         using (var check = File.OpenRead(temporary)) if (check.ReadByte() != 0x0a) throw new UserError("Вместо геобазы Xray получен другой файл.");
+                        token.ThrowIfCancellationRequested();
                         File.Move(temporary, path, overwrite: false); break;
                     }
                 }
