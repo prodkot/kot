@@ -1,5 +1,7 @@
 # Сборка
 
+Результаты последней проверки восстановления сети Linux: [LINUX_CLEANUP_AUDIT.md](LINUX_CLEANUP_AUDIT.md).
+
 Предварительный Ubuntu-порт собирается отдельно: [Linux: сборка, установка и ограничения](LINUX.md). Текущее состояние — [LINUX_PORT.md](../LINUX_PORT.md), выполненные проверки — [LINUX_TEST_REPORT.md](../LINUX_TEST_REPORT.md). Windows Setup и Linux `.deb` не взаимозаменяемы.
 
 Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.12+, Go 1.27.3 и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
