@@ -1,12 +1,16 @@
 #!/usr/bin/python3
 """Native GTK/WebKitGTK + real backend test, not a browser mock."""
 import importlib.util
+import gi
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import threading
+
+# WebKit snapshots expose cairo.Surface through PyGObject, not just pycairo.
+gi.require_foreign('cairo')
 
 appdir = Path(sys.argv[1]).resolve()
 evidence = Path(sys.argv[2]).resolve()
