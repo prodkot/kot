@@ -15,10 +15,10 @@ public static class RemoteUpdates
     {
         if (json.Length > 1024 * 1024) throw new UserError("Слишком большой ответ сервера обновлений.");
         using var doc = JsonDocument.Parse(json); var root = doc.RootElement;
+        if (root.TryGetProperty("draft", out var draft) && draft.GetBoolean() || root.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean()) return null;
         string tag = root.GetProperty("tag_name").GetString() ?? "";
         if (!Version.TryParse(tag.TrimStart('v', 'V'), out var version) || version.Major < 0) throw new UserError("Сервер вернул некорректную версию.");
         if (version <= current) return null;
-        if (root.TryGetProperty("draft", out var draft) && draft.GetBoolean() || root.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean()) return null;
         string expected = "Kot-Setup-" + version + "-Windows-x64.exe";
         var assets = root.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == expected).ToArray();
         if (assets.Length != 1) throw new UserError("В релизе не найден установщик kot. для Windows x64.");

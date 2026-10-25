@@ -49,6 +49,12 @@ public static class ProviderRouting
         // Provider priority: autorouting header, autorouting body, routing header, routing body.
         string? source = autorouting ?? result.Autorouting ?? routing ?? result.Routing;
         if (source == null) return result;
+        // ResponseHeadersRead ends HttpClient.Timeout at the headers. Keep one
+        // deadline through redirects, nested sources and the response body.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(client.Timeout == Timeout.InfiniteTimeSpan ? TimeSpan.FromSeconds(35)
+            : TimeSpan.FromMilliseconds(Math.Min(35000, client.Timeout.TotalMilliseconds)));
+        ct = deadline.Token;
         string value = Payload(source);
         for (int depth = 0; value.StartsWith("https://", StringComparison.OrdinalIgnoreCase); depth++)
         {

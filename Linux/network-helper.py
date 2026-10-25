@@ -130,8 +130,11 @@ def verify_guard_owner():
 
 def release_guard():
     if (STATE / 'guard').exists():
-        result = command('/usr/sbin/nft', 'list', 'table', 'inet', 'kot_guard', optional=True)
-        if result.returncode == 0:
+        # A failed per-table query cannot distinguish absence from a permission
+        # or kernel error. Keep the recovery receipt until enumeration succeeds.
+        value = json.loads(command('/usr/sbin/nft', '-j', 'list', 'tables').stdout)
+        tables = [item['table'] for item in value['nftables'] if 'table' in item]
+        if any(table.get('family') == 'inet' and table.get('name') == 'kot_guard' for table in tables):
             verify_guard_owner()
             command('/usr/sbin/nft', 'delete', 'table', 'inet', 'kot_guard')
         (STATE / 'guard').unlink()
@@ -149,6 +152,11 @@ def cleanup_network():
         command('/usr/sbin/ip', family, 'rule', 'del', 'pref', '10782', 'lookup', TABLE, optional=True)
         command('/usr/sbin/ip', family, 'rule', 'del', 'pref', '10781', 'lookup', 'main', 'suppress_prefixlength', '0', optional=True)
         command('/usr/sbin/ip', family, 'rule', 'del', 'pref', '10780', 'uidrange', f'{uid}-{uid}', 'lookup', 'main', optional=True)
+        # Deletion of an already absent tuple is harmless. Other failures must
+        # not be acknowledged as successful recovery while policy rules remain.
+        rules = json.loads(command('/usr/sbin/ip', '-j', family, 'rule', 'show').stdout)
+        if any(rule.get('priority') in (10780, 10781, 10782) for rule in rules):
+            raise RuntimeError('network rules remain; recovery receipt retained')
         command('/usr/sbin/ip', family, 'route', 'flush', 'table', TABLE)
     link = command('/usr/sbin/ip', '-j', 'link', 'show', 'kot-tun', optional=True)
     if link.returncode == 0:

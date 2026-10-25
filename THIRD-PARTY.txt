@@ -3,15 +3,15 @@
 Лицензия MIT относится к собственному коду kot. У компонентов ниже
 свои условия. Тексты лицензий и уведомлений лежат в папке licenses.
 
-Xray 26.10.10 (experimental source build)
+Xray 26.10.21 (official release source build)
 
 Единственное сетевое ядро, отдельный процесс xray.exe. Официальные
-исходники XTLS без изменений, коммит 0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e.
+исходники XTLS без изменений, коммит 1b1647cd9ddf0abc34b981d4611fc03bcac1ca74.
 Лицензия MPL-2.0: licenses/Xray-MPL-2.0.txt.
 Зависимости Go: licenses/Xray-Go-NOTICES.txt.
-Исходники: https://github.com/XTLS/Xray-core/tree/0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e
-Точный архив: upstream/Xray-core-0f3d884786f9ec73d3be8899cb6b9e1e6dd3c41e-source.tar.gz.
-Повторяемая сборка: Release/xray-core.py, Go 1.27.2.
+Исходники: https://github.com/XTLS/Xray-core/tree/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74
+Точный архив: upstream/Xray-core-1b1647cd9ddf0abc34b981d4611fc03bcac1ca74-source.tar.gz.
+Повторяемая сборка: Release/xray-core.py, Go 1.27.3.
 
 Wintun 0.14.1
 

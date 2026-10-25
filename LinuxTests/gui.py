@@ -1,12 +1,16 @@
 #!/usr/bin/python3
 """Native GTK/WebKitGTK + real backend test, not a browser mock."""
 import importlib.util
+import gi
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import threading
+
+# WebKit snapshots expose cairo.Surface through PyGObject, not just pycairo.
+gi.require_foreign('cairo')
 
 appdir = Path(sys.argv[1]).resolve()
 evidence = Path(sys.argv[2]).resolve()
@@ -26,6 +30,7 @@ class Test(shell.Application):
         self.set_application_id('io.github.prodkot.kot.NativeTests')
         self.steps = []
         self.started = False
+        self.startup = None
         self.result = 1
         GLib.timeout_add_seconds(35, self.timeout)
 
@@ -36,7 +41,10 @@ class Test(shell.Application):
         value = super().deliver(message)
         if message.get('kind') == 'snapshot' and not self.started:
             self.started = True
-            self.send_test(900001, 'importText', {'name': 'Нативный Linux', 'text': 'vless://11111111-1111-4111-8111-111111111111@127.0.0.1:19491?encryption=none#Linux-test'})
+            # A snapshot starts the asynchronous font/image/paint/host handshake.
+            # Wait for input to be released before changing theme or attempting
+            # navigation, just as a user must wait for the loading screen.
+            self.wait_for_startup()
         if message.get('kind') == 'reply' and message.get('id', 0) >= 900001:
             if message['id'] == 900004:
                 if message.get('ok') or 'убраны' not in message.get('error', ''):
@@ -57,6 +65,25 @@ class Test(shell.Application):
                 self.web.load_uri('https://example.invalid/denied')
                 self.send_test(900004, 'serviceAction', {'service': 'telegram', 'operation': 'install'})
         return value
+
+    def wait_for_startup(self):
+        script = '''JSON.stringify({
+          ready:!document.body.classList.contains('booting')&&document.getElementById('startupScreen').hidden&&!document.querySelector('.main').inert&&!document.querySelector('.sidebar').inert,
+          document:document.readyState,fonts:document.fonts.status,
+          image:document.getElementById('startupScreen').querySelector('img').complete})'''
+        self.web.evaluate_javascript(script, -1, None, shell.URI, None, self.startup_checked, None)
+        return False
+
+    def startup_checked(self, view, result, user):
+        try:
+            self.startup = json.loads(view.evaluate_javascript_finish(result).to_string())
+            if self.startup['ready']:
+                self.steps.append('native startup completed and released input before user actions')
+                self.send_test(900001, 'importText', {'name': 'Нативный Linux', 'text': 'vless://11111111-1111-4111-8111-111111111111@127.0.0.1:19491?encryption=none#Linux-test'})
+            else:
+                GLib.timeout_add(50, self.wait_for_startup)
+        except Exception as error:
+            self.fail('Startup check: ' + type(error).__name__ + ': ' + str(error))
 
     def send_test(self, id, action, data):
         # Uses exactly the same JS bridge as the UI, not direct backend injection.
@@ -122,7 +149,7 @@ class Test(shell.Application):
         self.quit_app()
 
     def timeout(self):
-        self.fail('35s deadline')
+        self.fail('35s deadline; startup: ' + json.dumps(self.startup))
         return False
 
 

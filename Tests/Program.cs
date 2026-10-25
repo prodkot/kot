@@ -20,6 +20,7 @@ Kot.Tests.LogTests.Run(Check);
 Kot.Tests.LoopbackPortTests.Run(Check);
 Kot.Tests.XhttpTests.Run(Check);
 await Kot.Tests.ProviderRoutingTests.Run(Check);
+await Kot.Tests.DownloadDeadlineTests.Run(Check);
 if (args.Contains("--provider")) return;
 Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);

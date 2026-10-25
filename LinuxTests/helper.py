@@ -113,5 +113,54 @@ class Disconnect(unittest.TestCase):
         self.assertFalse(self.control([], exited=True))
 
 
+class Cleanup(unittest.TestCase):
+    def test_guard_query_failure_preserves_recovery_receipt(self):
+        def command(*args, optional=False, **kwargs):
+            if optional:
+                return subprocess.CompletedProcess(args, 1, b'', b'Operation not permitted')
+            raise subprocess.CalledProcessError(1, args)
+        with tempfile.TemporaryDirectory(prefix='kot-guard-') as directory:
+            marker = Path(directory) / 'guard'
+            marker.write_text('active')
+            with patch.object(helper, 'STATE', Path(directory)), patch.object(helper, 'command', command):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    helper.release_guard()
+                self.assertTrue(marker.exists())
+
+    def test_absent_guard_can_be_recovered(self):
+        def command(*args, **kwargs):
+            missing = 'table' in args
+            return subprocess.CompletedProcess(args, int(missing), b'{"nftables":[]}', b'')
+        with tempfile.TemporaryDirectory(prefix='kot-guard-') as directory:
+            marker = Path(directory) / 'guard'
+            marker.write_text('active')
+            with patch.object(helper, 'STATE', Path(directory)), patch.object(helper, 'command', command):
+                helper.release_guard()
+                self.assertFalse(marker.exists())
+
+    def test_failed_rule_removal_preserves_network_receipt(self):
+        def command(*args, **kwargs):
+            if 'del' in args:
+                return subprocess.CompletedProcess(args, 1, b'', b'Operation not permitted')
+            output = b'[{"priority":10782,"table":47811}]' if 'rule' in args else b'[]'
+            return subprocess.CompletedProcess(args, 0, output, b'')
+        with tempfile.TemporaryDirectory(prefix='kot-cleanup-') as directory:
+            receipt = Path(directory) / 'network'
+            receipt.write_text('{"uid":12345,"ifindex":42}')
+            with patch.object(helper, 'STATE', Path(directory)), patch.object(helper, 'command', command):
+                with self.assertRaisesRegex(RuntimeError, 'rules'):
+                    helper.cleanup_network()
+                self.assertTrue(receipt.exists())
+
+    def test_successful_cleanup_removes_network_receipt(self):
+        with tempfile.TemporaryDirectory(prefix='kot-cleanup-') as directory:
+            receipt = Path(directory) / 'network'
+            receipt.write_text('{"uid":12345,"ifindex":42}')
+            result = subprocess.CompletedProcess([], 0, b'[]', b'')
+            with patch.object(helper, 'STATE', Path(directory)), patch.object(helper, 'command', return_value=result):
+                helper.cleanup_network()
+                self.assertFalse(receipt.exists())
+
+
 if __name__ == '__main__':
     unittest.main()

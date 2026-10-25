@@ -17,7 +17,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Repository consistency
-        run: python3 Tests/repository.py
+        run: |
+          python3 Tests/repository.py
+          python3 Tests/release_ref.py
       - name: Website assets and download provenance
         run: python3 site/check.py
       - name: Interactive demo in Chromium
@@ -98,7 +100,7 @@ jobs:
         run: |
           ./artifacts/window-tests/Kot.WindowTests.exe --services-test
           if ($LASTEXITCODE -ne 0) { throw 'Managed service lifecycle or package checks failed.' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: tray-preview

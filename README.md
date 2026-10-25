@@ -12,7 +12,7 @@
   <a href="docs/README.md">Документация</a>
 </p>
 
-> Здесь разрабатывается 0.8.0 на Xray. [Экспериментальные сборки](https://github.com/prodkot/kot/releases?q=prerelease%3Atrue) публикуются отдельно; кнопка скачивания ведёт на стабильный релиз.
+> В `main` уже находится 0.8.0 на Xray. Стабильный релиз пока 0.7.3; кнопка скачивания ведёт на него. [Предварительные сборки 0.8.0](https://github.com/prodkot/kot/releases?q=prerelease%3Atrue) публикуются отдельно.
 
 ![Интерфейс kot. 0.8.0 с демонстрационными данными](docs/images/overview-dark.png)
 
@@ -37,6 +37,8 @@
 ## Разработка
 
 [Сборка и проверки](docs/BUILD.md) · [Участие в разработке](CONTRIBUTING.md) · [Добавление музыки](docs/MUSIC.md)
+
+Основная Windows-разработка ведётся в `main`. Linux-порт пока отдельный: актуальные исправления находятся в [`fix/linux-laptop-acceptance`](https://github.com/prodkot/kot/tree/fix/linux-laptop-acceptance), исходный preview в [`port/ubuntu-linux`](https://github.com/prodkot/kot/tree/port/ubuntu-linux). Ветка `music` содержит аудиотеку страницы «О программе» и обновляется независимо от клиента.
 
 Ошибки и пожелания: [Issues](https://github.com/prodkot/kot/issues/new/choose). Уязвимости: [приватное сообщение](SECURITY.md). Перед публикацией журнала убери ключи и ссылки на подписки.
 
