@@ -42,7 +42,7 @@ def build(destination, target):
             raise ValueError('Wintun checksum mismatch')
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             (destination / 'wintun.dll').write_bytes(z.read('wintun/bin/amd64/wintun.dll'))
-    print(('PASS official Xray source + signed Wintun: ' if target == 'windows' else 'PASS pinned official Linux Xray (no Wintun): ') + pin['commit'])
+    print('PASS official Xray source' + (' + Wintun SHA-256' if target == 'windows' else '') + ': ' + pin['commit'])
 
 
 if __name__ == '__main__':
