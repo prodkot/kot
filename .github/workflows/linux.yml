@@ -1,7 +1,7 @@
 name: Ubuntu desktop preview
 on:
   push:
-    branches: [main, 'port/**', 'dev/**', 'audit/**']
+    branches: [main, 'port/**', 'dev/**', 'fix/**', 'audit/**']
   pull_request:
 permissions:
   contents: read
