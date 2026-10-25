@@ -52,6 +52,49 @@ static class DownloadDeadlineTests
             check(handler.Count == 1 && cache.Available(node), "simultaneous geo cache requests share one completed download without a rename race");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+
+        await ServiceDownloads(check);
+    }
+    static async Task ServiceDownloads(Action<bool, string> check)
+    {
+        using var metadata = new Handler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody()) }));
+        using var guard = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        bool cancelled = false;
+        try { await ServicePackages.Latest("telegram", guard.Token, metadata, timeout: TimeSpan.FromMilliseconds(100)); }
+        catch (OperationCanceledException) { cancelled = true; }
+        check(cancelled && !guard.IsCancellationRequested, "service metadata deadline includes a stalled response body");
+
+        string root = Path.Combine(Path.GetTempPath(), "kot-service-deadline-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var release = new ServiceRelease("telegram", "v1.0.0", new Uri("https://github.com/Flowseal/tg-ws-proxy/releases/download/v1.0.0/TgWsProxy_windows.exe"), 1, new string('a', 64), new Uri(ServicePackages.Page("telegram")));
+        string path = Path.Combine(root, "download.exe");
+        try
+        {
+            using var body = new Handler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody()) }));
+            using var bodyGuard = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            cancelled = false;
+            try { await ServicePackages.Download(release, path, null, bodyGuard.Token, body, timeout: TimeSpan.FromMilliseconds(100)); }
+            catch (OperationCanceledException) { cancelled = true; }
+            check(cancelled && !bodyGuard.IsCancellationRequested && !File.Exists(path), "service package deadline removes a stalled partial download");
+
+            using var redirects = new Handler(async ct =>
+            {
+                await Task.Delay(80, ct);
+                return new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("https://release-assets.githubusercontent.com/package") } };
+            });
+            using var redirectGuard = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            cancelled = false;
+            try { await ServicePackages.Download(release, path, null, redirectGuard.Token, redirects, timeout: TimeSpan.FromMilliseconds(120)); }
+            catch (OperationCanceledException) { cancelled = true; }
+            check(cancelled && !redirectGuard.IsCancellationRequested && redirects.Count <= 2 && !File.Exists(path), "service redirects share one deadline instead of resetting it");
+
+            using var caller = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+            cancelled = false;
+            try { await ServicePackages.Download(release, path, null, caller.Token, body, timeout: TimeSpan.FromSeconds(3)); }
+            catch (OperationCanceledException) { cancelled = true; }
+            check(cancelled && caller.IsCancellationRequested && !File.Exists(path), "caller cancellation still removes an incomplete service package");
+        }
+        finally { Directory.Delete(root, true); }
     }
     sealed class Handler(Func<CancellationToken, Task<HttpResponseMessage>> response) : HttpMessageHandler
     {

@@ -28,6 +28,7 @@ pwsh ./build.ps1
 
 ```powershell
 python Tests/repository.py
+python Tests/release_ref.py
 ```
 
 Основная логика, также работает на Linux:
