@@ -30,6 +30,7 @@ public sealed class Tunnel
     bool statisticsStarted;
     int apiPort;
     string apiSecret = "";
+    IDisposable? proxyAuthentication;
     Profile? automaticProfile;
     long lastAutomatic;
     string preferredNode = "";
@@ -38,7 +39,7 @@ public sealed class Tunnel
     {
         int port = ProxyPort, session = Session; bool tun = usesTun;
         if (State != "connected" || port == 0) return false;
-        using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
+        using var handler = NetworkRequests.Handler(port);
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
         {
@@ -162,6 +163,7 @@ public sealed class Tunnel
                 + "; mode=" + profile.Mode + "; rules=" + config["routing"]!["rules"]!.AsArray().Count
                 + "; manualDirectDomains=" + (routing?.DirectDomains.Length ?? 0) + "; sniffDestination=" + (profile.ConnectionMode == "tun"));
             usesTun = profile.ConnectionMode == "tun";
+            proxyAuthentication = NetworkRequests.RegisterProxy(port, apiSecret);
             ProxyPort = port; AutomaticNode = automatic ? node.Id : "";
             string json = config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             await XraySession.Check(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), Clean, ct);
@@ -169,7 +171,7 @@ public sealed class Tunnel
             portReservation.Dispose();
             core = XraySession.Start(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), "kot. Xray", text => AppLog.Write("tunnel-core", text));
             AppLog.Write("tunnel", "waiting for proxy health");
-            using var handler = new HttpClientHandler { Proxy = new WebProxy($"http://127.0.0.1:{port}"), UseProxy = true, AllowAutoRedirect = false };
+            using var handler = NetworkRequests.Handler(port);
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
             bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
@@ -256,6 +258,7 @@ public sealed class Tunnel
             SessionEnded?.Invoke(Session, ended, utc, final);
         }
         Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = ""; usesTun = false;
+        proxyAuthentication?.Dispose(); proxyAuthentication = null;
         try
         {
             try { SystemProxy.Restore(); }

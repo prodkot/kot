@@ -21,8 +21,8 @@ SHA-256 архива: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f
 
 WebView2
 
-SDK Microsoft.Web.WebView2 1.0.4258.31:
-https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4258.31
+SDK Microsoft.Web.WebView2 1.0.4314.35:
+https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4314.35
 Установщик Microsoft Evergreen WebView2:
 https://go.microsoft.com/fwlink/p/?LinkId=2124703
 Условия распространения:

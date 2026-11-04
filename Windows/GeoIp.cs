@@ -21,11 +21,7 @@ static class GeoIpStore
             throw new UserError("Для обновления GeoIP при активном Kill switch подключитесь к VPN.");
         }
         return await Cache.Update(countries, missingOnly, (path, token) => GeoIp.ValidateFile(path, CoreExe, token), ct,
-            (code, token) => GeoIp.Download(code, token, new HttpClientHandler
-            {
-                AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All, UseCookies = false,
-                UseProxy = proxyPort > 0, Proxy = proxyPort > 0 ? new WebProxy("http://127.0.0.1:" + proxyPort) : null
-            }));
+            (code, token) => GeoIp.Download(code, token, NetworkRequests.Handler(proxyPort)));
     }
 }
 

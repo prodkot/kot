@@ -37,7 +37,8 @@ public static class Latency
     }
     public static async Task<int> Http(string url, int proxyPort, int timeoutMs, CancellationToken ct)
     {
-        using var handler = new HttpClientHandler { UseProxy = true, Proxy = new WebProxy($"http://127.0.0.1:{proxyPort}"), AllowAutoRedirect = false, UseCookies = false };
+        if (proxyPort is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(proxyPort));
+        using var handler = NetworkRequests.Handler(proxyPort);
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(timeoutMs);
         using var request = new HttpRequestMessage(HttpMethod.Get, url);

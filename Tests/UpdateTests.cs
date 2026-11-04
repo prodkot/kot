@@ -8,6 +8,7 @@ public static class UpdateTests
 {
     public static async Task Run(Action<bool,string> check, string folder)
     {
+        Channel(check);
         using var rsa = RSA.Create(2048);
         var files = new Dictionary<string,byte[]> { ["Kot.exe"] = Encoding.UTF8.GetBytes("new app"), ["core/sing-box.exe"] = Encoding.UTF8.GetBytes("new core"), ["ui/index.html"] = Encoding.UTF8.GetBytes("new UI"), ["new-file.txt"] = Encoding.UTF8.GetBytes("new") };
         byte[] Package(bool tampered = false, bool collision = false)
@@ -77,8 +78,16 @@ public static class UpdateTests
         using var client=new HttpClient(new Fixture());using var output=new MemoryStream();bool truncated=false;
         try{await RemoteUpdates.Download(new("0.4.1","https://example.com/update.zip",10),output,CancellationToken.None,client:client);}catch(UserError){truncated=true;}
         check(truncated,"download rejects bytes differing from advertised release size");
+    }
+    public static void Channel(Action<bool, string> check)
+    {
         string json="{\"tag_name\":\"v0.4.1\",\"prerelease\":true,\"assets\":[]}";
         check(RemoteUpdates.Parse(json,new Version("0.4.0"))==null,"automatic channel ignores GitHub prereleases");
+        foreach (string flag in new[] { "draft", "prerelease" })
+        {
+            string preview = "{\"tag_name\":\"v0.9.0-xray.1\",\"" + flag + "\":true,\"assets\":[]}";
+            check(RemoteUpdates.Parse(preview, new Version("0.8.0")) == null, "automatic channel ignores a " + flag + " with a preview suffix");
+        }
     }
     sealed class Fixture:HttpMessageHandler { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent([1,2,3])}); }
 }

@@ -105,6 +105,7 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Length == 3 && args[0] == "--setup-ui-test") { Kot.WindowTests.InstallerUiTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Check); return 0; }
         if (args.Length == 2 && args[0] == "--xhttp-test") { Kot.WindowTests.XhttpChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
+        if (args.Length == 2 && args[0] == "--probe-test") { var executable = Path.GetFullPath(args[1]); Kot.WindowTests.XrayInputChecks.Run(executable, Check).GetAwaiter().GetResult(); Kot.WindowTests.ProbeTests.Run(executable, Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 1 && args[0] == "--services-test") { Kot.WindowTests.ManagedServiceChecks.Run(Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 2 && args[0] == "--dns-test") { Kot.WindowTests.TunnelDnsChecks.Run(Path.GetFullPath(args[1]), Check).GetAwaiter().GetResult(); return 0; }
         if (args.Length == 2 && args[0] == "--tunnel-test") { var core = Path.GetFullPath(args[1]); Kot.WindowTests.XrayInputChecks.Run(core, Check).GetAwaiter().GetResult(); Kot.WindowTests.ProbeTests.Run(core, Check).GetAwaiter().GetResult(); TunnelChecks(core); Kot.WindowTests.TunnelDnsChecks.Run(core, Check).GetAwaiter().GetResult(); Kot.WindowTests.RoutingChecks.Run(core, Check).GetAwaiter().GetResult(); Kot.WindowTests.XhttpChecks.Run(core, Check).GetAwaiter().GetResult(); return 0; }

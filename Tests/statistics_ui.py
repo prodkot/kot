@@ -144,7 +144,7 @@ with sync_playwright() as p:
             page.set_viewport_size({'width': 960, 'height': 640})
             page.evaluate("document.activeElement.blur();document.querySelector('.main').scrollTop=0")
             page.evaluate('document.fonts.ready')
-            page.screenshot(path=str(ROOT / f'docs/images/statistics-{theme}.png'), animations='disabled')
+            page.screenshot(path=str(ROOT / f'Tests/ui-statistics-{theme}.png'), animations='disabled')
         page.locator('[data-page=home]').click()
         page.clock.run_for(20)
         page.evaluate("fixtureStatistics({settings:{theme:'dark',accent:'lime',mode:'tun'}});document.activeElement.blur();document.querySelector('.main').scrollTop=0")

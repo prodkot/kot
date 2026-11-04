@@ -251,15 +251,18 @@ public sealed partial class MainWindow : WindowChrome
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
                 AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
                 if (name.Length > 60) throw new UserError("Название слишком длинное.");
-                SubscriptionResult result;
-                using (var fetchCancellation = new CancellationTokenSource())
+                using (var fetchCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
                 {
                     importAttempt = fetchCancellation;
-                    try { var device = profile.SendHwid ? DeviceIdentity.Get() : null; result = await Subscriptions.Download(address, fetchCancellation.Token, device: device, proxyPort: RequestProxyPort); }
+                    try
+                    {
+                        var device = profile.SendHwid ? DeviceIdentity.Get() : null;
+                        var result = await Subscriptions.Download(address, fetchCancellation.Token, device: device, proxyPort: RequestProxyPort);
+                        await ApplySubscription(address, name, result, action == "import", fetchCancellation.Token);
+                    }
                     finally { if (importAttempt == fetchCancellation) importAttempt = null; }
                 }
-                if (exiting) return;
-                await ApplySubscription(address, name, result, action == "import"); break;
+                break;
             case "importText": await ApplyLocalImport(data.GetProperty("text").GetString() ?? "", data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "pingSettings":

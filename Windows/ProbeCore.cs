@@ -7,6 +7,7 @@ public sealed class ProbeCore : IAsyncDisposable
 {
     NativeCore? core;
     IDisposable? xrayPermission;
+    IDisposable? proxyAuthentication;
     public int Port { get; private set; }
     public static async Task<ProbeCore> Start(Node node, CancellationToken ct, string? executable = null, string? xrayExecutable = null)
     {
@@ -18,7 +19,9 @@ public sealed class ProbeCore : IAsyncDisposable
             using var reservation = LoopbackPort.Reserve(ct); probe.Port = reservation.Port;
             string exe = executable ?? xrayExecutable ?? Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
             probe.xrayPermission = KillSwitch.AllowProbe(exe);
-            var config = XrayRuntime.Build(node, probe.Port, physicalInterface: PhysicalNetwork.Interface);
+            string secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            probe.proxyAuthentication = NetworkRequests.RegisterProxy(probe.Port, secret);
+            var config = XrayRuntime.Build(node, probe.Port, secret: secret, physicalInterface: PhysicalNetwork.Interface);
             ct.ThrowIfCancellationRequested();
             reservation.Dispose();
             probe.core = XraySession.Start(exe, config.ToJsonString(), ProviderAssets.Cache.DirectoryFor(node), "kot. Xray probe", text => AppLog.Write("probe-core " + node.Id, text));
@@ -37,7 +40,14 @@ public sealed class ProbeCore : IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        if (core != null) { try { await core.Stop(); } catch (Exception ex) { AppLog.Error("probe stop", ex); } finally { core.Dispose(); core = null; } }
-        xrayPermission?.Dispose(); xrayPermission = null;
+        try
+        {
+            if (core != null) { try { await core.Stop(); } catch (Exception ex) { AppLog.Error("probe stop", ex); } finally { core.Dispose(); core = null; } }
+        }
+        finally
+        {
+            try { xrayPermission?.Dispose(); }
+            finally { xrayPermission = null; proxyAuthentication?.Dispose(); proxyAuthentication = null; }
+        }
     }
 }

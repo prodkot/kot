@@ -14,6 +14,8 @@ void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.W
 Kot.Tests.XrayRuntimeTests.Run(Check);
 Kot.Tests.SubscriptionEditingTests.Run(Check);
 await Kot.Tests.SubscriptionValidationTests.Run(Check);
+await Kot.Tests.NetworkRequestTests.Authentication(Check);
+Kot.Tests.UpdateTests.Channel(Check);
 await Kot.Tests.ConnectionCheckTests.Run(Check);
 await Kot.Tests.AutomaticSelectionTests.Run(Check);
 Kot.Tests.LogTests.Run(Check);
