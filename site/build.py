@@ -44,8 +44,6 @@ def build(destination, release):
     shutil.copy2(client / "fonts/Manrope.ttf", destination / "assets/Manrope.ttf")
     shutil.copy2(repository / "licenses/Manrope-OFL.txt", destination / "assets/Manrope-OFL.txt")
     demo_version = re.search(r'<Version>([^<]+)</Version>', (repository / 'Windows/Kot.Windows.csproj').read_text()).group(1)
-    landing = destination / 'index.html'
-    landing.write_text(landing.read_text(encoding='utf-8').replace('{{demo-version}}', demo_version), encoding='utf-8')
     # Reuse the real client UI in an isolated browser demo, with a mock WebView bridge.
     demo = destination / "demo"
     demo.mkdir(exist_ok=True)
