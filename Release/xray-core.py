@@ -1,4 +1,4 @@
-"""Build the pinned, unmodified official Xray source and its signed Wintun DLL."""
+"""Build official Xray source with pinned Go dependencies and signed Wintun."""
 import argparse
 import hashlib
 import io
@@ -46,9 +46,14 @@ def build(destination, target):
         raise ValueError('Build requires the pinned ' + pin['goVersion'])
     cache = ROOT / '.build-cache/xray-source'
     folder = extract_source(archive, cache, pin['commit'])
+    # Keep upstream Go source intact. The locked manifests include security fixes
+    # for dependencies that still use vulnerable versions in the official tag.
+    for name in ('go.mod', 'go.sum'):
+        shutil.copyfile(ROOT / 'upstream' / ('xray-' + name), folder / name)
     destination.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, GOOS=target, GOARCH='amd64', CGO_ENABLED='0')
-    subprocess.run([go, 'build', '-buildvcs=false', '-trimpath', '-ldflags=-s -w', '-o',
+    env = dict(os.environ, GOOS=target, GOARCH='amd64', CGO_ENABLED='0',
+               GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='')
+    subprocess.run([go, 'build', '-mod=readonly', '-buildvcs=false', '-trimpath', '-ldflags=-s -w', '-o',
                     str((destination / ('xray.exe' if target == 'windows' else 'xray')).resolve()), './main'],
                    cwd=folder, env=env, check=True, timeout=600)
     shutil.copy2(ROOT / 'upstream/xray-experiment.json', destination / 'core-version.json')

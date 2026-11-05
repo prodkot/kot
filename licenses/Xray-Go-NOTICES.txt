@@ -1,4 +1,4 @@
-Third-party notices for the pinned unmodified official Xray core 1b1647cd9ddf0abc34b981d4611fc03bcac1ca74, Windows amd64.
+Third-party notices for the pinned official Xray source a4a3dff5b20c2faae567b742c172c7b95e75c083, Windows amd64.
 Built with Go 1.27.3. Module list obtained from go version -m on the shipped executable.
 
 Go 1.27.3 standard library license
@@ -34,8 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ========================================================================
-github.com/andybalholm/brotli v1.2.3
-Source archive: https://proxy.golang.org/github.com/andybalholm/brotli/@v/v1.2.3.zip
+github.com/andybalholm/brotli v1.2.7
+Source archive: https://proxy.golang.org/github.com/andybalholm/brotli/@v/v1.2.7.zip
 
 
 Notice file: LICENSE
@@ -580,8 +580,8 @@ Library.
 
 
 ========================================================================
-github.com/klauspost/compress v1.20.0
-Source archive: https://proxy.golang.org/github.com/klauspost/compress/@v/v1.20.0.zip
+github.com/klauspost/compress v1.20.2
+Source archive: https://proxy.golang.org/github.com/klauspost/compress/@v/v1.20.2.zip
 
 
 Notice file: LICENSE
@@ -1572,13 +1572,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 ========================================================================
-github.com/pires/go-proxyproto v0.15.0
-Source archive: https://proxy.golang.org/github.com/pires/go-proxyproto/@v/v0.15.0.zip
+github.com/pires/go-proxyproto v0.16.0
+Source archive: https://proxy.golang.org/github.com/pires/go-proxyproto/@v/v0.16.0.zip
 
 
 Notice file: LICENSE
 
-                                 Apache License
+Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 

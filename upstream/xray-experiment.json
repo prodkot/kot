@@ -1,6 +1,6 @@
 {
-  "commit": "1b1647cd9ddf0abc34b981d4611fc03bcac1ca74",
-  "sourceSha256": "0a0e67b736ed8f9f4c0a6ccfe11eb903db72f56b3c2dfb9c2d3114187ac68fec",
+  "commit": "a4a3dff5b20c2faae567b742c172c7b95e75c083",
+  "sourceSha256": "7dba1dd055bdc854a2c5311610872c9bf6315ddb0a741fb8c2206212cec51b53",
   "goVersion": "go1.27.3",
-  "version": "26.10.21"
+  "version": "26.10.31"
 }
