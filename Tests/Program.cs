@@ -25,6 +25,7 @@ Kot.Tests.XhttpTests.Run(Check);
 await Kot.Tests.ProviderRoutingTests.Run(Check);
 await Kot.Tests.DownloadDeadlineTests.Run(Check);
 await Kot.Tests.GeoDatabaseTests.Run(Check);
+Kot.Tests.SubscriptionNodesTests.Run(Check);
 if (args.Contains("--provider")) return;
 Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);

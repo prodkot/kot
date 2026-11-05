@@ -35,11 +35,12 @@ public sealed partial class MainWindow
             (nodes, token) => ProviderAssets.Prepare(nodes, token, RequestProxyPort), XraySession.Validate, ct);
         ct.ThrowIfCancellationRequested();
         var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
+        result = result with { Nodes = SubscriptionNodes.Match(saved?.Id == profile.ActiveSubscription ? profile.Nodes : saved?.Nodes ?? [], result.Nodes) };
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
         if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
         await StopTools();
         ct.ThrowIfCancellationRequested();
-        string Fingerprint(Node n) => n.Id + ":" + n.FullConfig?.ToJsonString() + ":" + n.GeoIpUrl + ":" + n.GeoSiteUrl + ":" + n.GeoRevision;
+        string Fingerprint(Node n) => n.Id + ":" + SubscriptionNodes.Identity(n);
         bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(Fingerprint).Order().SequenceEqual(result.Nodes.Select(Fingerprint).Order())
             : result.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } updated || profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } current || Fingerprint(updated) != Fingerprint(current));
         await ping.Stop(clear: true); ct.ThrowIfCancellationRequested();
@@ -73,7 +74,7 @@ public sealed partial class MainWindow
         SaveProfile(p =>
         {
             var updated = p.Subscriptions.Single(s => s.Id == subscriptionId);
-            updated.Nodes = result.Nodes; updated.Usage = result.Usage; updated.Updated = DateTimeOffset.UtcNow;
+            updated.Nodes = SubscriptionNodes.Match(updated.Nodes, result.Nodes); updated.Usage = result.Usage; updated.Updated = DateTimeOffset.UtcNow;
             if (updated.Selected != "auto" && updated.Nodes.All(n => n.Id != updated.Selected)) updated.Selected = updated.Nodes[0].Id;
             updated.Favorites.RemoveAll(id => updated.Nodes.All(n => n.Id != id));
         });
