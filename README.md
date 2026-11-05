@@ -4,42 +4,45 @@
 
 <h1 align="center">kot. / Твой сервер. Один клик.</h1>
 
-<p align="center">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<p align="center">Клиент для Windows для подписок, серверов и маршрутизации.</p>
 
 <p align="center">
-  <a href="https://github.com/prodkot/kot/releases/latest"><strong>Скачать для Windows</strong></a> ·
+  <a href="https://github.com/prodkot/kot/releases/latest"><strong>Скачать</strong></a> ·
   <a href="https://prodkot.github.io/kot/">Сайт и демо</a> ·
   <a href="docs/README.md">Документация</a>
 </p>
 
-> В `main` уже находится 0.8.0 на Xray. Стабильный релиз пока 0.7.3; кнопка скачивания ведёт на него. [Предварительные сборки 0.8.0](https://github.com/prodkot/kot/releases?q=prerelease%3Atrue) публикуются отдельно.
+> Последняя стабильная версия — [v0.7.3](https://github.com/prodkot/kot/releases/tag/v0.7.3). Предварительные сборки v0.8.0 доступны отдельно в [разделе выпусков](https://github.com/prodkot/kot/releases?q=prerelease%3Atrue).
 
 ![Интерфейс kot. 0.8.0 с демонстрационными данными](docs/images/overview-dark.png)
 
-## Как начать
+## Начало работы
 
 1. Скачай Setup и установи kot.
-2. На странице «Серверы» нажми «+» и добавь ссылку на подписку или сервер.
+2. Добавь ссылку на подписку или сервер.
 3. Выбери сервер и нажми «Подключить».
 
-**Windows 10 / 11, x64.** Для TUN нужны права администратора. Приложение бесплатное; серверы и подписки в комплект не входят.
+**Windows 10 / 11, x64.** Для TUN нужны права администратора. Приложение бесплатное; сервер и подписка не входят в комплект.
 
 ## Возможности
 
-- Несколько подписок, избранное, пинг и автоматический выбор сервера.
-- TUN и системный прокси, маршруты для сайтов и приложений, настройки DNS.
-- Автоподключение, восстановление соединения, работа в трее и Kill switch.
+- Несколько подписок, избранное, проверка задержки и автоматический выбор сервера.
+- Режимы TUN и системного прокси, маршруты для сайтов и приложений, настройка DNS.
+- Автоподключение, восстановление соединения, работа в трее и Kill Switch.
 - QR-коды, резервные копии, статистика, журнал и проверка соединения.
 - Управление zapret и Telegram-прокси.
 
-Поддерживаются VLESS, VMess, Trojan, Shadowsocks и Hysteria2. Подробности: [руководство](docs/GUIDE.md), [маршрутизация](docs/ROUTING.md), [XHTTP](docs/XHTTP.md).
+Поддерживаются VLESS, VMess, Trojan, Shadowsocks и Hysteria2.
 
-## Разработка
+## Ссылки
 
-[Сборка и проверки](docs/BUILD.md) · [Участие в разработке](CONTRIBUTING.md) · [Добавление музыки](docs/MUSIC.md)
+- [Руководство](docs/GUIDE.md)
+- [Маршрутизация](docs/ROUTING.md)
+- [XHTTP](docs/XHTTP.md)
+- [Сборка и проверки](docs/BUILD.md)
+- [Участие в разработке](CONTRIBUTING.md)
+- [Добавление музыки](docs/MUSIC.md)
 
-Основная Windows-разработка ведётся в `main`. Linux-порт пока отдельный: актуальные исправления находятся в [`fix/linux-laptop-acceptance`](https://github.com/prodkot/kot/tree/fix/linux-laptop-acceptance), исходный preview в [`port/ubuntu-linux`](https://github.com/prodkot/kot/tree/port/ubuntu-linux). Ветка `music` содержит аудиотеку страницы «О программе» и обновляется независимо от клиента.
+Ошибки и пожелания: [Issues](https://github.com/prodkot/kot/issues/new/choose). О проблемах безопасности сообщайте через [SECURITY.md](SECURITY.md). Перед публикацией журналов удали ключи и ссылки на подписки.
 
-Ошибки и пожелания: [Issues](https://github.com/prodkot/kot/issues/new/choose). Уязвимости: [приватное сообщение](SECURITY.md). Перед публикацией журнала убери ключи и ссылки на подписки.
-
-Код клиента: [MIT](LICENSE.txt). Лицензии компонентов: [THIRD-PARTY.txt](THIRD-PARTY.txt).
+Код клиента распространяется по лицензии [MIT](LICENSE.txt). Лицензии компонентов собраны в [THIRD-PARTY.txt](THIRD-PARTY.txt).
