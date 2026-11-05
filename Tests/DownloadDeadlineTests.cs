@@ -35,7 +35,7 @@ static class DownloadDeadlineTests
             using var handler = new Handler(async ct =>
             {
                 entered.TrySetResult(); await release.Task.WaitAsync(ct);
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([10, 2, 1, 0]) };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(GeoFixtures.Site) };
             });
             using var good = new HttpClient(handler);
             using var concurrentGuard = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -54,7 +54,7 @@ static class DownloadDeadlineTests
             await File.WriteAllBytesAsync(cached, [10, 2, 9, 9]);
             check(!cache.Available(node), "geo cache rejects same size corruption after a completed download");
             await cache.Prepare([node], good, concurrentGuard.Token);
-            check(handler.Count == 2 && cache.Available(node) && File.ReadAllBytes(cached).SequenceEqual(new byte[] { 10, 2, 1, 0 }), "geo cache repairs corruption from a fresh download");
+            check(handler.Count == 2 && cache.Available(node) && File.ReadAllBytes(cached).SequenceEqual(GeoFixtures.Site), "geo cache repairs corruption from a fresh download");
             File.Delete(cached + ".sha256");
             check(cache.Available(node), "intact legacy geo caches remain available offline without a receipt");
             await cache.Prepare([node], good, concurrentGuard.Token);

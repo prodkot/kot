@@ -108,7 +108,7 @@ static class ProviderRoutingTests
         string cacheRoot = Path.Combine(folder, "cache-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var cache = new XrayAssets(cacheRoot); using var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent([10, 2, 1, 0]) }); using var client = new HttpClient(handler);
+            var cache = new XrayAssets(cacheRoot); using var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(GeoFixtures.Site) }); using var client = new HttpClient(handler);
             await cache.Prepare([geo], client, CancellationToken.None); await cache.Prepare([geo], client, CancellationToken.None);
             check(handler.Count == 1 && cache.Available(geo), "required provider geo files are cached for offline reconnects");
             check(cache.DirectoryFor(geo) != cache.DirectoryFor(geo with { GeoSiteUrl = "https://other.example/geosite.dat" }), "different provider geo sources cannot overwrite one another");

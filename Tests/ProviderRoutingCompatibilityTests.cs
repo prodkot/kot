@@ -71,15 +71,15 @@ static class ProviderRoutingCompatibilityTests
         try
         {
             var cache = new XrayAssets(folder); int requests = 0;
-            using var client = new HttpClient(new Handler((_, _) => { requests++; return new(HttpStatusCode.OK) { Content = new ByteArrayContent([10, 2, 1, 0]) }; }));
+            using var client = new HttpClient(new Handler((request, _) => { requests++; return new(HttpStatusCode.OK) { Content = new ByteArrayContent(GeoFixtures.For(request.RequestUri!)) }; }));
             await cache.Prepare([versioned], client, CancellationToken.None);
             await cache.Prepare([versioned], client, CancellationToken.None);
             check(requests == 2 && cache.Available(versioned), "unchanged provider version reuses both geo files offline");
             var next = versioned with { GeoRevision = versioned.GeoRevision + 1 };
-            using var broken = new HttpClient(new Handler((_, i) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(i == 0 ? [10, 2, 2, 0] : [60, 104, 116, 109, 108]) }));
+            using var broken = new HttpClient(new Handler((_, i) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(i == 0 ? GeoFixtures.Ip : [60, 104, 116, 109, 108]) }));
             bool rejected = false; try { await cache.Prepare([next], broken, CancellationToken.None); } catch (UserError) { rejected = true; }
             check(rejected && cache.Available(versioned) && !cache.Available(next)
-                && File.ReadAllBytes(Path.Combine(cache.DirectoryFor(versioned), "geoip.dat")).SequenceEqual(new byte[] { 10, 2, 1, 0 }), "partial version update cannot overwrite the active provider databases");
+                && File.ReadAllBytes(Path.Combine(cache.DirectoryFor(versioned), "geoip.dat")).SequenceEqual(GeoFixtures.Ip), "partial version update cannot overwrite the active provider databases");
             await cache.Prepare([next], client, CancellationToken.None);
             check(cache.Available(next) && requests == 3 && cache.DirectoryFor(next) != cache.DirectoryFor(versioned), "retry completes the new provider version at the same source URLs");
             check(Directory.GetFiles(folder, "*.tmp", SearchOption.AllDirectories).Length == 0, "provider revision downloads clean temporary files");

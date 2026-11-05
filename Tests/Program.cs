@@ -2,6 +2,7 @@ using Kot.Core;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+if (args.Contains("--geo-database-regression")) { await Kot.Tests.GeoDatabaseTests.Run((ok, name) => { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }); return; }
 if (args.Contains("--xray")) { Kot.Tests.XrayRuntimeTests.Run((ok, name) => { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }); return; }
 if (args.Length == 5 && args[0] == "--crash-update") { Kot.Tests.UpdateCrashTests.Child(args); return; }
 if (args.Length >= 2 && args[0] == "geoip-core")
@@ -23,6 +24,7 @@ Kot.Tests.LoopbackPortTests.Run(Check);
 Kot.Tests.XhttpTests.Run(Check);
 await Kot.Tests.ProviderRoutingTests.Run(Check);
 await Kot.Tests.DownloadDeadlineTests.Run(Check);
+await Kot.Tests.GeoDatabaseTests.Run(Check);
 if (args.Contains("--provider")) return;
 Kot.Tests.XhttpTests.Fixtures(Path.Combine("Tests", "generated", "xhttp"));
 await Kot.Windows.MainWindow.CheckConsent(Check);

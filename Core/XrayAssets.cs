@@ -24,35 +24,17 @@ public sealed class XrayAssets(string root)
         {
             var file = new FileInfo(path);
             if (!file.Exists || file.Length is < 4 or > MaxBytes) return false;
+            if (!GeoDatabase.Valid(path, Path.GetFileName(path) == "geoip.dat")) return false;
             string receipt = path + ".sha256";
             // Older clients have no checksum receipt. Keep their offline caches
-            // usable, but reject a truncated protobuf envelope before adoption.
-            if (!File.Exists(receipt)) return LegacyEnvelope(path);
+            // usable, but validate their complete protobuf structure before adoption.
+            if (!File.Exists(receipt)) return true;
             if (new FileInfo(receipt).Length != 64) return false;
             string expected = File.ReadAllText(receipt);
             using var input = File.OpenRead(path);
             return Convert.ToHexStringLower(SHA256.HashData(input)) == expected;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
-    }
-    static bool LegacyEnvelope(string path)
-    {
-        using var input = File.OpenRead(path);
-        int records = 0;
-        while (input.Position < input.Length)
-        {
-            if (input.ReadByte() != 0x0a) return false;
-            uint length = 0; bool ended = false;
-            for (int shift = 0; shift < 35; shift += 7)
-            {
-                int part = input.ReadByte(); if (part < 0 || shift == 28 && part > 15) return false;
-                length |= (uint)(part & 127) << shift;
-                if ((part & 128) == 0) { ended = true; break; }
-            }
-            if (!ended || length == 0 || length > input.Length - input.Position) return false;
-            input.Position += length; records++;
-        }
-        return records > 0;
     }
     public bool Available(Node node) => node.FullConfig == null || XrayConfig.GeoFiles(node.FullConfig).All(f => ValidFile(Path.Combine(DirectoryFor(node), f)));
     public async Task Prepare(IEnumerable<Node> nodes, HttpClient client, CancellationToken ct)
@@ -117,9 +99,9 @@ public sealed class XrayAssets(string root)
                             }
                             if (total < 4) throw new UserError("Пустая геобаза Xray.");
                         }
-                        // Check every top-level length-delimited protobuf record.
-                        // Native Xray remains responsible for the actual schema.
-                        if (!LegacyEnvelope(temporary)) throw new UserError("Повреждённая геобаза Xray или получен другой файл.");
+                        // Validate nested records before replacing either the data or
+                        // its receipt. Rejected responses remain eligible for retry.
+                        if (!GeoDatabase.Valid(temporary, file == "geoip.dat")) throw new UserError("Повреждённая геобаза Xray или получен другой файл.");
                         using (var check = File.OpenRead(temporary))
                             await File.WriteAllTextAsync(receiptTemp, Convert.ToHexStringLower(SHA256.HashData(check)), token);
                         token.ThrowIfCancellationRequested();

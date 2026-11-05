@@ -65,6 +65,7 @@ jobs:
           python3 Tests/xray_dependencies.py
           dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray
           python3 Tests/xray_integration.py --core artifacts/core/xray
+          python3 Tests/geodata_native.py --core artifacts/core/xray
   tests:
     timeout-minutes: 10
     runs-on: windows-latest
