@@ -12,8 +12,6 @@
   <a href="docs/README.md">Документация</a>
 </p>
 
-> Стабильная версия — [v0.8.0](https://github.com/prodkot/kot/releases/tag/v0.8.0).
-
 ![Интерфейс kot. 0.8.0 с демонстрационными данными](docs/images/overview-dark.png)
 
 ## Начало работы
