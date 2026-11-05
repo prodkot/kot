@@ -12,7 +12,7 @@
   <a href="docs/README.md">Документация</a>
 </p>
 
-> Последняя стабильная версия — [v0.7.3](https://github.com/prodkot/kot/releases/tag/v0.7.3). Предварительные сборки v0.8.0 доступны отдельно в [разделе выпусков](https://github.com/prodkot/kot/releases?q=prerelease%3Atrue).
+> Стабильная версия — [v0.8.0](https://github.com/prodkot/kot/releases/tag/v0.8.0).
 
 ![Интерфейс kot. 0.8.0 с демонстрационными данными](docs/images/overview-dark.png)
 
