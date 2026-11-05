@@ -73,6 +73,7 @@ public sealed partial class MainWindow
     void RecoverBrowser(string reason)
     {
         if (exiting || IsDisposed || browserRecovering) return;
+        imports.CancelCurrent();
         browserGeneration++; bridgeReady = false; browserLoaded = false; browserWatch.Stop(); AppLog.Write("interface", reason);
         while (browserFailures.TryPeek(out var old) && DateTimeOffset.UtcNow - old > TimeSpan.FromMinutes(2)) browserFailures.Dequeue();
         if (browserFailures.Count >= 3) { BrowserFailure(new Kot.Core.UserError("Интерфейс несколько раз завершился с ошибкой.")); return; }

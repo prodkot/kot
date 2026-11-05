@@ -23,6 +23,7 @@ public sealed partial class MainWindow : WindowChrome
     bool exiting, allowClose, bridgeReady, initialized;
     List<string> warnings = [];
     CancellationTokenSource? importAttempt;
+    readonly ImportOperations imports = new();
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public MainWindow(bool startup, bool resumeConnection = false, Profile? initialProfile = null)
     {
@@ -165,6 +166,7 @@ public sealed partial class MainWindow : WindowChrome
         if (exiting || e.Source != "https://kot.local/index.html") return;
         int id = 0;
         int generation = browserGeneration;
+        ImportOperations.Operation? import = null;
         void Reply(object value) { if (generation == browserGeneration) Send(value); }
         try
         {
@@ -173,6 +175,8 @@ public sealed partial class MainWindow : WindowChrome
             using var d = JsonDocument.Parse(raw); var root = d.RootElement;
             id = root.GetProperty("id").GetInt32(); string action = root.GetProperty("action").GetString() ?? "";
             JsonElement data = root.GetProperty("data");
+            if (action is "import" or "importText" or "importServersFile" or "refresh")
+                import = imports.Begin(data.GetProperty("operationId").GetString() ?? "", lifetime.Token);
             if (action == "ready")
             {
                 interfaceStarted = true; bridgeReady = true; Snapshot(); Reply(new { kind = "reply", id, ok = true });
@@ -211,7 +215,7 @@ public sealed partial class MainWindow : WindowChrome
                 case "copyNodeLink": case "copyNodeQr": case "saveNodeQr": ExportShareQr(data, action); break;
                 case "checkUpdates": await CheckUpdates(); break;
                 case "cancelUpdate": updateAttempt?.Cancel(); break;
-                case "cancelImport": importAttempt?.Cancel(); break;
+                case "cancelImport": imports.Cancel(data.GetProperty("operationId").GetString() ?? ""); break;
                 case "pingAll": lastPing = DateTimeOffset.UtcNow; ping.Start(profile.Nodes.ToList(), profile.Ping); break;
                 case "pingNode":
                     var node = profile.Nodes.FirstOrDefault(n => n.Id == data.GetProperty("id").GetString()) ?? throw new UserError("Сервер уже удалён.");
@@ -229,16 +233,17 @@ public sealed partial class MainWindow : WindowChrome
                 case "diagnostics":
                     Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.Version, build = ClientIdentity.Build, core = XrayRuntime.Description, os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
                 default:
-                    await operations.WaitAsync(lifetime.Token);
-                    try { if (!exiting) await Mutate(action, data); } finally { operations.Release(); }
+                    await operations.WaitAsync(import?.Token ?? lifetime.Token);
+                    try { import?.Token.ThrowIfCancellationRequested(); if (!exiting) await Mutate(action, data, import?.Token ?? lifetime.Token); } finally { operations.Release(); }
                     break;
             }
             Snapshot(); Reply(new { kind = "reply", id, ok = true });
         }
         catch (Exception ex) { AppLog.Error("UI request", ex); Reply(new { kind = "reply", id, ok = false, error = Store.Friendly(ex) }); Snapshot(); }
+        finally { import?.Dispose(); }
     }
     void SaveProfile(Action<Profile> change) => profile = Store.Change(profile, change);
-    async Task Mutate(string action, JsonElement data)
+    async Task Mutate(string action, JsonElement data, CancellationToken importToken)
     {
         switch (action)
         {
@@ -252,20 +257,12 @@ public sealed partial class MainWindow : WindowChrome
                 string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
                 AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
                 if (name.Length > 60) throw new UserError("Название слишком длинное.");
-                using (var fetchCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
-                {
-                    importAttempt = fetchCancellation;
-                    try
-                    {
-                        var device = profile.SendHwid ? DeviceIdentity.Get() : null;
-                        var result = await Subscriptions.Download(address, fetchCancellation.Token, device: device, proxyPort: RequestProxyPort);
-                        await ApplySubscription(address, name, result, action == "import", fetchCancellation.Token);
-                    }
-                    finally { if (importAttempt == fetchCancellation) importAttempt = null; }
-                }
+                var device = profile.SendHwid ? DeviceIdentity.Get() : null;
+                var result = await Subscriptions.Download(address, importToken, device: device, proxyPort: RequestProxyPort);
+                await ApplySubscription(address, name, result, action == "import", importToken);
                 break;
-            case "importText": await ApplyLocalImport(data.GetProperty("text").GetString() ?? "", data.GetProperty("name").GetString()?.Trim() ?? ""); break;
-            case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? ""); break;
+            case "importText": await ApplyLocalImport(data.GetProperty("text").GetString() ?? "", data.GetProperty("name").GetString()?.Trim() ?? "", importToken); break;
+            case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? "", importToken); break;
             case "pingSettings":
                 var options = JsonSerializer.Deserialize<PingOptions>(data.GetRawText(), Json) ?? throw new UserError("Не переданы настройки пинга.");
                 options.Validate(); SaveProfile(p => p.Ping = options); await ping.Stop(clear: true); AppLog.Write("ping", "settings saved"); break;
@@ -340,7 +337,7 @@ public sealed partial class MainWindow : WindowChrome
     async Task ExitApp()
     {
         if (exiting) return;
-        exiting = true; browserWatch.Stop(); browserWatch.Dispose(); DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
+        exiting = true; browserWatch.Stop(); browserWatch.Dispose(); DisposeAutomation(); importAttempt?.Cancel(); imports.CancelCurrent(); tunnel.Cancel(); Enabled = false;
         try
         {
             try { await services.StopAll(exit: true); }

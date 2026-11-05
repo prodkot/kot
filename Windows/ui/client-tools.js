@@ -1,10 +1,10 @@
 /* Optional pages share the same host bridge as the connection screen. */
 'use strict';
-window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeDialog,page}) => {
+window.KotClientTools = ({getModel,getPage,getPeriod,rpc,runImport,toast,openDialog,closeDialog,page}) => {
   const $=id=>document.getElementById(id);
   const formatBytes=n=>{n=Math.max(0,Number(n)||0);const units=['Б','КиБ','МиБ','ГиБ','ТиБ'];let i=0;while(n>=1024&&i<4){n/=1024;i++;}return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:i?1:0}).format(n)+' '+units[i];};
   const routeName=r=>({vpn:'Через VPN',direct:'Напрямую',unknown:'Маршрут не определён'}[r]||'Не определено');
-  let qrNode='',qrAttempt=0,importing=false,toolsStarting=false,sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='';
+  let qrNode='',qrAttempt=0,toolsStarting=false,sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='';
   async function perform(action,data={}) {try{return await rpc(action,data);}catch(e){toast(e.message);return null;}}
   function nodeOptions(){
     const model=getModel(),nodes=model.nodes||[],key=JSON.stringify(nodes.map(n=>[n.id,n.name]));
@@ -61,9 +61,13 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
   }
   $('closeShareQr').addEventListener('click',()=>closeDialog($('shareQrDialog')));$('shareQrDialog').addEventListener('close',()=>{qrAttempt++;qrNode='';$('shareQrImage').removeAttribute('src');$('shareQrLink').value='';});
   for(const action of ['copyNodeLink','copyNodeQr','saveNodeQr'])$(action).addEventListener('click',async()=>{if(!qrNode)return;try{await rpc(action,{id:qrNode});if(action!=='saveNodeQr')toast('Скопировано');}catch(e){$('shareQrError').textContent=e.message;}});
-  function setImportBusy(value){importing=value;for(const id of ['importServersFile','readQrFile','readQrClipboard'])$(id).disabled=value;$('addForm').querySelector('[type=submit]').disabled=value;}
-  for(const action of ['readQrFile','readQrClipboard'])$(action).addEventListener('click',async()=>{if(importing)return;setImportBusy(true);$('addError').textContent='';try{const result=await rpc(action);if(result?.text&&$('addDialog').open&&!$('addDialog').dataset.closing){$('profileLink').value=result.text;$('profileLink').focus();}}catch(e){if($('addDialog').open)$('addError').textContent=e.message;}finally{setImportBusy(false);}});
-  $('importServersFile').addEventListener('click',async()=>{if(importing)return;setImportBusy(true);$('addError').textContent='';const before=getModel().activeSubscription;try{await rpc('importServersFile',{name:$('profileName').value.trim()});if(getModel().activeSubscription!==before){closeDialog($('addDialog'));page('servers');toast(getModel().warnings?.length?'Добавлено. Пропущено: '+getModel().warnings.length:'Серверы добавлены');}}catch(e){$('addError').textContent=e.message;}finally{setImportBusy(false);}});
+  for(const action of ['readQrFile','readQrClipboard'])$(action).addEventListener('click',()=>runImport(action,{},result=>{if(result?.text&&$('addDialog').open&&!$('addDialog').dataset.closing){$('profileLink').value=result.text;$('profileLink').focus();}}));
+  $('importServersFile').addEventListener('click',()=>{
+    const before=getModel().activeSubscription;
+    return runImport('importServersFile',{name:$('profileName').value.trim()},()=>{
+      if(getModel().activeSubscription!==before){closeDialog($('addDialog'));page('servers');toast(getModel().warnings?.length?'Добавлено. Пропущено: '+getModel().warnings.length:'Серверы добавлены');}
+    });
+  });
   function paint(points,bars,labels){
     const canvas=$('trafficChart'),rect=canvas.getBoundingClientRect();if(rect.width<1)return;const scale=Math.min(2,devicePixelRatio||1),width=Math.round(rect.width),height=170;canvas.width=width*scale;canvas.height=height*scale;const ctx=canvas.getContext('2d');ctx.scale(scale,scale);
     const style=getComputedStyle(document.body),muted=style.getPropertyValue('--muted').trim(),down=style.getPropertyValue('--detail').trim();const up='#7398dc',top=15,bottom=height-25,left=45,right=width-8;

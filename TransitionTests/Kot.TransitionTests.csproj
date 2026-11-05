@@ -4,5 +4,6 @@
     <ProjectReference Include="../Core/Kot.Core.csproj" />
     <Compile Include="../Windows/Tunnel.cs" Link="Tunnel.cs" />
     <Compile Include="../Windows/SettingsChanges.cs" Link="SettingsChanges.cs" />
+    <Compile Include="../Windows/ImportApplication.cs" Link="ImportApplication.cs" />
   </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@ using Kot.Windows;
 try
 {
     if (args.Length == 0 || args.Contains("guard")) await GuardChecks.Run();
+    if (args.Length == 0 || args.Contains("import")) await ImportChecks.Run();
     Console.WriteLine("PASS transition regressions (real production handlers, simulated OS and core)");
 }
 finally { if (Directory.Exists(Store.Folder)) Directory.Delete(Store.Folder, true); }

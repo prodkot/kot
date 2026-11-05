@@ -63,7 +63,7 @@ public sealed partial class MainWindow
         connectionNotice = "";
         if (reconnect.Desired || tunnel.State != "idle")
         {
-            reconnect.Stop(); importAttempt?.Cancel(); await StopTools(); await tunnel.Stop(); KillSwitch.Release(); Snapshot();
+            reconnect.Stop(); importAttempt?.Cancel(); imports.CancelCurrent(); await StopTools(); await tunnel.Stop(); KillSwitch.Release(); Snapshot();
         }
         else if (profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); Snapshot(); }
         }
@@ -143,13 +143,7 @@ public sealed partial class MainWindow
                                 result = await SubscriptionValidation.Prepare(result,
                                     (nodes, token) => ProviderAssets.Prepare(nodes, token, RequestProxyPort), XraySession.Validate, ct.Token);
                                 ct.Token.ThrowIfCancellationRequested();
-                                SaveProfile(p =>
-                                {
-                                    var updated = p.Subscriptions.Single(s => s.Id == due.Id);
-                                    updated.Nodes = result.Nodes; updated.Usage = result.Usage; updated.Updated = DateTimeOffset.UtcNow;
-                                    if (updated.Selected != "auto" && updated.Nodes.All(n => n.Id != updated.Selected)) updated.Selected = updated.Nodes[0].Id;
-                                    updated.Favorites.RemoveAll(id => updated.Nodes.All(n => n.Id != id));
-                                });
+                                ApplyInactiveSubscription(due.Id, result);
                                 AppLog.Register(profile);
                             }
                             backgroundError = ""; AppLog.Write("automation", "subscription updated: " + result.Nodes.Count + " nodes");
@@ -168,44 +162,6 @@ public sealed partial class MainWindow
         catch (OperationCanceledException) { }
         catch (Exception ex) { AppLog.Error("automation", ex); }
         finally { ticking = false; }
-    }
-    async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        result = await SubscriptionValidation.Prepare(result,
-            (nodes, token) => ProviderAssets.Prepare(nodes, token, RequestProxyPort), XraySession.Validate, ct);
-        ct.ThrowIfCancellationRequested();
-        var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
-        bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
-        if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
-        await StopTools();
-        string Fingerprint(Node n) => n.Id + ":" + n.FullConfig?.ToJsonString() + ":" + n.GeoIpUrl + ":" + n.GeoSiteUrl + ":" + n.GeoRevision;
-        bool restart = switchProfile || (profile.Selected == "auto" ? !profile.Nodes.Select(Fingerprint).Order().SequenceEqual(result.Nodes.Select(Fingerprint).Order())
-            : result.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } updated || profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected) is not { } current || Fingerprint(updated) != Fingerprint(current));
-        if (restart) await tunnel.Stop(); await ping.Stop(clear: true);
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            SaveProfile(p =>
-            {
-                if (switchProfile)
-                {
-                    var candidate = p.Subscriptions.FirstOrDefault(s => s.Id == saved?.Id);
-                    if (candidate == null) { candidate = new SavedSubscription { Address = address, Name = name.Length > 0 ? name : "Подписка" }; p.Subscriptions.Add(candidate); }
-                    candidate.Nodes = result.Nodes; candidate.Usage = result.Usage; candidate.Updated = DateTimeOffset.UtcNow;
-                    if (candidate.Selected != "auto" && candidate.Nodes.All(n => n.Id != candidate.Selected)) candidate.Selected = result.Nodes[0].Id;
-                    p.Activate(candidate.Id);
-                }
-                else
-                {
-                    p.Address = address; p.Local = false; p.SubscriptionUsage = result.Usage; p.Name = name.Length > 0 ? name : "Подписка"; p.Nodes = result.Nodes; p.Updated = DateTimeOffset.UtcNow;
-                    if (p.Selected != "auto" && result.Nodes.All(n => n.Id != p.Selected)) p.Selected = result.Nodes[0].Id;
-                }
-                p.Favorites.RemoveAll(id => p.Nodes.All(n => n.Id != id));
-            });
-            warnings = result.Warnings; AppLog.Register(profile); AppLog.Write("subscription", "saved: " + result.Nodes.Count + " nodes; skipped=" + warnings.Count);
-        }
-        finally { if (restart) ResumeDesired(); }
     }
     async Task ExportBackup(string password)
     {

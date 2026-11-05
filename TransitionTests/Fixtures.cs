@@ -57,6 +57,17 @@ public sealed partial class MainWindow
 {
     Profile profile;
     readonly Tunnel tunnel;
+    readonly CancellationTokenSource lifetime = new();
+    readonly PingFixture ping = new();
+    readonly SemaphoreSlim operations = new(1);
+    bool connecting => false;
+    bool exiting => false;
+    string geoIpError { get; set; } = "";
+    DateTimeOffset? geoIpAttempt { get; set; }
+    List<string> warnings = [];
+    int RequestProxyPort => 0;
+    int GeoIpProxyPort => 0;
+    string[] GeoIpCountries() => [];
     internal Pause? ToolsPause;
     public MainWindow(Profile profile)
     {
@@ -74,6 +85,9 @@ public sealed partial class MainWindow
     void SaveProfile(Action<Profile> edit) => profile = Store.Change(profile, edit);
     Task StopTools() => ToolsPause?.Wait(CancellationToken.None) ?? Task.CompletedTask;
     void ResumeDesired() { }
+    public Task LocalImport(string text, CancellationToken ct) => ApplyLocalImport(text, "new", ct);
+    public Task Refresh(string address, SubscriptionResult result, CancellationToken ct) => ApplySubscription(address, "subscription", result, false, ct);
+    public void RefreshInactive(string id, SubscriptionResult result) => ApplyInactiveSubscription(id, result);
 }
 sealed class PingFixture { public Task Stop(bool clear = false) => Task.CompletedTask; }
 sealed class SaveFileDialog : IDisposable

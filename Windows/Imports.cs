@@ -7,42 +7,16 @@ namespace Kot.Windows;
 
 public sealed partial class MainWindow
 {
-    async Task ApplyLocalImport(string text, string name)
-    {
-        if (name.Length > 60) throw new UserError("Название слишком длинное.");
-        using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); importAttempt = attempt;
-        try
-        {
-            var result = await Task.Run(() => Subscriptions.Parse(text), attempt.Token);
-            result = await ProviderRouting.ResolveLocal(result, attempt.Token, RequestProxyPort);
-            await ProviderAssets.Prepare(result.Nodes, attempt.Token, RequestProxyPort);
-            result = await XraySession.Validate(result, attempt.Token);
-            attempt.Token.ThrowIfCancellationRequested();
-            if (profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
-            await StopTools(); await ping.Stop(clear: true); await tunnel.Stop();
-            try
-            {
-                attempt.Token.ThrowIfCancellationRequested();
-                SaveProfile(p =>
-                {
-                    var saved = new SavedSubscription { Local = true, Name = name.Length == 0 ? "Локальные серверы" : name, Nodes = result.Nodes, Updated = DateTimeOffset.UtcNow, Selected = result.Nodes[0].Id };
-                    p.Subscriptions.Add(saved); p.Activate(saved.Id);
-                });
-                warnings = result.Warnings; AppLog.Register(profile); AppLog.Write("import", "local nodes=" + result.Nodes.Count);
-            }
-            finally { ResumeDesired(); }
-        }
-        finally { if (importAttempt == attempt) importAttempt = null; }
-    }
-    async Task ImportServersFile(string name)
+    async Task ImportServersFile(string name, CancellationToken ct)
     {
         using var dialog = new OpenFileDialog { Filter = "Серверы / Clash / Xray (*.yaml;*.yml;*.txt;*.json)|*.yaml;*.yml;*.txt;*.json|Все файлы (*.*)|*.*" };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        ct.ThrowIfCancellationRequested();
         using var file = new FileStream(dialog.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (file.Length > Subscriptions.MaxBytes) throw new UserError("Файл больше 4 МиБ.");
         using var reader = new StreamReader(file, new UTF8Encoding(false, true), true);
-        string text = await reader.ReadToEndAsync(lifetime.Token);
-        await ApplyLocalImport(text, name);
+        string text = await reader.ReadToEndAsync(ct);
+        await ApplyLocalImport(text, name, ct);
     }
     async Task<string?> ReadQr(bool clipboard)
     {
