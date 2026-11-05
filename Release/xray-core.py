@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,6 +17,25 @@ WINTUN_URL = 'https://www.wintun.net/builds/wintun-0.14.1.zip'
 WINTUN_SHA = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
 
 
+def extract_source(archive, cache, commit):
+    if not re.fullmatch('[0-9a-f]{40}', commit):
+        raise ValueError('Invalid pinned Xray commit')
+    cache = cache.resolve()
+    if not cache.is_relative_to(ROOT.resolve()):
+        raise ValueError('Xray source cache must stay inside the workspace')
+    cache.mkdir(parents=True, exist_ok=True)
+    folder = cache / ('Xray-core-' + commit)
+    if folder.resolve().parent != cache:
+        raise ValueError('Xray source cache cannot redirect outside its parent')
+    # extractall overwrites archive members but leaves extra .go files behind.
+    # Reusing such a tree would compile bytes not covered by sourceSha256.
+    if folder.exists():
+        shutil.rmtree(folder)
+    with tarfile.open(archive) as source:
+        source.extractall(cache, filter='data')
+    return folder
+
+
 def build(destination, target):
     pin = json.loads((ROOT / 'upstream/xray-experiment.json').read_text())
     archive = ROOT / 'upstream' / ('Xray-core-' + pin['commit'] + '-source.tar.gz')
@@ -25,10 +45,7 @@ def build(destination, target):
     if not go or subprocess.check_output([go, 'version'], text=True).split()[2] != pin['goVersion']:
         raise ValueError('Build requires the pinned ' + pin['goVersion'])
     cache = ROOT / '.build-cache/xray-source'
-    cache.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive) as source:
-        source.extractall(cache, filter='data')
-    folder = cache / ('Xray-core-' + pin['commit'])
+    folder = extract_source(archive, cache, pin['commit'])
     destination.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, GOOS=target, GOARCH='amd64', CGO_ENABLED='0')
     subprocess.run([go, 'build', '-buildvcs=false', '-trimpath', '-ldflags=-s -w', '-o',
@@ -42,7 +59,7 @@ def build(destination, target):
             raise ValueError('Wintun checksum mismatch')
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             (destination / 'wintun.dll').write_bytes(z.read('wintun/bin/amd64/wintun.dll'))
-    print('PASS official Xray source + signed Wintun: ' + pin['commit'])
+    print('PASS official Xray source' + (' + Wintun SHA-256' if target == 'windows' else '') + ': ' + pin['commit'])
 
 
 if __name__ == '__main__':

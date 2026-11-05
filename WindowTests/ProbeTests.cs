@@ -39,7 +39,7 @@ public static class ProbeTests
         NativeCore? server = null;
         try
         {
-            server = new NativeCore(executable, file, _ => { });
+            server = XraySession.Start(executable, File.ReadAllText(file), null, "local VLESS fixture", _ => { });
             while (true)
             {
                 if (server.HasExited) throw new Exception("Local VLESS fixture exited: " + await server.ReadRecentOutput(true));
@@ -49,6 +49,10 @@ public static class ProbeTests
             }
             await using (var probe = await ProbeCore.Start(Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{vlessPort}?security=none#Probe"), deadline.Token, executable))
             {
+                using (var outsider = new HttpClient(new HttpClientHandler { UseProxy = true, Proxy = new WebProxy("http://127.0.0.1:" + probe.Port) }))
+                using (var denied = await outsider.GetAsync($"http://127.0.0.1:{webPort}/", deadline.Token))
+                    check(denied.StatusCode == HttpStatusCode.ProxyAuthenticationRequired && Volatile.Read(ref requests) == 0,
+                        "private health proxy rejects an unrelated local process without forwarding its request");
                 using var client = ConnectionTools.Client(probe.Port);
                 check(await client.GetStringAsync($"http://127.0.0.1:{webPort}/", deadline.Token) == "OK", "native temporary core carries an HTTP request through a real VLESS server");
                 List<int?> samples = [];

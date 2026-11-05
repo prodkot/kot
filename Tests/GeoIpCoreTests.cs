@@ -21,7 +21,7 @@ public static class GeoIpCoreTests
         {
             var config = XrayRuntime.Build(node, 18780, tun, tun ? 0 : 18782, manual: rules, geoIpPaths: cache.Paths(rules.Countries()));
             string path = Path.Combine(folder, tun ? "tun.json" : "proxy.json"); File.WriteAllText(path, config.ToJsonString());
-            await Command(coreExe, "run", "-test", "-c", path);
+            await Command(coreExe, config.ToJsonString());
         }
         Console.WriteLine("PASS native Xray accepts IPv4/IPv6 country routing in TUN and system proxy configurations");
         foreach (string text in new[] { "SRS\u0001broken-compression", "example.org", "1.2.3.4/99", "<html>download failed</html>" })
@@ -32,13 +32,15 @@ public static class GeoIpCoreTests
         }
         Console.WriteLine("PASS native GeoIP validator rejects corrupt data, domains, bad prefixes and HTML");
     }
-    static async Task Command(string core, params string[] args)
+    static async Task Command(string core, string config)
     {
-        var psi = new ProcessStartInfo(core) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (string argument in args) psi.ArgumentList.Add(argument);
+        var psi = new ProcessStartInfo(core) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardError = true, RedirectStandardOutput = true };
+        foreach (string argument in new[] { "run", "-test", "-format", "json", "-c", "stdin:" }) psi.ArgumentList.Add(argument);
         using var process = Process.Start(psi)!;
         Task<string> error = process.StandardError.ReadToEndAsync(), output = process.StandardOutput.ReadToEndAsync();
-        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20)); }
+        async Task Feed() { await process.StandardInput.WriteAsync(config); process.StandardInput.Close(); }
+        Task feed = Feed();
+        try { await Task.WhenAll(feed, process.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(20)); }
         finally { if (!process.HasExited) { process.Kill(true); await process.WaitForExitAsync(); } await Task.WhenAll(error, output); }
         if (process.ExitCode != 0) throw new Exception(error.Result + output.Result);
     }

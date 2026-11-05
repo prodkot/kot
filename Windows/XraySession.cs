@@ -10,10 +10,13 @@ public static class XraySession
     internal static async Task<SubscriptionResult> Validate(SubscriptionResult result, CancellationToken ct, string executable)
     {
         if (!File.Exists(executable)) throw new UserError("Ядро Xray не найдено. Переустановите kot.");
-        using var port = LoopbackPort.Reserve(ct);
         var clean = CoreDiagnostics.CreateRedactor(result.Nodes);
-        return await SubscriptionValidation.Filter(result, (node, token) => Rejection(executable,
-            XrayRuntime.Build(node, port.Port).ToJsonString(), ProviderAssets.Cache.DirectoryFor(node), clean, token), ct);
+        return await SubscriptionValidation.Filter(result, async (node, token) =>
+        {
+            using var port = LoopbackPort.Reserve(token);
+            return await Rejection(executable, XrayRuntime.Build(node, port.Port).ToJsonString(),
+                ProviderAssets.Cache.DirectoryFor(node), clean, token);
+        }, ct, concurrency: Math.Min(4, Environment.ProcessorCount));
     }
     internal static NativeCore Start(string executable, string config, string? assets, string title, Action<string> report, bool test = false)
     {

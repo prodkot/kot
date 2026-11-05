@@ -18,7 +18,7 @@ public static class ConnectionTools
     public static HttpClient Client(int proxyPort)
     {
         if (proxyPort is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(proxyPort));
-        return new(new HttpClientHandler { UseProxy = true, Proxy = new WebProxy($"http://127.0.0.1:{proxyPort}"), AllowAutoRedirect = false, UseCookies = false }) { Timeout = Timeout.InfiniteTimeSpan };
+        return new(NetworkRequests.Handler(proxyPort)) { Timeout = Timeout.InfiniteTimeSpan };
     }
     public static QualitySummary Summarize(IReadOnlyList<int?> samples)
     {

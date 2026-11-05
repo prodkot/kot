@@ -29,8 +29,10 @@ def start(config, name, listen):
     path.write_text(json.dumps(config))
     log = open(folder / (name + '-live.log'), 'w+')
     logs.append(log)
-    process = subprocess.Popen([core, 'run', '-c', str(path)], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+    process = subprocess.Popen([core, 'run', '-format', 'json', '-c', 'stdin:'], stdin=subprocess.PIPE, stdout=log, stderr=log)
     processes.append(process)
+    process.stdin.write(json.dumps(config).encode())
+    process.stdin.close()
     until = time.monotonic() + 8
     while time.monotonic() < until:
         if process.poll() is not None:
@@ -96,7 +98,7 @@ def serve(server):
 try:
     for path in sorted(folder.glob('*.json')):
         if path.name.endswith('-live.json'): continue
-        result = subprocess.run([core, 'run', '-test', '-c', str(path)], capture_output=True, timeout=15)
+        result = subprocess.run([core, 'run', '-test', '-format', 'json', '-c', 'stdin:'], input=path.read_bytes(), capture_output=True, timeout=15)
         check(result.returncode == 0, 'native core accepts ' + path.name + ': ' + (result.stdout + result.stderr).decode(errors='replace')[-1000:] if result.returncode else 'native core accepts ' + path.name)
     web = serve(http.server.ThreadingHTTPServer(('127.0.0.1', 0), Web))
     web_port = web.server_address[1]
@@ -146,7 +148,10 @@ try:
     provider['dns']['servers'][-1] = {'address': '127.0.0.1', 'port': fallback.server_address[1]}
     client = start(provider, 'provider', 19442)
     url = f'http://127.0.0.1:{web_port}/'
-    check(request(19442, url) == (200, b'native-xray-traffic'), 'health traffic crosses a real VLESS server')
+    health_auth = 'kot:' + provider['inbounds'][0]['settings']['accounts'][0]['pass']
+    check(request(19442, url)[0] == 407, 'private health proxy rejects unauthenticated local requests')
+    check(request(19442, url, 'kot:wrong-password')[0] == 407, 'private health proxy rejects incorrect credentials')
+    check(request(19442, url, health_auth) == (200, b'native-xray-traffic'), 'authenticated health traffic crosses a real VLESS server')
     for suffix in ('ru', 'xn--p1ai'):
         check(request(19443, f'http://native-fixture.{suffix}:{web_port}/') == (200, b'native-xray-traffic'), suffix + ' follows the provider direct route and provider DNS')
     failed = False
@@ -168,13 +173,13 @@ try:
     outbound['settings']['vnext'][0]['port'] = xhttp_port
     outbound['streamSettings'] = {'network': 'xhttp', 'security': 'none', 'xhttpSettings': {'path': '/fixture', 'mode': 'packet-up'}}
     xhttp_client = start(xhttp, 'xhttp', xhttp['inbounds'][0]['port'])
-    check(request(xhttp['inbounds'][0]['port'], url) == (200, b'native-xray-traffic'), 'native XHTTP carries a real HTTP response without another core or SOCKS bridge')
+    check(request(xhttp['inbounds'][0]['port'], url, 'kot:' + xhttp['inbounds'][0]['settings']['accounts'][0]['pass']) == (200, b'native-xray-traffic'), 'native XHTTP carries a real HTTP response without another core or SOCKS bridge')
     server.terminate(); server.wait(timeout=5)
     for suffix in ('ru', 'xn--p1ai'):
         check(request(19443, f'http://offline-fixture.{suffix}:{web_port}/') == (200, b'native-xray-traffic'), suffix + ' still opens directly while the VPN server is stopped')
     failed = False
     try:
-        failed = request(19442, url, timeout=2)[0] != 200
+        failed = request(19442, url, health_auth, timeout=2)[0] != 200
     except (OSError, http.client.HTTPException):
         failed = True
     check(failed, 'the health check cannot silently use a provider direct bypass')
@@ -189,7 +194,7 @@ try:
     balanced_client = start(balanced, 'provider-balanced', 19442)
     failed = False
     try:
-        failed = request(19442, url, timeout=2)[0] != 200
+        failed = request(19442, url, health_auth, timeout=2)[0] != 200
     except (OSError, http.client.HTTPException):
         failed = True
     check(failed, 'a direct-only provider balancer cannot hide a stopped VPN server')

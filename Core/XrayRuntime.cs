@@ -15,6 +15,7 @@ public static class XrayRuntime
         RoutingRules? manual = null, IReadOnlyDictionary<string, string>? geoIpPaths = null, string physicalInterface = "")
     {
         NodeSecurity.Validate(node);
+        if (secret.Length is > 0 and < 32) throw new UserError("Небезопасные настройки локального прокси.");
         Port(healthPort);
         if (proxyPort != 0) Port(proxyPort);
         if (metricsPort != 0) { Port(metricsPort); if (secret.Length < 32) throw new UserError("Небезопасные настройки статистики."); }
@@ -62,7 +63,7 @@ public static class XrayRuntime
             ["settings"] = password == null ? new JsonObject() : new JsonObject { ["accounts"] = new JsonArray(new JsonObject { ["user"] = "kot", ["pass"] = password }) },
             ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls", "quic"), ["routeOnly"] = true }
         };
-        var inputs = new JsonArray(Input(healthPort, "kot-health")); c["inbounds"] = inputs;
+        var inputs = new JsonArray(Input(healthPort, "kot-health", secret.Length == 0 ? null : secret)); c["inbounds"] = inputs;
         if (proxyPort > 0) inputs.Add(Input(proxyPort, "kot-in"));
         if (tun) inputs.Add(new JsonObject
         {

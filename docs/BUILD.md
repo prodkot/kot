@@ -1,6 +1,6 @@
 # Сборка
 
-Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.12+, Go 1.27.3 и .NET SDK из `global.json` (10.0.401). Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
+Для Windows-клиента нужны Windows x64, PowerShell 7, Python 3.12+, Go 1.27.3 и .NET SDK из `global.json` (10.0.401). Автоматический переход на другую версию SDK отключён, чтобы локальная сборка и CI использовали один компилятор. Для Setup дополнительно нужны NSIS 3 и Visual Studio 2022 или новее с компонентом **Desktop development with C++** для программы распаковки NativeAOT. Сборка скачивает компоненты с GitHub, Microsoft и NuGet, поэтому нужен интернет.
 
 Из корня репозитория:
 
@@ -28,6 +28,8 @@ pwsh ./build.ps1
 
 ```powershell
 python Tests/repository.py
+python Tests/release_ref.py
+python Tests/xray_source.py
 ```
 
 Основная логика, также работает на Linux:
@@ -62,10 +64,17 @@ dotnet publish WindowTests/Kot.WindowTests.csproj -c Release -r win-x64 -p:SelfC
 ./artifacts/window-tests/Kot.WindowTests.exe artifacts/window-ui
 ```
 
+Изолированная проверка передачи stdin, авторизации приватного health-прокси и реального VLESS без изменения системного прокси и TUN:
+
+```powershell
+./artifacts/window-tests/Kot.WindowTests.exe --probe-test artifacts/core/xray.exe
+```
+
 Реальные локальные цепочки используют то же закреплённое ядро, что и Setup. Из корня репозитория на Linux:
 
 ```sh
 python3 Release/xray-core.py artifacts/core --target linux
+python3 Tests/xray_dependencies.py
 dotnet run --project Tests/Kot.Tests.csproj -c Release
 python3 Tests/xray_integration.py --core artifacts/core/xray
 dotnet run --project Tests/Kot.Tests.csproj -c Release --no-build -- geoip-core artifacts/core/xray

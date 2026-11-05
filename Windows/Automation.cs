@@ -137,11 +137,12 @@ public sealed partial class MainWindow
                             var device = profile.SendHwid ? DeviceIdentity.Get() : null;
                             var result = await Subscriptions.Download(due.Address, ct.Token, device: device, proxyPort: RequestProxyPort);
                             if (exiting) return;
-                            if (due.Id == profile.ActiveSubscription) await ApplySubscription(due.Address, due.Name, result, false);
+                            if (due.Id == profile.ActiveSubscription) await ApplySubscription(due.Address, due.Name, result, false, ct.Token);
                             else
                             {
-                                await ProviderAssets.Prepare(result.Nodes, ct.Token, RequestProxyPort);
-                                result = await XraySession.Validate(result, ct.Token);
+                                result = await SubscriptionValidation.Prepare(result,
+                                    (nodes, token) => ProviderAssets.Prepare(nodes, token, RequestProxyPort), XraySession.Validate, ct.Token);
+                                ct.Token.ThrowIfCancellationRequested();
                                 SaveProfile(p =>
                                 {
                                     var updated = p.Subscriptions.Single(s => s.Id == due.Id);
@@ -168,10 +169,12 @@ public sealed partial class MainWindow
         catch (Exception ex) { AppLog.Error("automation", ex); }
         finally { ticking = false; }
     }
-    async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing)
+    async Task ApplySubscription(string address, string name, SubscriptionResult result, bool importing, CancellationToken ct)
     {
-        await ProviderAssets.Prepare(result.Nodes, lifetime.Token, RequestProxyPort);
-        result = await XraySession.Validate(result, lifetime.Token);
+        ct.ThrowIfCancellationRequested();
+        result = await SubscriptionValidation.Prepare(result,
+            (nodes, token) => ProviderAssets.Prepare(nodes, token, RequestProxyPort), XraySession.Validate, ct);
+        ct.ThrowIfCancellationRequested();
         var saved = profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address);
         bool switchProfile = importing && saved?.Id != profile.ActiveSubscription;
         if (switchProfile && saved == null && profile.Subscriptions.Count >= 50) throw new UserError("Максимум 50 подписок.");
@@ -182,6 +185,7 @@ public sealed partial class MainWindow
         if (restart) await tunnel.Stop(); await ping.Stop(clear: true);
         try
         {
+            ct.ThrowIfCancellationRequested();
             SaveProfile(p =>
             {
                 if (switchProfile)
