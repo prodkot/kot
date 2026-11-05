@@ -71,6 +71,20 @@ public static class UpdateTests
             bool blocked=false;using(var zip=new ZipArchive(new MemoryStream(Package()),ZipArchiveMode.Read))try{new UpdateTransaction(root,work).Apply(zip,new Version("0.4.0"),publicKey:rsa.ExportSubjectPublicKeyInfoPem());}catch(UserError){blocked=true;}
             check(blocked && File.ReadAllText(Old("Kot.exe"))=="old app" && !File.Exists(Path.Combine(work,"journal.json")),"destination file/directory collision rejected before writes: "+parentFile);
         }
+        Reset();
+        string interruptedStage = Path.Combine(root, ".kot-update-" + Guid.NewGuid().ToString("N"));
+        string staged = Path.Combine(interruptedStage, "staged");
+        Directory.CreateDirectory(staged);
+        File.WriteAllText(Path.Combine(staged, "core"), "blocks directory creation during extraction");
+        bool stageFailed = false;
+        using (var zip = new ZipArchive(new MemoryStream(Package()), ZipArchiveMode.Read))
+        {
+            try { new UpdateTransaction(root, interruptedStage).Apply(zip, new Version("0.4.0"), publicKey: rsa.ExportSubjectPublicKeyInfoPem()); }
+            catch (IOException) { stageFailed = true; }
+        }
+        check(stageFailed && File.Exists(Path.Combine(staged, "release.json")) && UpdateTransaction.PendingRecovery(root) == null
+            && File.ReadAllText(Old("Kot.exe")) == "old app" && File.ReadAllText(Old("core/sing-box.exe")) == "old core",
+            "failure during staging leaves the installed files untouched and no journal to recover");
         Reset(); string external=Path.Combine(folder,"outside-update");Directory.CreateDirectory(external); File.WriteAllText(Path.Combine(external,"sing-box.exe"),"external");Directory.Delete(Old("core"),true); Directory.CreateSymbolicLink(Old("core"),Path.GetFullPath(external));
         bool linked=false;string linkedWork=Path.Combine(root,".kot-update-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(linkedWork);
         using(var zip=new ZipArchive(new MemoryStream(Package()),ZipArchiveMode.Read))try{new UpdateTransaction(root,linkedWork).Apply(zip,new Version("0.4.0"),publicKey:rsa.ExportSubjectPublicKeyInfoPem());}catch(UserError){linked=true;}

@@ -96,6 +96,23 @@ internal static class Program
         File.WriteAllText(Path.Combine(work, "rolled-back"), "ok");
         UpdateInstaller.CleanupAfterUpdate(work, root);
         Check(File.ReadAllText(old) == "old guide" && Directory.Exists(work), "rolled-back update does not trigger legacy-file deletion");
+
+        string Workspace()
+        {
+            string path = Path.Combine(root, ".kot-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(path, "staged"));
+            File.WriteAllText(Path.Combine(path, "staged", "partial.dll"), "partial");
+            File.WriteAllText(Path.Combine(path, "package.exe"), "package");
+            File.WriteAllText(Path.Combine(path, "Updater.exe"), "helper");
+            return path;
+        }
+        string aborted = Workspace(), preparing = Workspace(), pending = Workspace();
+        File.WriteAllText(Path.Combine(pending, "journal.json"), "[]");
+        UpdateInstaller.CleanupFinishedUpdates(root, null, Path.GetFileName(aborted));
+        Check(!Directory.Exists(aborted) && !Directory.Exists(work), "restart removes the named aborted workspace and completed rollback");
+        Check(Directory.Exists(preparing), "restart preserves other workspaces without journals");
+        UpdateInstaller.CleanupFinishedUpdates(root, null, Path.GetFileName(pending));
+        Check(File.Exists(Path.Combine(pending, "journal.json")), "restart preserves a pending journal even when the workspace is named as aborted");
         Directory.Delete(root, true);
     }
     [STAThread] static int Main(string[] args)
