@@ -38,7 +38,8 @@
 
 [Сборка и проверки](docs/BUILD.md) · [Участие в разработке](CONTRIBUTING.md) · [Добавление музыки](docs/MUSIC.md)
 
-Основная Windows-разработка ведётся в `main`. Linux-порт пока отдельный: актуальные исправления находятся в [`fix/linux-laptop-acceptance`](https://github.com/prodkot/kot/tree/fix/linux-laptop-acceptance), исходный preview в [`port/ubuntu-linux`](https://github.com/prodkot/kot/tree/port/ubuntu-linux). Ветка `music` содержит аудиотеку страницы «О программе» и обновляется независимо от клиента.
+
+Ветка `music` содержит аудиотеку страницы «О программе» и обновляется независимо от клиента.
 
 Ошибки и пожелания: [Issues](https://github.com/prodkot/kot/issues/new/choose). Уязвимости: [приватное сообщение](SECURITY.md). Перед публикацией журнала убери ключи и ссылки на подписки.
 
