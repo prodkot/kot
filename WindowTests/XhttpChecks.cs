@@ -144,6 +144,25 @@ public static class XhttpChecks
                 var pending = failure.Connect(failedProfile);
                 await Task.Delay(300, ct); await failure.Stop(); await pending;
                 check(failure.State == "idle" && failure.Error.Length == 0, "cancelling native startup completes without a timeout error");
+                Task? queued = null;
+                int starts = 0;
+                void QueueAndCancel()
+                {
+                    if (failure.State != "connecting" || ++starts != 1) return;
+                    // Changed runs with the connection gate held. This request queues
+                    // before Cancel and may acquire the gate only after the first one exits.
+                    queued = failure.Connect(failedProfile, ct);
+                    failure.Cancel();
+                }
+                failure.Changed += QueueAndCancel;
+                try
+                {
+                    await failure.Connect(failedProfile, ct);
+                    await (queued ?? throw new Exception("Second connection did not queue."));
+                }
+                finally { failure.Changed -= QueueAndCancel; }
+                check(starts == 1 && !failure.HasCore && failure.State == "idle" && failure.Error.Length == 0,
+                    "cancelling native startup also discards a queued connection without a timeout error");
                 check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before && !File.Exists(Path.Combine(Store.Folder, "runtime.json")), "success, failure and cancellation leave no credential configuration files");
             }
             finally { await failure.Stop(); KillSwitch.Release(); }

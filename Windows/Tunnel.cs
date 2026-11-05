@@ -67,7 +67,7 @@ public sealed class Tunnel
         {
             preferredNode = selected;
             await Stop();
-            if (!ct.IsCancellationRequested && stopGeneration == generation + 1) await Connect(profile);
+            if (!ct.IsCancellationRequested && stopGeneration == generation + 1) await Connect(profile, ct);
         }
         return State == "connected";
     }
@@ -119,12 +119,13 @@ public sealed class Tunnel
         if (State != "idle") { await Stop(); return; }
         await Connect(profile);
     }
-    public async Task Connect(Profile profile)
+    public async Task Connect(Profile profile, CancellationToken cancellationToken = default)
     {
-        await gate.WaitAsync();
+        int generation = Volatile.Read(ref stopGeneration);
+        await gate.WaitAsync(cancellationToken);
         try
         {
-            if (core != null || State != "idle") return;
+            if (cancellationToken.IsCancellationRequested || generation != Volatile.Read(ref stopGeneration) || core != null || State != "idle") return;
             Node? node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
             bool automatic = profile.Selected == "auto";
             if (automatic) node = AutomaticSelection.Candidates(profile).FirstOrDefault() ?? throw new UserError(AutomaticSelection.NoCandidates);
@@ -133,8 +134,12 @@ public sealed class Tunnel
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             PhysicalNetwork.Capture();
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
-            cancelled = false; attempt = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var ct = attempt.Token;
+            cancelled = false;
+            attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(TimeSpan.FromSeconds(60));
+            var ct = attempt.Token;
             Set("connecting");
+            ct.ThrowIfCancellationRequested();
             await ProviderAssets.Prepare(Xhttp.ConnectionNodes(profile), ct);
             string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
             await GeoIpStore.Update(countries, true, ct);
@@ -219,7 +224,7 @@ public sealed class Tunnel
         catch (Exception ex)
         {
             AppLog.Error("connect", ex);
-            bool timedOut = ex is OperationCanceledException && !cancelled && attempt?.IsCancellationRequested == true;
+            bool timedOut = ex is OperationCanceledException && !cancelled && !cancellationToken.IsCancellationRequested && attempt?.IsCancellationRequested == true;
             string error = timedOut ? "Подключение не завершилось за 60 секунд. Проверьте сервер или выберите другой." : ex is OperationCanceledException ? "" : Store.Friendly(ex);
             await StopCore(); Set("idle", error);
         }

@@ -79,6 +79,28 @@ internal static partial class UpdateInstaller
         }
         catch (Exception ex) { AppLog.Error("update cleanup", ex); }
     }
+    internal static void CleanupFinishedUpdates(string root, string? receipt, string? abortedUpdate)
+    {
+        foreach (string work in Directory.EnumerateDirectories(root, ".kot-update-*"))
+        {
+            string name = Path.GetFileName(work);
+            if (work.Equals(receipt, StringComparison.OrdinalIgnoreCase) || !System.Text.RegularExpressions.Regex.IsMatch(name, "^\\.kot-update-[a-f0-9]{32}$")) continue;
+            try
+            {
+                UpdateTransaction.SafePath(work);
+                bool finished = File.Exists(Path.Combine(work, "committed")) || File.Exists(Path.Combine(work, "rolled-back"));
+                // The failed updater names its own workspace after stopping work on it.
+                // Other folders without a journal may still be preparing an update.
+                bool aborted = name == abortedUpdate && !Directory.EnumerateFileSystemEntries(work, "journal.json").Any();
+                if (!finished && !aborted) continue;
+                File.Delete(Path.Combine(work, "Updater.exe"));
+                File.Delete(Path.Combine(work, "Recovery.exe"));
+                Directory.Delete(work, true);
+            }
+            catch (IOException ex) { AppLog.Error("update cleanup", ex); }
+            catch (UnauthorizedAccessException ex) { AppLog.Error("update cleanup", ex); }
+        }
+    }
     public static void Apply()
     {
         string work = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar), root = Path.GetDirectoryName(work)!;
@@ -131,7 +153,16 @@ internal static partial class UpdateInstaller
             try { File.WriteAllText(Path.Combine(work, "error.txt"), error); } catch { }
             MessageBox.Show("Обновление не установлено. " + error, "kot.", MessageBoxButtons.OK, MessageBoxIcon.Error);
             if (owned) { barrier.ReleaseMutex(); owned = false; }
-            if (restored) { var start = new ProcessStartInfo(Path.Combine(root, "Kot.exe")) { UseShellExecute = false, WorkingDirectory = root }; if (request?.Resume == true) start.ArgumentList.Add("--resume-connection"); Process.Start(start)?.Dispose(); }
+            if (restored)
+            {
+                var start = new ProcessStartInfo(Path.Combine(root, "Kot.exe")) { UseShellExecute = false, WorkingDirectory = root };
+                start.ArgumentList.Add("--wait-for");
+                start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                start.ArgumentList.Add("--aborted-update");
+                start.ArgumentList.Add(Path.GetFileName(work));
+                if (request?.Resume == true) start.ArgumentList.Add("--resume-connection");
+                Process.Start(start)?.Dispose();
+            }
         }
         finally { next?.Dispose(); if (owned) barrier.ReleaseMutex(); }
     }

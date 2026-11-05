@@ -10,7 +10,9 @@ public sealed partial class MainWindow
     readonly CancellationTokenSource lifetime = new();
     readonly Dictionary<string, DateTimeOffset> refreshAttempts = [];
     DateTimeOffset lastPing = DateTimeOffset.MinValue, lastHealth = DateTimeOffset.MinValue;
-    bool ticking, connecting, toggling, networkChanged;
+    Task connectionAttempt = Task.CompletedTask;
+    bool connecting => !connectionAttempt.IsCompleted;
+    bool ticking, toggling, networkChanged;
     int failedHealth;
     string backgroundError = "", networkSignature = "", connectionNotice = "";
     void StartApplication()
@@ -73,10 +75,13 @@ public sealed partial class MainWindow
     {
         if (reconnect.Desired && !exiting && profile.Nodes.Count > 0) { reconnect.ResetDelay(DateTimeOffset.UtcNow); StartConnection(); }
     }
-    async void StartConnection()
+    void StartConnection()
     {
         if (connecting || exiting || services.Testing || !reconnect.Desired || profile.Nodes.Count == 0) return;
-        connecting = true;
+        connectionAttempt = StartConnectionAsync();
+    }
+    async Task StartConnectionAsync()
+    {
         try
         {
             try { await services.StopZapretForVpn(); }
@@ -87,12 +92,14 @@ public sealed partial class MainWindow
                 throw;
             }
             if (exiting || !reconnect.Desired) return;
-            await tunnel.Connect(profile);
+            await tunnel.Connect(profile, lifetime.Token);
+            if (exiting || !reconnect.Desired) return;
             if (tunnel.State == "connected") { reconnect.Healthy(); connectionNotice = ""; failedHealth = 0; lastHealth = DateTimeOffset.UtcNow; }
             else if (reconnect.Desired) { if (profile.Automation.Reconnect) reconnect.Retry(DateTimeOffset.UtcNow); else reconnect.Stop(); }
         }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) { AppLog.Error("automatic connect", ex); if (reconnect.Desired) { if (profile.Automation.Reconnect) reconnect.Retry(DateTimeOffset.UtcNow); else reconnect.Stop(); } }
-        finally { connecting = false; if (!exiting) Snapshot(); }
+        finally { if (!exiting) Snapshot(); }
     }
     async Task TickAutomation()
     {

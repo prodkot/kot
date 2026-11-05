@@ -54,12 +54,9 @@ static class Program
             if (UpdateInstaller.Receipt == null && UpdateInstaller.StartRecovery(args)) return;
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
             if (args.Contains("--update-startup")) Startup.Set(true).GetAwaiter().GetResult();
-            foreach (string work in Directory.GetDirectories(AppContext.BaseDirectory, ".kot-update-*"))
-            {
-                if (work == UpdateInstaller.Receipt || !System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(work), "^\\.kot-update-[a-f0-9]{32}$")) continue;
-                try { Kot.Core.UpdateTransaction.SafePath(work); if (File.Exists(Path.Combine(work, "committed")) || File.Exists(Path.Combine(work, "rolled-back"))) Directory.Delete(work, true); }
-                catch (IOException) { } catch (UnauthorizedAccessException) { }
-            }
+            int aborted = Array.IndexOf(args, "--aborted-update");
+            string? abortedUpdate = aborted >= 0 && aborted + 1 < args.Length ? args[aborted + 1] : null;
+            UpdateInstaller.CleanupFinishedUpdates(AppContext.BaseDirectory, UpdateInstaller.Receipt, abortedUpdate);
             var profile = ProfileRecovery.LoadProfile();
             if (profile != null) Application.Run(new MainWindow(args.Contains("--startup"), args.Contains("--resume-connection"), profile));
         }

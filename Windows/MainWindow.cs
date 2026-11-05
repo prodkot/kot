@@ -342,7 +342,7 @@ public sealed partial class MainWindow : WindowChrome
         exiting = true; browserWatch.Stop(); browserWatch.Dispose(); DisposeAutomation(); importAttempt?.Cancel(); tunnel.Cancel(); Enabled = false;
         try
         {
-            try { await services.StopAll(exit: true); }
+            try { await Task.WhenAll(services.StopAll(exit: true), connectionAttempt); }
             finally { await StopTools(); await ping.Stop(); await tunnel.Stop(); if (!preserveKillSwitch) KillSwitch.Release(); }
         }
         finally { allowClose = true; Close(); }
