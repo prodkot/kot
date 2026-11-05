@@ -40,18 +40,28 @@
       <h1 id="hero-title">Твой сервер. <span>Один клик.</span></h1>
       <div class="hero-copy">
         <p>Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
-        <div class="hero-actions"><div class="action-row"><a class="button download-link" href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg></a><a class="try-demo" href="#demo">Попробовать демо <span aria-hidden="true">↘</span></a></div><p class="download-meta">Windows 10 / 11, x64 <span aria-hidden="true">·</span> Бесплатно <span aria-hidden="true">·</span> Открытый код</p></div>
+        <div class="hero-actions">
+          <div class="action-row">
+            <a class="button download-link hero-download" href="https://github.com/prodkot/kot/releases/latest">
+              Скачать для Windows
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path class="hero-download-arrow" d="M12 4v12m-5-5 5 5 5-5"/>
+                <path class="hero-download-tray" d="M5 20h14"/>
+              </svg>
+            </a>
+            <a class="try-demo" href="#demo">Попробовать демо <span aria-hidden="true">↘</span></a>
+          </div>
+          <p class="download-meta">Windows 10 / 11, x64 <span aria-hidden="true">·</span> Бесплатно <span aria-hidden="true">·</span> Открытый код</p>
+        </div>
       </div>
       <div class="hero-screen" id="demo">
         <div class="screen-label"><span><span class="status-dot" aria-hidden="true"></span> НАСТОЯЩИЙ ИНТЕРФЕЙС. МОЖНО НАЖИМАТЬ.</span><span class="screen-label-right">БЕЗ УСТАНОВКИ</span></div>
         <div class="demo-holder"><dialog class="demo-window" id="demo-window" open aria-labelledby="demo-caption">
           <div class="demo-toolbar"><span id="demo-caption">Выбери сервер. Нажми подключение. Загляни в настройки.</span><div><button id="reset-demo" type="button">Сбросить</button><button id="expand-demo" type="button" aria-haspopup="dialog" aria-expanded="false">Развернуть <span aria-hidden="true">↗</span></button><button id="close-demo" type="button" aria-label="Закрыть полноэкранное демо">Закрыть <span aria-hidden="true">×</span></button></div></div>
-          <div id="demo-slot"><iframe id="client-demo" src="demo/index.html" title="Интерактивная демо-версия интерфейса kot." sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" aria-describedby="demo-note"></iframe></div>
+          <div id="demo-slot"><iframe id="client-demo" src="demo/index.html" title="Интерактивная демо-версия интерфейса kot." sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe></div>
           <noscript><style>#demo-slot,.demo-toolbar{display:none}.demo-holder{height:auto}</style><img src="assets/home.png" width="1440" height="960" alt="Главный экран kot. в тёмной теме"><p class="demo-nojs">Для интерактивного демо нужен JavaScript. Скачать приложение можно и без него.</p></noscript>
         </dialog></div>
-        <div class="demo-bottom"><p id="demo-note">Демо {{demo-version}} с примерными данными, без подключения к VPN. Скачать можно стабильную версию.</p><a href="#inside">Рассмотреть поближе <span aria-hidden="true">↓</span></a></div>
       </div>
-      <div class="platform-strip" aria-label="О приложении"><span>СВОЯ ПОДПИСКА</span><span>TUN / СИСТЕМНЫЙ ПРОКСИ</span><span>WINDOWS 10 / 11</span><a href="https://github.com/prodkot/kot">КОД ОТКРЫТ <span aria-hidden="true">↗</span></a></div>
     </section>
     <section class="inside wrap" id="inside" aria-labelledby="inside-title">
       <div class="section-heading section-heading-row"><div><p class="eyebrow">КОГДА ХОЧЕТСЯ РАЗОБРАТЬСЯ</p><h2 id="inside-title">Всё перед глазами.</h2></div><p>От быстрого выбора сервера<br>до настроек подключения.</p></div>
