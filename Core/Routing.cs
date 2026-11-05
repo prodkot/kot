@@ -105,6 +105,16 @@ public sealed class RoutingProfile
 
 public static class RoutingProfiles
 {
+    // Derived from saved content, so failed persistence cannot advance a revision.
+    // The refresh timestamp alone does not invalidate an unchanged draft.
+    public static string Revision(RoutingProfile profile)
+        => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(new { profile.Rules, profile.SourceUrl, profile.RefreshHours })));
+    public static void RequireRevision(RoutingProfile profile, string? expected)
+    {
+        if (expected != Revision(profile))
+            throw new UserError("Профиль маршрутизации изменился после открытия редактора. Черновик сохранён в полях. Скопируйте нужные изменения и нажмите «Сбросить», чтобы загрузить актуальные правила.");
+    }
     static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true,

@@ -88,6 +88,7 @@ public sealed partial class MainWindow
     public Task LocalImport(string text, CancellationToken ct) => ApplyLocalImport(text, "new", ct);
     public Task Refresh(string address, SubscriptionResult result, CancellationToken ct) => ApplySubscription(address, "subscription", result, false, ct);
     public void RefreshInactive(string id, SubscriptionResult result) => ApplyInactiveSubscription(id, result);
+    public Task Route(string action, JsonElement data) => MutateRouting(action, data);
 }
 sealed class PingFixture { public Task Stop(bool clear = false) => Task.CompletedTask; }
 sealed class SaveFileDialog : IDisposable

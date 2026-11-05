@@ -469,7 +469,7 @@
     finally{if(attempt===deviceAttempt&&!$('deviceDialog').hidden&&$('advancedDialog').open&&!$('advancedDialog').dataset.closing)b.disabled=false;}
   });
   $('advancedButton').addEventListener('click',()=>{$('bypassDomains').value=model.settings.bypass||'';$('advancedError').textContent='';openDialog($('advancedDialog'));});$('closeAdvanced').addEventListener('click',()=>closeDialog($('advancedDialog')));
-  let routingDraftId=null,routingBusy=false,routingDirty=false,routingRemovingId='';
+  let routingDraftId=null,routingBaseRevision=null,routingBusy=false,routingDirty=false,routingRemovingId='';
   let geoIpBusy=false,geoIpDirty=false,geoIpRequestError='';
   const routingLists=['directDomains','proxyDomains','blockDomains','directIps','proxyIps','blockIps','directApps','proxyApps','blockApps','directCountries','proxyCountries','blockCountries'];
   const routingField=key=>$('routing'+key[0].toUpperCase()+key.slice(1));
@@ -500,6 +500,7 @@
     $('routingForm').hidden=id===null;$('routingEmpty').hidden=id!==null;
     if(id!==null){
       const saved=routingSaved(),rules=saved?.rules||{};
+      routingBaseRevision=saved?.revision??null;
       $('routingName').value=rules.name||'Мой профиль';$('routingDefault').value=rules.defaultAction||'proxy';
       for(const key of routingLists)routingField(key).value=(rules[key]||[]).join('\n');
       $('routingDirectDns').value=rules.directDns||'cloudflare';$('routingRemoteDns').value=rules.remoteDns||'cloudflare';
@@ -560,7 +561,7 @@
     const rules={version:1,name:$('routingName').value.trim(),defaultAction:$('routingDefault').value,directDns:$('routingDirectDns').value,remoteDns:$('routingRemoteDns').value};
     for(const key of routingLists)rules[key]=routingField(key).value.split(/[\r\n,;]+/).map(v=>v.trim()).filter(Boolean);
     routingBusy=true;$('routingError').textContent='';renderRouting();
-    try{await rpc('routingSave',{id:routingDraftId||'',rules,sourceUrl:$('routingSource').value.trim(),refreshHours:Number($('routingHours').value)});loadRouting(model.routing?.active||null);toast('Маршрутизация сохранена и применена');}
+    try{await rpc('routingSave',{id:routingDraftId||'',baseRevision:routingBaseRevision,rules,sourceUrl:$('routingSource').value.trim(),refreshHours:Number($('routingHours').value)});loadRouting(model.routing?.active||null);toast('Маршрутизация сохранена и применена');}
     catch(e){$('routingError').textContent=e.message;}
     finally{routingBusy=false;renderRouting();}
   });

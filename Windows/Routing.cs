@@ -14,7 +14,8 @@ public sealed partial class MainWindow
         json.Remove("name"); return json.ToJsonString();
     }
     string RoutingFingerprint() => profile.ActiveRoutingProfile.Length == 0 ? "standard" : RoutingFingerprint(profile.RoutingProfiles.First(p => p.Id == profile.ActiveRoutingProfile).Rules);
-    object RoutingModel() => new { active = profile.ActiveRoutingProfile, profiles = profile.RoutingProfiles, errors = routingErrors };
+    object RoutingModel() => new { active = profile.ActiveRoutingProfile,
+        profiles = profile.RoutingProfiles.Select(p => new { p.Id, p.Rules, p.SourceUrl, p.RefreshHours, p.Updated, revision = RoutingProfiles.Revision(p) }), errors = routingErrors };
     async Task PutRouting(RoutingProfile candidate, bool activate)
     {
         candidate.Validate();
@@ -72,6 +73,7 @@ public sealed partial class MainWindow
             case "routingSave":
                 string id = data.GetProperty("id").GetString() ?? "";
                 var saved = id.Length > 0 ? profile.RoutingProfiles.FirstOrDefault(p => p.Id == id) ?? throw new UserError("Профиль маршрутизации уже удалён.") : null;
+                if (saved != null) RoutingProfiles.RequireRevision(saved, data.TryGetProperty("baseRevision", out var revision) ? revision.GetString() : null);
                 var rules = RoutingProfiles.Parse(data.GetProperty("rules").GetRawText());
                 string source = data.GetProperty("sourceUrl").GetString()?.Trim() ?? "";
                 var candidate = new RoutingProfile { Id = saved?.Id ?? Guid.NewGuid().ToString("N"), Rules = rules, SourceUrl = source, RefreshHours = data.GetProperty("refreshHours").GetInt32(), Updated = saved?.Updated };

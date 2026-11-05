@@ -75,5 +75,28 @@ with sync_playwright() as p:
         print('PASS F2 timeout cancels backend immediately; old response cannot clear the next operation')
         page.close()
 
+        for edit_list in [False, True]:
+            page = new_page()
+            page.evaluate('fixtureRoute()')
+            page.locator('#homeRoutingButton').click()
+            page.locator('#routingName').fill('My draft')
+            if edit_list:
+                page.locator('#routingBlockDomains').fill('my-block.example')
+            page.evaluate('fixtureRefreshRules()')
+            page.locator('#routingForm [type=submit]').click()
+            expect(page.locator('#routingError')).to_contain_text('Черновик')
+            expect(page.locator('#routingName')).to_have_value('My draft')
+            expect(page.locator('#routingBlockDomains')).to_have_value('my-block.example' if edit_list else 'old.example')
+            assert 'new-block.example' in page.evaluate('fixtureProfiles().profiles[0].rules.blockDomains')
+            page.locator('#routingReset').click()
+            expect(page.locator('#routingBlockDomains')).to_have_value('old.example\nnew-block.example')
+            page.evaluate('fixtureSnapshot();fixtureSnapshot()')
+            page.locator('#routingName').fill('Fresh draft')
+            page.locator('#routingForm [type=submit]').click()
+            expect(page.locator('#routingError')).to_have_text('')
+            expect(page.locator('#routingActive')).to_be_enabled()
+            assert page.evaluate('fixtureProfiles().profiles[0].rules.name') == 'Fresh draft'
+            print('PASS F4 conflict preserves draft and current rules; reset/repeated snapshots allow an explicit save')
+            page.close()
     finally:
         browser.close()
