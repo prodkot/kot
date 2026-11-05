@@ -33,8 +33,7 @@ public sealed partial class MainWindow
             if (key == "startup") await Startup.Set(value.GetBoolean());
             if (key == "killSwitch")
             {
-                if (value.GetBoolean() && tunnel.State != "idle") ArmCurrentConnection();
-                if (!value.GetBoolean()) KillSwitch.Release();
+                if (!value.GetBoolean() || tunnel.State != "idle") tunnel.ApplyKillSwitch(value.GetBoolean());
             }
             SaveProfile(edit);
         }
@@ -46,5 +45,5 @@ public sealed partial class MainWindow
         }
         finally { if (restart) ResumeDesired(); }
     }
-    void ArmCurrentConnection() => KillSwitch.Arm(tunnel.State == "connected" && profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
+    void ArmCurrentConnection() => tunnel.ApplyKillSwitch(true);
 }

@@ -55,7 +55,9 @@ jobs:
           go-version: '1.27.3'
           cache: false
       - name: Generate fixtures and check core logic
-        run: dotnet run --project Tests/Kot.Tests.csproj -c Release
+        run: |
+          dotnet run --project Tests/Kot.Tests.csproj -c Release
+          dotnet run --project TransitionTests/Kot.TransitionTests.csproj -c Release
       - name: Build the pinned official Xray and exercise real native traffic
         run: |
           python3 Release/xray-core.py artifacts/core --target linux

@@ -14,7 +14,7 @@ public sealed partial class MainWindow : WindowChrome
     readonly StartupScreen loading;
     readonly bool startupSpin = Random.Shared.Next(100) == 0;
     string? pendingTrayPage;
-    readonly Tunnel tunnel = new();
+    readonly Tunnel tunnel;
     readonly PingService ping = new();
     readonly SemaphoreSlim operations = new(1);
     Profile profile;
@@ -27,6 +27,7 @@ public sealed partial class MainWindow : WindowChrome
     public MainWindow(bool startup, bool resumeConnection = false, Profile? initialProfile = null)
     {
         this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? Store.Load();
+        tunnel = new(() => profile.KillSwitch);
         if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.Version + " starting; OS=" + Environment.OSVersion + "; core=" + XrayRuntime.Description);
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }

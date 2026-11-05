@@ -11,6 +11,9 @@ public sealed class Tunnel
     CancellationTokenSource? attempt;
     bool cancelled;
     bool usesTun;
+    bool tunnelReady;
+    readonly Func<bool>? readKillSwitch;
+    Profile? connectionProfile;
     int stopGeneration;
     static readonly string[] DefaultHealthTargets = ["https://www.gstatic.com/generate_204", "https://www.cloudflare.com/cdn-cgi/trace"];
     readonly string[] healthTargets;
@@ -105,12 +108,20 @@ public sealed class Tunnel
     static int ReservePort() { using var reserved = LoopbackPort.Reserve(); return reserved.Port; }
     public event Action? Changed;
     string CoreExe => Path.Combine(AppContext.BaseDirectory, "core", "xray.exe");
-    public Tunnel() : this(DefaultHealthTargets, TimeSpan.FromSeconds(30)) { }
-    internal Tunnel(string[] targets, TimeSpan timeout)
+    public Tunnel(Func<bool>? readKillSwitch = null) : this(DefaultHealthTargets, TimeSpan.FromSeconds(30), readKillSwitch) { }
+    internal Tunnel(string[] targets, TimeSpan timeout, Func<bool>? readKillSwitch = null)
     {
-        healthTargets = targets; healthTimeout = timeout;
+        healthTargets = targets; healthTimeout = timeout; this.readKillSwitch = readKillSwitch;
         // Remove the previous version's single leftover credential file once.
         try { File.Delete(Path.Combine(Store.Folder, "runtime.json")); } catch { }
+    }
+    bool GuardEnabled => readKillSwitch?.Invoke() ?? connectionProfile?.KillSwitch == true;
+    // Called on the UI context, like Connect and setting persistence. Only the
+    // protection preference is live; the network configuration stays a snapshot.
+    public void ApplyKillSwitch(bool enabled)
+    {
+        if (enabled) KillSwitch.Arm(usesTun && tunnelReady ? KillSwitch.TunnelInterface() : 0);
+        else if (!enabled && KillSwitch.Active) KillSwitch.Release();
     }
     void Set(string state, string error = "") { AppLog.Write("tunnel", "state=" + state + (error.Length > 0 ? "; " + error : "")); State = state; Error = error; Changed?.Invoke(); }
     public void Cancel() { Interlocked.Increment(ref stopGeneration); cancelled = true; attempt?.Cancel(); }
@@ -132,14 +143,15 @@ public sealed class Tunnel
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             PhysicalNetwork.Capture();
+            connectionProfile = profile; usesTun = profile.ConnectionMode == "tun"; tunnelReady = false;
             Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
             cancelled = false; attempt = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var ct = attempt.Token;
             Set("connecting");
             await ProviderAssets.Prepare(Xhttp.ConnectionNodes(profile), ct);
             string[] countries = profile.RoutingProfiles.FirstOrDefault(p => p.Id == profile.ActiveRoutingProfile)?.Rules.Countries() ?? [];
             await GeoIpStore.Update(countries, true, ct);
-            if (profile.KillSwitch) KillSwitch.Arm(); else if (KillSwitch.Active) KillSwitch.Release();
             ct.ThrowIfCancellationRequested();
+            ApplyKillSwitch(GuardEnabled);
             using var portReservation = LoopbackPort.Reserve(ct);
             int port = portReservation.Port;
             AppLog.Write("tunnel", "build configuration");
@@ -173,7 +185,7 @@ public sealed class Tunnel
             AppLog.Write("tunnel", "waiting for proxy health");
             using var handler = NetworkRequests.Handler(port);
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
+            bool healthy = false, proxyHealthy = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
             while (!healthDeadline.IsCancellationRequested)
             {
@@ -190,7 +202,8 @@ public sealed class Tunnel
                         {
                             // DNS Client runs outside Xray. Allow the verified TUN
                             // interface before checking resolution with the guard on.
-                            if (profile.KillSwitch && !tunPermitted) { KillSwitch.Arm(KillSwitch.TunnelInterface()); tunPermitted = true; }
+                            ct.ThrowIfCancellationRequested();
+                            if (!tunnelReady) { tunnelReady = true; ApplyKillSwitch(GuardEnabled); }
                             if (!await TunnelDns.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
                         }
                         healthy = true; break;
@@ -210,7 +223,7 @@ public sealed class Tunnel
             }
             ct.ThrowIfCancellationRequested();
             if (profile.ConnectionMode == "proxy") SystemProxy.Enable(systemPort);
-            if (profile.KillSwitch) KillSwitch.Arm(profile.ConnectionMode == "tun" ? KillSwitch.TunnelInterface() : 0);
+            ApplyKillSwitch(GuardEnabled);
             attempt.CancelAfter(Timeout.InfiniteTimeSpan);
             ConnectedMilliseconds = MonotonicMilliseconds; ConnectedUtc = DateTimeOffset.UtcNow; statisticsStarted = true;
             Set("connected");
@@ -257,7 +270,7 @@ public sealed class Tunnel
             statisticsStarted = false;
             SessionEnded?.Invoke(Session, ended, utc, final);
         }
-        Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = ""; usesTun = false;
+        Session++; var old = core; core = null; ProxyPort = 0; apiPort = 0; apiSecret = ""; AutomaticNode = ""; usesTun = false; tunnelReady = false;
         proxyAuthentication?.Dispose(); proxyAuthentication = null;
         try
         {
