@@ -4,7 +4,7 @@
 
 <h1 align="center">kot. / Твой сервер. Один клик.</h1>
 
-<p align="center">Клиент для Windows для подписок, серверов и маршрутизации.</p>
+<p align="center">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
 
 <p align="center">
   <a href="https://github.com/prodkot/kot/releases/latest"><strong>Скачать</strong></a> ·
