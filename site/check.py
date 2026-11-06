@@ -88,7 +88,9 @@ class SiteTests(unittest.TestCase):
             self.assertIn("form-action 'none'", demo)
             self.assertIn("frame-src 'none'", demo)
             self.assertIn("font-src data:", demo)
-            self.assertIn('data-demo-version="0.8.0"', demo)
+            from xml.etree import ElementTree
+            project = ElementTree.parse(ROOT.parent / 'Windows/Kot.Windows.csproj')
+            self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/Version")}"', demo)
             self.assertIn("data:font/ttf;base64,", demo)
             self.assertNotIn('fonts/Manrope.ttf', demo)
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
