@@ -90,6 +90,7 @@ try {
     # Keep the original updater compatibility fixture and also exercise the latest
     # stable client when crossing to Xray. Only run in a disposable Windows account.
     $sourceVersions=if ([version]$Version -ge [version]'0.8.0') { @('0.6.1','0.7.3') } else { @('0.6.1') }
+    if ([version]$Version -gt [version]'0.8.0') { $sourceVersions += '0.8.0' }
     foreach ($sourceVersion in $sourceVersions) {
     $profile=Join-Path $env:LOCALAPPDATA 'KotVPN'
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
@@ -114,7 +115,7 @@ try {
       Extract $oldSetup $legacy $sourceVersion
       if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw "Legacy fixture does not contain the released $sourceVersion client." }
       [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
-      if ([version]$Version -ge [version]'0.8.0') {
+      if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         # Released updaters require core/sing-box.exe. The Xray experiment is
         # installed with the new signed Setup, never a fake legacy core file.
         # NSIS requires /D to be the final, unquoted raw command-line argument.
@@ -154,7 +155,7 @@ try {
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
-      if ([version]$Version -ge [version]'0.8.0') {
+      if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         Write-Host "PASS signed Setup upgrades an authentic $sourceVersion installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved."
       } else {
         Write-Host "PASS authentic $sourceVersion updater installs the single payload Setup, launches the new WebView2 UI and commits; encrypted HWID, preferences, history and user files are preserved."
