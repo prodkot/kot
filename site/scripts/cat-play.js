@@ -17,8 +17,8 @@
   const position = { ...home };
   let target = { ...home };
   let angle = 0, frame = 0, lastFrame = 0, restoreTimer = 0;
-  let visible = false, modalOpen = false, lastPet = -Infinity;
-  let stroke = null, touch = null, ignoreSceneClickUntil = 0;
+  let visible = false, modalOpen = false;
+  let touch = null, ignoreSceneClickUntil = 0;
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const active = () => visible && !document.hidden && !modalOpen;
 
@@ -94,29 +94,12 @@
     if (!wasPurring) status.textContent = 'Мяу, и интернет у тебя в руках.';
     clearTimeout(restoreTimer);
     restoreTimer = setTimeout(restore, 5000);
-    lastPet = performance.now();
-    stroke = null;
   }
 
   pet.addEventListener('click', () => {
     purr();
     moveBall(position.x < 300 ? 115 : 500);
   });
-
-  pet.addEventListener('pointermove', event => {
-    if (!active() || !event.isPrimary || event.pointerType === 'touch') return;
-    const now = performance.now();
-    if (!stroke || now - stroke.time > 550) {
-      stroke = { x: event.clientX, y: event.clientY, distance: 0, time: now };
-      return;
-    }
-    stroke.distance += Math.min(35, Math.hypot(event.clientX - stroke.x, event.clientY - stroke.y));
-    stroke.x = event.clientX;
-    stroke.y = event.clientY;
-    stroke.time = now;
-    if (stroke.distance > 85 && now - lastPet > 1400) purr();
-  }, { passive: true });
-  pet.addEventListener('pointerleave', () => { stroke = null; }, { passive: true });
 
   scene.addEventListener('pointermove', event => {
     if (!active() || reduced.matches || !event.isPrimary || event.pointerType === 'touch') return;
@@ -160,7 +143,6 @@
     if (!active()) {
       stop();
       touch = null;
-      stroke = null;
       restore();
       moveBall(home.x, home.y, true);
     }

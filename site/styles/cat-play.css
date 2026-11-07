@@ -17,9 +17,12 @@
 .kot-ball-spin>path{stroke-width:1.65}
 .kot-happy-eyes{opacity:0}
 .kot-purr-lines{stroke-width:3.5;opacity:0}
-.kot-pet{display:none;position:absolute;left:22%;top:23%;width:61%;height:59%;padding:0;border:0;border-radius:38%;background:transparent;color:inherit;cursor:grab;touch-action:pan-y}
+.kot-pet{display:none;position:absolute;left:22%;top:23%;width:61%;height:59%;padding:0;border:0;border-radius:38%;background:transparent;color:inherit;cursor:pointer;touch-action:pan-y}
 .kot-interactive .kot-pet{display:block}
-.kot-pet:active{cursor:grabbing}
+.kot-tap-hint{position:absolute;right:0;top:0;display:grid;place-items:center;width:32px;height:32px;border:1px solid #586c46;border-radius:50%;background:#192017;color:#d5f88c;opacity:.8;pointer-events:none}
+.kot-tap-hint svg{width:18px;height:18px}
+.kot-pet:is(:hover,:focus-visible) .kot-tap-hint{opacity:1;border-color:#a2be7b;background:#263220}
+.kot-pet:active .kot-tap-hint{transform:scale(.92)}
 .kot-pet:focus-visible{outline:1px dashed #99b96b;outline-offset:7px}
 .is-purring .kot-sleepy-eyes{opacity:0}
 .is-purring .kot-happy-eyes{opacity:1}
