@@ -58,7 +58,11 @@ internal static class ManagedServiceChecks
             { try { ManagedPackageFiles.Remove(folder, own, manifest); } catch (IOException) { lockedManifestRejected = true; } }
             check(lockedManifestRejected && File.Exists(manifest) && File.Exists(Path.Combine(own,"keep.txt")), "locked installation metadata fails before package deletion and is never queued against a future installation");
             ManagedPackageFiles.Remove(folder, own); ManagedPackageFiles.Remove(folder, outside);
+            // Reproduce inherited labels from a sandboxed data directory. Test both
+            // fresh package preparation and repair of a previously installed package.
+            ServiceIntegrity.SetLabel(folder, 0x1000, true);
             await Action("zapret", "install");
+            check(ServiceIntegrity.ReadLabel(Path.Combine(folder, "zapret")) == ServiceIntegrity.High, "installation restores inherited low labels before a WinDivert worker can run");
             var strategies = Item(manager, "zapret").GetProperty("strategies").EnumerateArray().Select(s => s.GetString()!).ToArray();
             check(strategies.Length >= 10 && strategies.Contains("general.bat"), "official zapret package contains validated selectable strategies");
             await Action("zapret", "start");
@@ -68,6 +72,7 @@ internal static class ManagedServiceChecks
                 await manager.StopZapretForVpn().WaitAsync(limit.Token);
                 check(process.HasExited && !manager.IsRunning("zapret"), "VPN preparation awaits actual winws exit and releases the owned process job");
             }
+            ServiceIntegrity.SetLabel(Path.Combine(folder, "zapret"), 0x1000, true);
             manager.Begin("zapret", "start");
             using (var process = System.Diagnostics.Process.GetProcessById(manager.ProcessId("zapret")!.Value))
             {
@@ -101,7 +106,9 @@ internal static class ManagedServiceChecks
             await Action("telegram", "install");
             string[] license = Directory.GetFiles(Path.Combine(folder, "telegram"), "LICENSE.txt", SearchOption.AllDirectories);
             check(license.Length == 1 && File.ReadAllText(license[0]).Contains("Copyright (c) 2026 Flowseal"), "managed Telegram package keeps its MIT attribution");
+            ServiceIntegrity.SetLabel(Path.Combine(folder, "telegram"), 0x1000, true);
             await Action("telegram", "start");
+            check(ServiceIntegrity.ReadLabel(Path.Combine(folder, "telegram")) == ServiceIntegrity.Medium, "starting an existing proxy restores inherited low labels before its one-file runtime unpacks");
             check(manager.IsRunning("telegram") && await ManagedServices.PortOpen(options.Telegram.Port, limit.Token), "official TgWsProxy opens the configured loopback port");
             options.Zapret.AutoStart = options.Telegram.AutoStart = true;
             int telegramPid = manager.ProcessId("telegram")!.Value;

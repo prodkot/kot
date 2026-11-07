@@ -61,6 +61,11 @@ internal sealed class ManagedServices
     bool IsBusy(Entry entry) => entry.Busy || entry.Id == "zapret" && preparingVpn;
     string Root(string id) => Path.Combine(folder, id);
     string Manifest(string id) => Path.Combine(Root(id), "current.json");
+    void PrepareIntegrity(Entry entry)
+    {
+        if (ServiceIntegrity.Prepare(folder, Root(entry.Id), entry.Id == "zapret" ? ServiceIntegrity.High : ServiceIntegrity.Medium))
+            AddLog(entry, "Восстановлены метки доступа файлов сервиса для корректного запуска.");
+    }
     string Exe(Entry entry) => OwnedPath(entry.Id, entry.Installed?.Executable ?? throw new UserError("Сначала установите сервис."));
     string OwnedPath(string id, string relative)
     {
@@ -209,6 +214,7 @@ internal sealed class ManagedServices
             ct.ThrowIfCancellationRequested();
             string relative = Path.Combine("packages", release.Version + "-" + Guid.NewGuid().ToString("N")); package = Path.Combine(root, relative); Directory.CreateDirectory(Path.GetDirectoryName(package)!);
             Directory.Move(staging, package); var install = new ServiceInstallation(release.Version, Path.Combine(relative, executable), release.Sha256);
+            PrepareIntegrity(entry);
             entry.Phase = "Применение обновления"; applying = true; await Stop(entry); ct.ThrowIfCancellationRequested();
             entry.Installed = install;
             if (running) await Start(entry, null, ct);
@@ -256,6 +262,7 @@ internal sealed class ManagedServices
         if (entry.Process != null && !entry.Process.HasExited) return;
         if (entry.Process != null) { entry.Process.Dispose(); entry.Process = null; }
         ct.ThrowIfCancellationRequested(); string exe = Exe(entry); options().Validate();
+        PrepareIntegrity(entry);
         if (entry.Id == "telegram")
         {
             if (await PortOpen(options().Telegram.Port, ct)) throw new UserError("Локальный порт Telegram занят. Измените порт или остановите другой прокси.");

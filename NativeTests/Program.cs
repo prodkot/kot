@@ -3,6 +3,10 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
+if (args.Length == 2 && args[0] == "--service-integrity")
+{
+    ServiceIntegrityChecks.Fixture(args[1]); return 0;
+}
 if (args.Length == 1 && args[0] == "--stdin-hash")
 {
     using var source = Console.OpenStandardInput();
@@ -84,6 +88,7 @@ async Task NaturalExit(int code)
 }
 try
 {
+    await ServiceIntegrityChecks.Run(fixtureExe, folder, Check);
     string payload = string.Concat(Enumerable.Repeat("конфигурация 出口 ", 32768));
     await Task.WhenAll(Enumerable.Range(0, 3).Select(async i =>
     {
