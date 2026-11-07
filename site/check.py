@@ -22,7 +22,8 @@ class SiteTests(unittest.TestCase):
         description = search(r'<meta name="description" content="([^"]+)"', markup).group(1)
         readme = (ROOT.parent / 'README.md').read_text(encoding='utf-8')
         self.assertIn(description, readme)
-        self.assertIn('<p>' + description + '</p>', markup)
+        self.assertNotIn('noindex', markup)
+        self.assertIn('<link rel="canonical" href="https://prodkot.github.io/kot/">', markup)
         self.assertIn('Твой сервер. Один клик.', readme)
 
     def test_build_cannot_overwrite_sources(self):
@@ -51,9 +52,10 @@ class SiteTests(unittest.TestCase):
             build(dest, release_metadata(RELEASE))
             self.assertEqual(json.loads((dest / "release.json").read_text())["download"], URL)
             self.assertFalse((dest / "build.py").exists())
-            self.assertTrue((dest / "assets/Manrope-OFL.txt").is_file())
-            self.assertEqual((dest / "assets/Manrope.ttf").read_bytes(),
-                             (ROOT.parent / "Windows/ui/fonts/Manrope.ttf").read_bytes())
+            for font in ("Manrope", "GolosText", "IBMPlexMono"):
+                self.assertTrue((dest / f"assets/fonts/{font}.ttf.OFL.txt").is_file())
+                self.assertEqual((dest / f"assets/fonts/{font}.ttf").read_bytes(),
+                                 (ROOT / f"assets/fonts/{font}.ttf").read_bytes())
             references, ids, fragments = [], set(), []
 
             class References(HTMLParser):
@@ -63,7 +65,7 @@ class SiteTests(unittest.TestCase):
                         if attrs["id"] in ids:
                             raise ValueError("Duplicate element ID")
                         ids.add(attrs["id"])
-                    for attr in ("src", "href"):
+                    for attr in ("src", "href", "data-src"):
                         value = attrs.get(attr, "")
                         if value.startswith("#") and len(value) > 1:
                             fragments.append(value[1:])
@@ -74,6 +76,10 @@ class SiteTests(unittest.TestCase):
                 self.assertTrue((dest / ref).is_file(), ref)
             for fragment in fragments:
                 self.assertIn(fragment, ids)
+            markup = (dest / "index.html").read_text(encoding="utf-8")
+            self.assertEqual(markup.count(f'href="{URL}"'), 2)
+            self.assertIn('href="https://github.com/prodkot/kot/blob/main/LICENSE.txt"', markup)
+            self.assertIn('class="demo-nojs', markup)
 
     def test_demo_reuses_client_with_network_disabled(self):
         with tempfile.TemporaryDirectory() as directory:

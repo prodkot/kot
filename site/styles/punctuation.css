@@ -1,0 +1,10 @@
+/* Square punctuation throughout the website. */
+.viewer{--punctuation-ink:#d5f88c}
+/* Green lettering, including the muted green captions, gets a white square. */
+.vw-note-copy>p,.vw-subscription-main>div>p,.vw-protocols>p,
+.vw-counter,.install-meow,[data-text-tone="green"]{--punctuation-ink:#f2f4ed}
+[data-text-tone="white"]{--punctuation-ink:#d5f88c}
+/* Keep real punctuation in inline text for reading, copying and wrapping. */
+.viewer .text-dot{position:relative;font:inherit!important;letter-spacing:inherit;color:transparent!important;text-shadow:none}
+.text-dot::after{content:"";position:absolute;left:50%;bottom:.2em;width:.14em;height:.14em;transform:translateX(-50%);background:var(--punctuation-ink,#d5f88c);border-radius:0;pointer-events:none}
+.text-dot-middle::after{bottom:.43em;width:.12em;height:.12em}

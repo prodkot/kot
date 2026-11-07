@@ -1,0 +1,44 @@
+/* Two overlaid titles share the original title's footprint. */
+.vw-install .install-title{position:relative}
+.vw-install h2>.install-title-default,.vw-install h2>.install-title-secret{color:inherit}
+.install-title-default{display:block}
+.install-title-secret{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:4px;opacity:0;visibility:hidden;pointer-events:none}
+.install-title .install-dot,.install-title .install-meow{color:#d5f88c}
+.install-meow{display:block;line-height:1.04}
+.install-promise{display:block;font-size:.42em;line-height:1.15;letter-spacing:-.035em}
+.is-purring .install-title-default{opacity:0;visibility:hidden;pointer-events:none}
+.is-purring .install-title-secret{opacity:1;visibility:visible}
+
+/* The original silhouette stays unchanged. The thread and yarn are finer. */
+.vw-kot-art{touch-action:pan-y}
+.vw-kot-art .kot-portrait{pointer-events:none}
+.kot-thread{stroke-width:1.8;opacity:.36}
+.kot-ball-position{stroke-width:2.6;opacity:.8}
+.kot-ball-spin>path{stroke-width:1.65}
+.kot-happy-eyes{opacity:0}
+.kot-purr-lines{stroke-width:3.5;opacity:0}
+.kot-pet{display:none;position:absolute;left:22%;top:23%;width:61%;height:59%;padding:0;border:0;border-radius:38%;background:transparent;color:inherit;cursor:grab;touch-action:pan-y}
+.kot-interactive .kot-pet{display:block}
+.kot-pet:active{cursor:grabbing}
+.kot-pet:focus-visible{outline:1px dashed #99b96b;outline-offset:7px}
+.is-purring .kot-sleepy-eyes{opacity:0}
+.is-purring .kot-happy-eyes{opacity:1}
+.is-purring .kot-purr-lines{opacity:.65}
+.kot-scene-paused .kot-resting,.kot-scene-paused .kot-tail,.kot-scene-paused .kot-purr-lines{animation-play-state:paused!important}
+
+@media(prefers-reduced-motion:no-preference){
+ .install-title-default,.install-title-secret{transition:opacity .32s ease,transform .44s var(--ease-out),visibility .32s}
+ .install-title-secret{transform:translateY(9px)}
+ .is-purring .install-title-default{transform:translateY(-9px)}
+ .is-purring .install-title-secret{transform:translateY(0)}
+ .kot-sleepy-eyes,.kot-happy-eyes{transition:opacity .24s}
+ .kot-purr-lines{transition:opacity .3s}
+ .is-purring .kot-resting{animation:kot-content 1.5s ease-in-out infinite}
+ .is-purring .kot-tail{animation:kot-content-tail 1.5s ease-in-out infinite}
+ .is-purring .kot-purr-lines{animation:kot-purr 1.5s ease-in-out infinite}
+ @keyframes kot-content{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.025)}}
+ @keyframes kot-content-tail{0%,100%{transform:rotate(0deg)}45%{transform:rotate(10deg)}75%{transform:rotate(-3deg)}}
+ @keyframes kot-purr{0%,100%{transform:translateY(1px);opacity:.3}50%{transform:translateY(-3px);opacity:.8}}
+}
+
+@media(max-width:840px){.install-title-secret{gap:2px}}

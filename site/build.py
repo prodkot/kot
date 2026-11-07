@@ -36,14 +36,22 @@ def build(destination, release):
             and not destination.is_relative_to(repository / "artifacts")):
         raise ValueError("Use artifacts/ or an output folder outside the repository")
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ("index.html", "style.css", "app.js"):
+    for name in ("index.html",):
         shutil.copy2(source / name, destination / name)
     shutil.copy2(source.parent / "LICENSE.txt", destination / "LICENSE.txt")
-    shutil.copytree(source / "assets", destination / "assets", dirs_exist_ok=True)
+    for folder in ("assets", "styles", "scripts"):
+        shutil.copytree(source / folder, destination / folder, dirs_exist_ok=True)
     client = repository / "Windows" / "ui"
-    shutil.copy2(client / "fonts/Manrope.ttf", destination / "assets/Manrope.ttf")
-    shutil.copy2(repository / "licenses/Manrope-OFL.txt", destination / "assets/Manrope-OFL.txt")
     demo_version = re.search(r'<Version>([^<]+)</Version>', (repository / 'Windows/Kot.Windows.csproj').read_text()).group(1)
+    # Both buttons work without JavaScript and always use the validated stable Setup.
+    landing = destination / "index.html"
+    markup = landing.read_text(encoding="utf-8")
+    download = html.escape(release["download"], quote=True)
+    markup, count = re.subn(r'(<a\b[^>]*\bdata-release-download\b[^>]*\bhref=")[^"]*(")',
+                            lambda match: match[1] + download + match[2], markup)
+    if count != 2:
+        raise ValueError("Expected both landing download links")
+    landing.write_text(markup, encoding="utf-8")
     # Reuse the real client UI in an isolated browser demo, with a mock WebView bridge.
     demo = destination / "demo"
     demo.mkdir(exist_ok=True)
