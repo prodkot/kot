@@ -98,6 +98,8 @@ public static class UpdateTests
         string stable = "{\"tag_name\":\"v0.8.1\",\"draft\":false,\"prerelease\":false,\"assets\":[{\"name\":\"Kot-Setup-0.8.1-Windows-x64.exe\",\"browser_download_url\":\"https://github.com/prodkot/kot/releases/download/v0.8.1/Kot-Setup-0.8.1-Windows-x64.exe\",\"size\":100}]}";
         check(RemoteUpdates.Parse(stable, new Version("0.8.0"))?.Version == "0.8.1", "0.8.0 offers the stable 0.8.1 installer");
         check(RemoteUpdates.Parse(stable, new Version("0.8.1")) == null, "0.8.1 does not offer itself as an update");
+        string patch = stable.Replace("0.8.1", "0.8.2");
+        check(RemoteUpdates.Parse(patch, new Version("0.8.1"))?.Version == "0.8.2", "0.8.1 offers the stable service startup patch");
         string json="{\"tag_name\":\"v0.4.1\",\"prerelease\":true,\"assets\":[]}";
         check(RemoteUpdates.Parse(json,new Version("0.4.0"))==null,"automatic channel ignores GitHub prereleases");
         foreach (string flag in new[] { "draft", "prerelease" })
