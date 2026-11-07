@@ -35,6 +35,7 @@ internal static class ServiceIntegrityChecks
         string fixture = Path.Combine(package, Path.GetFileName(exe)), temp = Path.Combine(folder, "medium-temp");
         Directory.CreateDirectory(temp); ServiceIntegrity.SetLabel(temp, ServiceIntegrity.Medium, true);
         ServiceIntegrity.SetLabel(service, 0x1000, true);
+        ServiceIntegrity.SetLabel(fixture, 0x1000, false, 7); // Keep no-read-up/no-execute-up restrictions, too.
         string dacl = new FileInfo(fixture).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access | AccessControlSections.Owner | AccessControlSections.Group);
         async Task<string> Launch()
         {
@@ -50,6 +51,7 @@ internal static class ServiceIntegrityChecks
         check(after.Contains("integrity=8192") && after.Contains("temp=writable"), "a repaired proxy launches at medium integrity and creates temporary files");
         check(new FileInfo(fixture).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access | AccessControlSections.Owner | AccessControlSections.Group) == dacl,
             "integrity repair preserves package ownership and discretionary access rules");
+        check(ServiceIntegrity.ReadPolicy(fixture) == 7, "integrity repair retains existing mandatory read, write and execute restrictions");
         check(!ServiceIntegrity.Prepare(root, service, ServiceIntegrity.Medium), "repeating integrity preparation leaves correct labels unchanged");
 
         string outside = Path.Combine(folder, "outside-service"); Directory.CreateDirectory(outside); ServiceIntegrity.SetLabel(outside, 0x1000, true);
