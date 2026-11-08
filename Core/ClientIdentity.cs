@@ -2,7 +2,7 @@ namespace Kot.Core;
 
 public static class ClientIdentity
 {
-    public const string Version = "0.8.2";
+    public const string Version = "0.8.3";
     public static string Build
     {
         get

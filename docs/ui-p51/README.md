@@ -1,7 +1,7 @@
 # Windows UI polish P5.1
 
 Port of the approved P5.1 handoff into `Windows/ui`, based on current main
-`dd6ea519c4c894c56dc680bd28a27824e55d7f8d`. Version remains **0.8.2**.
+`dd6ea519c4c894c56dc680bd28a27824e55d7f8d`. The test installer version is **0.8.3**.
 
 ## Scope
 
@@ -94,5 +94,5 @@ and 300 ms power-button return).
 
 Browser DPR checks are not a replacement for these checks. Existing native CI
 covers a subset of WebView2, window/tray and service behavior, not this full manual
-matrix. This is a reviewable UI PR, not a release approval; no tag, release or
-version change is included.
+matrix. This is a reviewable UI PR, not a release approval; no tag or release is included. Version 0.8.3 is prepared for testing
+through the Windows development build.
