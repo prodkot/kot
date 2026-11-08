@@ -241,8 +241,126 @@ def validation_and_progress(browser):
     assert p.locator('#toast').is_hidden() or p.locator('#toast').inner_text()!='HWID скопирован'
     done(p);print('PASS P5.1: native invalid fields, animated real progress/reset, copy failure',flush=True)
 
+def review_controls(browser):
+    p=boot(browser)
+    routing=fixture['literal']('Tests/ui_resilience.py','ROUTING')
+    p.evaluate('routing=>fixtureSnapshot({routing})',routing)
+    cases=[('servers',['#subscriptionSelect','.profile-delete'],'#confirmRemove'),
+           ('settings',['#routingButton','#routingRemove'],'#confirmRoutingRemove'),
+           ('services',['[data-service-tab=zapret]','#zapretRemove'],'#serviceRemoveConfirm')]
+    for theme in ['dark','light']:
+        p.evaluate('theme=>fixtureSnapshot({settings:{theme,accent:"lime",mode:"tun",tray:true}})',theme)
+        for section,clicks,selector in cases:
+            dismiss(p);p.evaluate('s=>fixtureNavigate(s)',section)
+            for sel in clicks:p.locator(sel).click()
+            button=p.locator(selector)
+            assert not button.evaluate('e=>e===document.activeElement')
+            colors=button.evaluate('''e=>{const s=getComputedStyle(e),c=document.createElement('span');c.style.color='var(--danger)';e.append(c);const danger=getComputedStyle(c).color;c.remove();return {background:s.backgroundColor,foreground:s.color,danger}}''')
+            assert colors['background']==colors['danger'],colors
+            def luminance(rgb):
+                import re
+                c=[int(x)/255 for x in re.findall(r'\d+',rgb)[:3]]
+                c=[x/12.92 if x<=.04045 else ((x+.055)/1.055)**2.4 for x in c]
+                return sum(x*w for x,w in zip(c,[.2126,.7152,.0722]))
+            a,b=sorted([luminance(colors['background']),luminance(colors['foreground'])])
+            assert (b+.05)/(a+.05)>=4.5,colors
+        dismiss(p);p.evaluate("fixtureNavigate('settings')")
+        button=p.locator('[data-help=killSwitchHelp]');box=button.bounding_box();assert box['width']==box['height']==36,box
+        button.focus();p.keyboard.press('Enter');expect(p.locator('#killSwitchHelp')).to_be_visible()
+        p.keyboard.press('Escape');expect(button).to_be_focused()
+        # Keep help scrolling usable, dismiss only scrolling of the owner.
+        p.set_viewport_size({'width':800,'height':600})
+        p.evaluate("fixtureNavigate('diagnostics');fixtureSnapshot({tools:{steps:Array.from({length:20},(_,i)=>({name:'Проверка '+i,status:'ok',detail:'Результат'}))}})")
+        p.locator('[data-help=toolsHelp]').click()
+        start=p.locator('.main').evaluate('e=>e.scrollTop')
+        p.locator('.main').evaluate('e=>e.scrollTop=e.scrollTop===0?e.scrollHeight:0')
+        assert p.locator('.main').evaluate('e=>e.scrollTop')!=start
+        expect(p.locator('#toolsHelp')).to_be_hidden()
+        p.set_viewport_size({'width':960,'height':640})
+        p.evaluate("fixtureNavigate('servers')")
+        for sel in ['#pingAll','#pingSettings']:
+            assert p.locator(sel).bounding_box()['height']==36
+        p.evaluate("fixtureNavigate('services')")
+        for kind in ['zapret','telegram']:
+            p.locator('[data-service-tab='+kind+']').click()
+            source=p.locator('#'+kind+'Source')
+            assert source.evaluate('e=>getComputedStyle(e).borderTopWidth')=='0px'
+            source.click()
+        p.evaluate("fixtureNavigate('servers')");p.locator('.qr-node').click()
+        actions=p.locator('#shareQrDialog .dialog-actions');assert actions.count()==1
+        expect(p.locator('#shareQrLink')).to_have_value('vless://fixture@example.org:443')
+        p.locator('#copyNodeLink').click()
+        p.wait_for_function("fixtureRequests.some(r=>r.action==='copyNodeLink'&&r.data.id==='node')")
+        assert actions.evaluate('e=>getComputedStyle(e).justifyContent')=='flex-end'
+        dismiss(p)
+    done(p);print('PASS P5.1 review: destructive contrast, 36px targets, help keyboard/scroll, QR native copy and secondary links',flush=True)
+
+def review_busy_and_long_states(browser):
+    p=boot(browser);p.evaluate("fixtureNavigate('diagnostics');fixtureSnapshot({tools:{}})")
+    expect(p.locator('#toolsStatus')).to_be_hidden();expect(p.locator('#toolsHelp')).to_be_hidden()
+    button=p.locator('[data-help=toolsHelp]');button.focus();p.keyboard.press('Space')
+    expect(p.locator('#toolsHelp')).to_contain_text('не является тестом утечек');expect(button).to_have_attribute('aria-expanded','true')
+    p.keyboard.press('Escape');expect(button).to_be_focused()
+    run=p.locator('#runDiagnostics');expect(run).to_have_text('Проверить');before=run.bounding_box()
+    p.evaluate('fixtureDelay=600');run.click();expect(run).to_have_text('Проверка…');expect(run).to_be_disabled()
+    p.wait_for_function("fixtureRequests.some(r=>r.action==='runDiagnostics'&&r.data.id==='node'&&r.data.url==='https://www.gstatic.com/generate_204')")
+    p.wait_for_timeout(650);p.evaluate('fixtureDelay=10')
+    for tools,label in [({'kind':'diagnostics','busy':True,'status':'Проверка'},'Проверка…'),
+                        ({'kind':'diagnostics','busy':False,'status':'Готово'},'Проверить ещё раз'),
+                        ({'kind':'diagnostics','busy':False,'error':'Ошибка'},'Проверить ещё раз'),
+                        ({'kind':'connection','busy':True,'status':'Проверка'},'Проверить')]:
+        p.evaluate('tools=>fixtureSnapshot({tools})',tools);expect(run).to_have_text(label);assert run.bounding_box()==before
+    p.evaluate("fixtureSnapshot({tools:{}});fixtureNavigate('servers')");p.locator('#qualityButton').click();p.wait_for_timeout(50)
+    before=p.locator('#testQuality').bounding_box()
+    p.evaluate("fixtureSnapshot({tools:{kind:'connection',busy:true,status:'Проверка'}})")
+    expect(p.locator('#testQuality')).to_have_text('Проверка…')
+    p.evaluate("fixtureSnapshot({tools:{kind:'connection',busy:false,status:'Имя сервера '.repeat(40),error:'Подробная ошибка '.repeat(100),samples:Array(20).fill(500),quality:{medianMs:500,successes:20,attempts:20}}})")
+    expect(p.locator('#testQuality')).to_have_text('Проверить ещё раз');assert p.locator('#testQuality').bounding_box()==before
+    expect(p.locator('#testQuality')).to_be_in_viewport()
+    p.locator('#qualityDialog .dialog-body').evaluate('e=>e.scrollTop=e.scrollHeight')
+    # The long error can be scrolled, while the action and close remain visible.
+    assert p.locator('#qualityError').inner_text().count('Подробная ошибка')==100
+    expect(p.locator('#testQuality')).to_be_in_viewport();expect(p.locator('#closeQuality')).to_be_in_viewport()
+    dismiss(p);p.evaluate("fixtureNavigate('settings')");p.locator('#onlineUpdateButton').click()
+    p.evaluate("fixtureSnapshot({updates:{availableVersion:'0.8.3',busy:false,status:'Доступна версия'}})")
+    before=p.locator('#downloadUpdate').bounding_box()
+    for status in ['Загрузка','Проверка подписи']:
+        p.evaluate('status=>fixtureSnapshot({updates:{availableVersion:"0.8.3",busy:true,size:1000,bytes:500,status}})',status)
+        expect(p.locator('#downloadUpdate')).to_have_text('Обновление…');assert p.locator('#downloadUpdate').bounding_box()==before
+    p.evaluate("fixtureSnapshot({updates:{availableVersion:'0.8.3',busy:false,error:'Ошибка '.repeat(100),status:'Обновление не установлено'}})")
+    expect(p.locator('#downloadUpdate')).to_have_text('Повторить');assert p.locator('#downloadUpdate').bounding_box()==before
+    done(p);print('PASS P5.1 review: real RPC busy labels, no cross-operation label, long errors/samples and stable actions',flush=True)
+
+def review_validation_sessions(browser):
+    p=boot(browser);p.evaluate("fixtureNavigate('servers')");p.locator('#pingSettings').click()
+    p.locator('#pingTimeout').fill('1');p.locator('#pingForm [type=submit]').click()
+    expect(p.locator('#pingTimeout')).to_have_attribute('aria-invalid','true')
+    p.keyboard.press('Escape');expect(p.locator('#discardDialog')).to_be_visible();p.keyboard.press('Escape')
+    expect(p.locator('#pingTimeout')).to_have_value('1');expect(p.locator('#pingTimeoutValidity')).to_be_visible()
+    dismiss(p);p.locator('#pingSettings').click()
+    expect(p.locator('#pingTimeout')).to_have_value('5000')
+    assert p.locator('#pingTimeout').get_attribute('aria-invalid') is None
+    expect(p.locator('#pingTimeoutValidity')).to_be_hidden()
+    assert p.locator('#pingTimeout').get_attribute('aria-describedby') is None
+    dismiss(p);p.evaluate("fixtureNavigate('settings')");p.locator('#advancedButton').click();p.locator('#backupButton').click()
+    # Custom validation must preserve unrelated help descriptions and remote errors.
+    p.locator('#backupPassword').evaluate('e=>e.setAttribute("aria-describedby","backupTitle")')
+    p.locator('#exportBackup').click();expect(p.locator('#backupPassword')).to_have_attribute('aria-invalid','true')
+    p.locator('#backupError').evaluate('e=>e.textContent="Новая ошибка операции"')
+    p.locator('#backupPassword').fill('x');expect(p.locator('#backupError')).to_have_text('Новая ошибка операции')
+    expect(p.locator('#backupPassword')).to_have_attribute('aria-describedby','backupTitle')
+    p.locator('#exportBackup').click();dismiss(p)
+    p.locator('#advancedButton').click();p.locator('#backupButton').click()
+    assert p.locator('#backupPassword').get_attribute('aria-invalid') is None
+    expect(p.locator('#backupPassword')).to_have_attribute('aria-describedby','backupTitle')
+    expect(p.locator('#backupError')).to_be_empty()
+    p.locator('#backupPassword').fill('valid-test-password');p.evaluate("fixtureReject='backupExport'")
+    p.locator('#exportBackup').click();expect(p.locator('#backupError')).to_contain_text('Не удалось')
+    expect(p.locator('#backupPassword')).to_have_value('valid-test-password')
+    done(p);print('PASS P5.1 review: fresh validation on reopen, discarded/kept drafts, preserved descriptions and remote failures',flush=True)
+
 with sync_playwright() as pw:
     browser=pw.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [forms,menu_and_ping,ping_geometry,modal_motion,menu_edges_and_toast,update_quality,validation_and_progress,all_dialog_cycles]:test(browser)
+        for test in [forms,menu_and_ping,ping_geometry,modal_motion,menu_edges_and_toast,update_quality,validation_and_progress,review_controls,review_busy_and_long_states,review_validation_sessions,all_dialog_cycles]:test(browser)
     finally:browser.close()

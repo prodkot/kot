@@ -2,7 +2,7 @@
 'use strict';
 window.KotDialogUI = ({rememberFocus,onStackChange}) => {
   const $=id=>document.getElementById(id), reduced=matchMedia('(prefers-reduced-motion: reduce)');
-  const states=new WeakMap(), active=new Set(), baselines=new WeakMap();
+  const states=new WeakMap(), active=new Set(), baselines=new WeakMap(), fieldErrors=new WeakMap();
   let pendingDiscard=null, help=null, helpButton=null, helpMotion=null, helpGeneration=0;
   function fields(dialog){return [...dialog.querySelectorAll('input:not([readonly]),textarea:not([readonly]),select,[role=switch]:not([data-setting])')];}
   function values(dialog){return JSON.stringify(fields(dialog).map(e=>[e.id,e.type==='checkbox'?e.checked:e.matches('[role=switch]')?e.getAttribute('aria-checked'):e.value]));}
@@ -33,7 +33,7 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
     let state=states.get(dialog);
     if(dialog.open&&!dialog.dataset.closing)return;
     if(dialog.open){state.generation++;cancelEffects(state);delete dialog.dataset.closing;state.finish=null;}
-    else{finalize(dialog,state);state={generation:0,effects:[],focus:rememberFocus(),finish:null,finalized:false};states.set(dialog,state);dialog.showModal();active.add(dialog);markClean(dialog);onStackChange(dialog,true);}
+    else{finalize(dialog,state);dialog.querySelectorAll('input,textarea,select').forEach(clearFieldError);state={generation:0,effects:[],focus:rememberFocus(),finish:null,finalized:false};states.set(dialog,state);dialog.showModal();active.add(dialog);markClean(dialog);onStackChange(dialog,true);}
     state.effects=effects(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'none'}],280,[{opacity:0},{opacity:1}]);
     const generation=state.generation;
     // A nested modal may cancel the browser's backdrop animation independently.
@@ -84,17 +84,36 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&help){e.preventDefault();e.stopImmediatePropagation();hideHelp();}},true);
   document.addEventListener('pointerdown',e=>{if(help&&!help.contains(e.target)&&!helpButton.contains(e.target))hideHelp(false);});
   addEventListener('resize',positionHelp);
+  document.addEventListener('scroll',e=>{
+    const scroller=e.target===document?document.documentElement:e.target;
+    if(help&&!help.contains(scroller)&&scroller.contains?.(helpButton))hideHelp(false,true);
+  },true);
   reduced.addEventListener('change',()=>{if(!reduced.matches)return;for(const dialog of active){const state=states.get(dialog);cancelEffects(state);state.finish?.();}hideHelp(false,true);});
   // HTML validity remains authoritative; expose it to assistive technology too.
+  function clearFieldError(field){
+    const entry=fieldErrors.get(field);if(!entry)return;
+    field.removeAttribute('aria-invalid');
+    if(entry.note.textContent===entry.message)entry.note.textContent='';
+    if(entry.addedDescription){
+      const ids=(field.getAttribute('aria-describedby')||'').split(/\s+/).filter(id=>id&&id!==entry.note.id);
+      if(ids.length)field.setAttribute('aria-describedby',ids.join(' '));else field.removeAttribute('aria-describedby');
+    }
+    fieldErrors.delete(field);
+  }
+  function showFieldError(field,note,message){
+    clearFieldError(field);note.textContent=message;note.hidden=false;field.setAttribute('aria-invalid','true');
+    const ids=(field.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean),addedDescription=!ids.includes(note.id);
+    if(addedDescription)ids.push(note.id);field.setAttribute('aria-describedby',ids.join(' '));
+    fieldErrors.set(field,{note,message,addedDescription});
+  }
   document.addEventListener('invalid',e=>{
-    const field=e.target;field.setAttribute('aria-invalid','true');
+    const field=e.target;
     if(!field.id)return;
     const id=field.id+'Validity';let note=$(id);
     if(!note){note=document.createElement('span');note.id=id;note.className='error field-validity';field.after(note);}
-    note.textContent=field.validationMessage;note.hidden=false;
-    field.setAttribute('aria-describedby',[...new Set((field.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean).concat(id))].join(' '));
+    showFieldError(field,note,field.validationMessage);
   },true);
-  document.addEventListener('input',e=>{e.target.removeAttribute('aria-invalid');const note=$(e.target.id+'Validity');if(note){note.textContent='';note.hidden=true;}});
-  function fieldError(field,error,message){error.textContent=message;field.setAttribute('aria-invalid','true');field.setAttribute('aria-describedby',error.id);field.focus({preventScroll:true});}
+  for(const event of ['input','change'])document.addEventListener(event,e=>clearFieldError(e.target));
+  function fieldError(field,error,message){showFieldError(field,error,message);field.focus({preventScroll:true});}
   return {open,close,requestClose,markClean,isDirty,fieldError};
 };

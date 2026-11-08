@@ -95,6 +95,11 @@ and 300 ms power-button return).
 
 ## Still requires Windows acceptance
 
+The [full follow-up review](FULL-REVIEW.md) records the remaining P5.1 differences
+found after the first-ping fix, the corrections and the additional regression
+coverage. It covers the seven pages and all 22 dialog variants against the
+production UI. See the PR checks for validation of the current revision.
+
 - Physical Windows display scaling at 100%, 125% and 150%, including moving between monitors.
 - The reported unwanted Windows list scrolling during real server snapshots.
 - Visual review of the full new dialog inventory in the installed WebView2 client.
