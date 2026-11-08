@@ -78,6 +78,14 @@ presses, intermediate menu X coordinates (0.02 CSS px tolerance), upward/downwar
 placement, resize/scroll dismissal, all ping states, real-byte-shaped progress,
 stable action positions, failed clipboard replies and reduced motion during exit.
 
+The first ping originally moved the signal icon 88 CSS pixels at 960 x 640:
+an empty result span was hidden, so Grid auto-placed the icon in the text column.
+The port now retains the prototype's explicit column/row for both children.
+The regression check measures the icon itself, the button and adjacent menu before
+any result and through queued/checking/success/error/unsupported/cancelled/cleared
+states, in both themes at widths 640, 800, 960 and 1280. The earlier check measured
+only the button width and menu position and therefore missed this movement.
+
 `ui_resilience.py` covers all seven pages and 22 dialog variants, long values and
 errors, both themes, 800 x 600 minimum geometry and additional browser DPR values.
 The existing interaction tests retain RPC, cancellation, secret/QR cleanup, audio,

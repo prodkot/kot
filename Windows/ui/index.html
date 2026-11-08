@@ -179,7 +179,9 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
 .auto-compact[aria-pressed=true]{background:var(--raised);color:var(--detail);border-color:var(--detail)}.auto-compact:hover{background:var(--raised)}
 .server-row{min-width:0}.server-row .server-copy{min-width:0}
 .server-row .ping-node{display:grid;width:116px;min-width:116px;max-width:116px;flex-basis:116px;grid-template-columns:minmax(0,1fr) 16px;gap:6px;padding:9px 6px;margin:0;text-align:right;min-height:36px}
-.server-row .ping-node span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.server-row .qr-node{width:36px;min-width:36px;min-height:36px;padding:8px;margin-right:6px;margin-left:2px}
+.server-row .ping-node span{grid-column:1;grid-row:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.server-row .ping-node svg{grid-column:2;grid-row:1}
+.server-row .qr-node{width:36px;min-width:36px;min-height:36px;padding:8px;margin-right:6px;margin-left:2px}
 .profile-menu{transform-origin:top left}.profile-menu[data-upwards=true]{transform-origin:bottom left}
 .theme-control{width:84px;height:40px;flex-shrink:0;background:var(--surface)}.theme-control button{display:grid;place-items:center;padding:5px;min-width:0}.theme-control svg{width:17px;height:17px}
 .setting-row,.tools-card,.tool-result,.traffic-table th,.traffic-table td,.traffic-app,.traffic-route-totals span,.quality-samples span,#qualityAddress,.service-log,.service-tabs,.support-actions,.dialog input,.dialog select,.help-body,.segmented{transition:background .4s,color .3s,border-color .4s}

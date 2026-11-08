@@ -78,18 +78,45 @@ def menu_and_ping(browser):
     # Reopening during exit must cancel the old completion.
     p.evaluate("subscriptionSelect.click();subscriptionSelect.click();subscriptionSelect.click()")
     p.wait_for_timeout(350);expect(menu).to_be_visible();p.keyboard.press('Escape');expect(menu).not_to_be_visible()
-    positions=[]
-    for status,ms in [('idle',None),('queued',None),('checking',None),('ok',42),('ok',194),('ok',9999),('error',None),('unsupported',None),('cancelled',None)]:
-        p.evaluate('(ping)=>fixtureSnapshot({nodes:[{id:"node",name:"Frankfurt",protocol:"vless",ping}]})',{'status':status,'ms':ms,'mode':'http','successes':2,'attempts':2})
-        positions.append(p.locator('[data-node=node] .qr-node').bounding_box()['x'])
-        assert p.locator('.ping-node').bounding_box()['width']==116
-        expect(p.locator('.favorite-node')).to_be_hidden()
-    assert max(positions)-min(positions)<.02,positions
+    expect(p.locator('.favorite-node')).to_be_hidden()
     p.locator('.qr-node').focus();p.evaluate('fixtureSnapshot({nodes:[{id:"node",name:"Frankfurt changed",protocol:"vless"}]})');expect(p.locator('.qr-node')).to_be_focused()
     p.locator('#autoServer').click();p.wait_for_timeout(50)
     assert p.evaluate("fixtureRequests.filter(r=>r.action==='select').at(-1).data.id")=='auto'
     assert not p.evaluate("fixtureRequests.some(r=>r.action==='favorite')")
-    done(p);print('PASS P5.1: menu press/hold/enter/exit edge, interruption, ping columns, favorite data contract',flush=True)
+    done(p);print('PASS P5.1: menu press/hold/enter/exit edge, interruption, favorite data contract',flush=True)
+
+def ping_geometry(browser):
+    p=boot(browser)
+    p.evaluate("fixtureNavigate('servers')")
+    selectors=['.ping-node','.ping-node svg','.qr-node']
+    states=[('idle',None,''),('queued',None,'В очереди'),('checking',None,'…'),
+            ('ok',42,'42 мс'),('ok',194,'194 мс'),('ok',9999,'9999 мс'),
+            ('error',None,'Ошибка'),('unsupported',None,'UDP'),('cancelled',None,'Отмена'),('idle',None,'')]
+    for theme in ['dark','light']:
+        p.evaluate('theme=>fixtureSnapshot({settings:{theme,accent:"lime",mode:"tun",tray:true}})',theme)
+        for width in [640,800,960,1280]:
+            p.set_viewport_size({'width':width,'height':640})
+            p.evaluate('fixtureSnapshot({nodes:[{id:"node",name:"Frankfurt",protocol:"vless"}]})')
+            baseline={s:p.locator(s).bounding_box() for s in selectors}
+            assert baseline['.ping-node']['width']==(96 if width<=700 else 116)
+            # Empty text is hidden: the icon must stay in its right column even then.
+            p.evaluate('fixtureRequests=[]')
+            p.locator('.ping-node').click()
+            p.wait_for_function("fixtureRequests.some(r=>r.action==='pingNode'&&r.data.id==='node')")
+            for status,ms,label in states:
+                p.evaluate('''ping=>fixtureSnapshot({
+                    nodes:[{id:"node",name:"Frankfurt",protocol:"vless",ping}],
+                    ping:{busy:['queued','checking'].includes(ping.status),done:0,total:1}
+                })''',{'status':status,'ms':ms,'mode':'http','successes':2,'attempts':2})
+                expect(p.locator('.ping-node')).to_have_text(label)
+                for selector in selectors:
+                    box=p.locator(selector).bounding_box()
+                    assert all(abs(box[k]-baseline[selector][k])<.02 for k in box), (theme,width,status,selector,baseline[selector],box)
+                if label:
+                    text=p.locator('.ping-node span').bounding_box()
+                    icon=p.locator('.ping-node svg').bounding_box()
+                    assert text['x']+text['width']<=icon['x']-5.99,(text,icon)
+    done(p);print('PASS P5.1: stationary ping icon, button and menu across all results, themes and widths',flush=True)
 
 def modal_motion(browser):
     p=boot(browser,'no-preference');p.evaluate("fixtureNavigate('settings')")
@@ -217,5 +244,5 @@ def validation_and_progress(browser):
 with sync_playwright() as pw:
     browser=pw.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [forms,menu_and_ping,modal_motion,menu_edges_and_toast,update_quality,validation_and_progress,all_dialog_cycles]:test(browser)
+        for test in [forms,menu_and_ping,ping_geometry,modal_motion,menu_edges_and_toast,update_quality,validation_and_progress,all_dialog_cycles]:test(browser)
     finally:browser.close()
