@@ -98,6 +98,7 @@ public sealed partial class MainWindow : WindowChrome
         {
             try
             {
+                await Startup.RepairEnabled();
                 bool enabled = await Startup.IsEnabled();
                 if (exiting || IsDisposed) return;
                 if (profile.Startup != enabled) SaveProfile(p => p.Startup = enabled);
@@ -192,7 +193,15 @@ public sealed partial class MainWindow : WindowChrome
                 case "close": Close(); break;
                 case "toggle": await ToggleConnection(); break;
                 case "view":
-                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page; break;
+                    string page = data.GetProperty("page").GetString() ?? ""; if (page is not ("home" or "servers" or "statistics" or "diagnostics" or "logs" or "services" or "settings")) throw new UserError("Неизвестная страница."); visiblePage = page;
+                    if (page == "settings") {
+                        await operations.WaitAsync(lifetime.Token);
+                        try {
+                            bool enabled = await Startup.IsEnabled();
+                            if (!exiting && profile.Startup != enabled) SaveProfile(p => p.Startup = enabled);
+                        } finally { operations.Release(); }
+                    }
+                    break;
                 case "serviceAction": case "serviceCancel": case "serviceSettings": case "serviceUpdateSettings": case "serviceRotateSecret":
                 case "serviceSource": case "serviceCopyLink": case "serviceOpenTelegram": case "serviceCopyResults": case "serviceExportResults": case "serviceClearLog": case "serviceSelectTest":
                     await ServiceMessage(action, data); break;

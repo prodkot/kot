@@ -21,6 +21,7 @@ internal static class StartupFixture
         string directory = Path.Combine(Path.GetTempPath(), "kot тест & spaces " + Guid.NewGuid().ToString("N"));
         string executable = Path.Combine(directory, "Кот приложение.exe");
         Directory.CreateDirectory(directory);
+        File.WriteAllText(executable, "fixture");
         object? service = null, folder = null, task = null;
         Task Set(bool enabled, string path) => Startup.Set(enabled, name, sid, path, directory);
         try
@@ -57,18 +58,36 @@ internal static class StartupFixture
                 "startup uses the interactive desktop with administrator privileges and no saved password");
             check((string?)action.Element(ns + "Command") == executable && (string?)action.Element(ns + "WorkingDirectory") == directory
                 && (string?)action.Element(ns + "Arguments") == "--startup", "Unicode, ampersands and spaces survive startup registration");
+            check(Startup.ValidDefinition(xml.ToString(), sid, executable, directory), "healthy startup validates action, principal, trigger and constraints");
+            foreach (string field in new[] { "Command", "WorkingDirectory", "Arguments" }) {
+                var broken = XDocument.Parse(xml.ToString()); broken.Descendants(ns + field).Single().Value = "invalid";
+                check(!Startup.ValidDefinition(broken.ToString(), sid, executable, directory), "invalid startup " + field + " is not reported enabled");
+            }
+            foreach (string field in new[] { "RunOnlyIfIdle", "RunOnlyIfNetworkAvailable", "DisallowStartIfOnBatteries" }) {
+                var broken = XDocument.Parse(xml.ToString()); broken.Root!.Element(ns + "Settings")!.SetElementValue(ns + field, "true");
+                check(!Startup.ValidDefinition(broken.ToString(), sid, executable, directory), "blocking startup condition rejected: " + field);
+            }
+            var wrongUser = XDocument.Parse(xml.ToString()); wrongUser.Descendants(ns + "UserId").First().Value = "S-1-1-0";
+            check(!Startup.ValidDefinition(wrongUser.ToString(), sid, executable, directory), "startup belonging to another user is unhealthy");
             var settings = root.Element(ns + "Settings")!;
             check((string?)settings.Element(ns + "DisallowStartIfOnBatteries") == "false" && (string?)settings.Element(ns + "StopIfGoingOnBatteries") == "false"
                 && (string?)settings.Element(ns + "ExecutionTimeLimit") == "PT0S", "startup is allowed on batteries without a runtime limit");
             ((dynamic)task).Enabled = false;
             check(!Startup.IsEnabled(name).GetAwaiter().GetResult(), "externally disabled startup task is detected");
+            Startup.RepairEnabled(name, sid, executable, directory).GetAwaiter().GetResult();
+            check(!Startup.IsEnabled(name).GetAwaiter().GetResult(), "automatic repair preserves externally disabled task");
             string moved = Path.Combine(directory, "Другой кот.exe");
-            Set(true, moved).GetAwaiter().GetResult(); Set(true, moved).GetAwaiter().GetResult();
+            File.WriteAllText(moved, "fixture");
+            Set(true, executable).GetAwaiter().GetResult();
+            Startup.RepairEnabled(name, sid, moved, directory).GetAwaiter().GetResult();
+            Startup.RepairEnabled(name, sid, moved, directory).GetAwaiter().GetResult();
             Marshal.FinalReleaseComObject(task); task = ((dynamic)folder).GetTask(name);
             xml = XDocument.Parse((string)((dynamic)task).Xml);
             check(Startup.IsEnabled(name).GetAwaiter().GetResult()
                 && (string?)xml.Root!.Element(ns + "Actions")!.Element(ns + "Exec")!.Element(ns + "Command") == moved,
                 "repeated enable repairs an existing task and updates its executable path");
+            File.Delete(moved);
+            check(!Startup.Inspect(name, sid, moved, directory).GetAwaiter().GetResult().Healthy, "missing target cannot masquerade as working autostart");
             Set(false, moved).GetAwaiter().GetResult(); Set(false, moved).GetAwaiter().GetResult();
             check(!Startup.IsEnabled(name).GetAwaiter().GetResult(), "registered startup task is removed and repeated removal succeeds");
         }

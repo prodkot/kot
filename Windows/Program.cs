@@ -26,7 +26,10 @@ static class Program
             }
             if (args.Contains("--apply-update")) { UpdateInstaller.Apply(); return; }
             if (args.Contains("--recover-update")) { UpdateInstaller.Recover(); return; }
-            if (args.Contains("--disable-startup")) { Startup.Set(false).GetAwaiter().GetResult(); var saved = Store.Load(); saved.Startup = false; Store.Save(saved); return; }
+            if (args.Contains("--repair-startup")) { Startup.RepairEnabled().GetAwaiter().GetResult(); return; }
+            if (args.Contains("--remove-owned-startup")) { Startup.RemoveOwnedTasks().GetAwaiter().GetResult(); return; }
+            if (args.Contains("--enable-startup")) { Startup.Set(true).GetAwaiter().GetResult(); return; }
+            if (args.Contains("--disable-startup")) { Startup.Set(false).GetAwaiter().GetResult(); return; }
             ShellIdentity.Initialize();
             int receipt = Array.IndexOf(args, "--update-receipt");
             if (receipt >= 0 && receipt + 1 < args.Length)
@@ -50,6 +53,7 @@ static class Program
             }
             using Mutex mutex = new(true, AppRuntime.InstanceMutex, out bool first);
             if (!first) { if (!args.Contains("--startup")) SendNotifyMessage((IntPtr)0xffff, (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero); return; }
+            if (args.Contains("--startup")) StartupEvidence.Begin();
             SystemProxy.Restore();
             if (UpdateInstaller.Receipt == null && UpdateInstaller.StartRecovery(args)) return;
             if (UpdateInstaller.Receipt == null) Kot.Core.InstallationCleanup.RemoveLegacyDocuments(AppContext.BaseDirectory);
@@ -62,8 +66,9 @@ static class Program
         }
         catch (Exception ex)
         {
+            StartupEvidence.Write("failed");
             Environment.ExitCode = 1;
-            if (args.Any(a => a is "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts"))
+            if (args.Any(a => a is "--proxy-watch" or "--restore-proxy" or "--shutdown" or "--disable-startup" or "--disable-kill-switch" or "--register-shortcuts" or "--repair-startup" or "--remove-owned-startup" or "--enable-startup"))
             {
                 AppLog.Error("maintenance", ex);
                 try { Directory.CreateDirectory(Store.Folder); File.WriteAllText(Path.Combine(Store.Folder, "maintenance-error.txt"), AppLog.Snapshot()); } catch { }
@@ -72,5 +77,6 @@ static class Program
             AppLog.PersistStartupFailure("startup", ex);
             MessageBox.Show(Store.Friendly(ex), AppRuntime.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        finally { StartupEvidence.Write(Environment.ExitCode == 0 ? "exited" : "failed"); }
     }
 }

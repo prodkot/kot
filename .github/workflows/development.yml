@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   release:
-    timeout-minutes: 35
+    timeout-minutes: 50
     permissions:
       contents: read
     runs-on: windows-latest
@@ -39,6 +39,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Repository consistency checks failed.' }
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+      - name: Read-only startup diagnostic privacy and syntax
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/startup-diagnostics.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Startup diagnostic validation failed.' }
       - name: Native Windows process launcher
         shell: pwsh
         run: |
@@ -88,7 +93,7 @@ jobs:
             ./Release/release.ps1 -Key $key
           } finally { Remove-Item $key -Force -ErrorAction SilentlyContinue }
       - name: Install and uninstall the signed Setup
-        timeout-minutes: 5
+        timeout-minutes: 10
         shell: pwsh
         run: |
           function Wait-Installer($process, $stage) {
@@ -114,6 +119,7 @@ jobs:
             $installed=Join-Path $target ([IO.Path]::GetRelativePath($publish,$file.FullName))
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
+          ./Tests/startup-installed.ps1 -InstallDirectory $target -Setup $setup.FullName
           python QA/package.py --publish $publish --setup $setup.FullName --output artifacts
           if ($LASTEXITCODE -ne 0) { throw 'QA kit packaging failed.' }
           # Exercise the same entry point shipped to users, on Windows PowerShell 5.1.
@@ -137,15 +143,26 @@ jobs:
             $installed=Join-Path "$target/licenses" $file.Name
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "License notice changed during migration: $installed" }
           }
-          foreach ($command in '--shutdown','--disable-startup','--disable-kill-switch') {
+          foreach ($command in '--shutdown','--disable-kill-switch') {
             $process=Start-Process "$target/Kot.exe" -ArgumentList $command -PassThru
             Wait-Installer $process $command
           }
+          $profile=Join-Path $env:LOCALAPPDATA 'KotVPN/profile.bin'
+          $profileHash=(Get-FileHash $profile).Hash
+          $task='KotVPN-'+[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          if (!(Get-ScheduledTask -TaskName $task)) { throw 'Uninstall test requires an enabled task.' }
           Write-Host 'Uninstalling verified payload'
           $process=Start-Process "$target/Uninstall.exe" -ArgumentList @('/S',"_?=$target") -PassThru
           Wait-Installer $process 'Uninstallation'
           if ($process.ExitCode -ne 0 -or (Test-Path "$target/Kot.exe")) { throw 'Setup uninstallation failed.' }
-          Write-Host 'PASS signed Setup installs every verified payload file and uninstalls successfully.'
+          if (@(Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue).Count) { throw 'Uninstall left its autostart task.' }
+          if ((Get-FileHash $profile).Hash -ne $profileHash) { throw 'Uninstall changed the saved profile.' }
+          if (Test-Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN') { throw 'Uninstall left ARP registration.' }
+          foreach ($link in @("$env:PUBLIC/Desktop/kot..lnk", "$env:ProgramData/Microsoft/Windows/Start Menu/Programs/kot./kot..lnk")) {
+            if (Test-Path $link) { throw 'Uninstall left a common shortcut.' }
+          }
+          if ([IO.File]::ReadAllText("$target/user-notes.txt") -ne 'preserve this user file') { throw 'Uninstall removed an unrelated file.' }
+          Write-Host 'PASS signed Setup installs every verified payload file and removes owned tasks/registration/shortcuts while preserving profile and user files.'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

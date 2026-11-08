@@ -81,6 +81,11 @@ jobs:
         run: |
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+      - name: Read-only startup diagnostic privacy and syntax
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/startup-diagnostics.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Startup diagnostic validation failed.' }
       - name: Native Windows process launcher
         shell: pwsh
         run: |

@@ -38,6 +38,11 @@ InstallColors f2f4ed 151718
 LoadLanguageFile "${NSISDIR}/Contrib/Language files/Russian.nlf"
 !include /CHARSET=UTF8 "UI\pages.nsh"
 Function .onInit
+!ifdef GENERATE_UNINSTALLER
+  SetSilent silent
+  WriteUninstaller "${GENERATE_UNINSTALLER}"
+  Quit
+!endif
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "kot. требует Windows x64."
     Abort
@@ -85,7 +90,9 @@ Section "kot." SEC_MAIN
   KotUI::Stage /NOUNLOAD "3"
   SetOutPath "$INSTDIR"
   !include "install-cleanup.nsh"
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  ; The installed uninstaller comes from the authenticated ZIP, like an update.
+  ; NSIS still emits its uninstall section; keep this unused copy in its temp dir.
+  WriteUninstaller "$PLUGINSDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\kot."
   CreateShortcut "$SMPROGRAMS\kot.\kot..lnk" "$INSTDIR\Kot.exe" "" "$INSTDIR\kot.ico" 0
   CreateShortcut "$SMPROGRAMS\kot.\Удалить kot..lnk" "$INSTDIR\Uninstall.exe"
@@ -106,18 +113,26 @@ Section "kot." SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoRepair" 1
+  ExecWait '$\"$INSTDIR\Kot.exe$\" --repair-startup' $0
+  ${If} $0 != 0
+    StrCpy $InstallError "Файлы установлены, но не удалось обновить автозапуск. Повторите установку."
+    !insertmacro FailInstall
+  ${EndIf}
   IfSilent +2
   KotUI::Stage /NOUNLOAD "4"
 SectionEnd
+Var OwnsRegistration
 Section "Uninstall"
   SetRegView 64
   SetShellVarContext all
+  ReadRegStr $OwnsRegistration HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "InstallLocation"
+  ${If} $OwnsRegistration == "$INSTDIR"
   ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
   ${If} $0 != 0
     StrCpy $InstallError "Не удалось закрыть kot. Закройте приложение и повторите удаление."
     !insertmacro FailInstall
   ${EndIf}
-  ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-startup' $0
+  ExecWait '$\"$INSTDIR\Kot.exe$\" --remove-owned-startup' $0
   ${If} $0 != 0
     StrCpy $InstallError "Не удалось отключить автозапуск kot. Удаление остановлено."
     !insertmacro FailInstall
@@ -127,16 +142,19 @@ Section "Uninstall"
     StrCpy $InstallError "Не удалось снять блокировку сети. Удаление остановлено."
     !insertmacro FailInstall
   ${EndIf}
+  ${EndIf}
   IfSilent +2
   KotUI::Stage /NOUNLOAD "2"
   !include "uninstall-files.nsh"
   IfSilent +2
   KotUI::Stage /NOUNLOAD "3"
+  ${If} $OwnsRegistration == "$INSTDIR"
   Delete "$SMPROGRAMS\kot.\kot..lnk"
   Delete "$SMPROGRAMS\kot.\Удалить kot..lnk"
   RMDir "$SMPROGRAMS\kot."
   Delete "$DESKTOP\kot..lnk"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN"
+  ${EndIf}
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   ; Profiles, subscription secrets and HWID live in LocalAppData and are preserved.

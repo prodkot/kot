@@ -90,7 +90,7 @@ try {
     # Keep the original updater compatibility fixture and also exercise the latest
     # stable client when crossing to Xray. Only run in a disposable Windows account.
     $sourceVersions=if ([version]$Version -ge [version]'0.8.0') { @('0.6.1','0.7.3') } else { @('0.6.1') }
-    if ([version]$Version -gt [version]'0.8.0') { $sourceVersions += '0.8.0' }
+    foreach ($old in @('0.8.0','0.8.1','0.8.2')) { if ([version]$Version -gt [version]$old) { $sourceVersions += $old } }
     foreach ($sourceVersion in $sourceVersions) {
     $profile=Join-Path $env:LOCALAPPDATA 'KotVPN'
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
@@ -114,6 +114,11 @@ try {
       # The pinned publisher key validates both the old Setup and its payload.
       Extract $oldSetup $legacy $sourceVersion
       if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw "Legacy fixture does not contain the released $sourceVersion client." }
+      if ([version]$sourceVersion -ge [version]'0.8.0') {
+        # Real old NSIS creates its old Uninstall.exe and ARP registration.
+        Run-Checked $oldSetup @() $scratch -Timeout 150000 -RawArguments "/S /D=$legacy" | Out-Null
+        if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw 'Old uninstaller fixture version mismatch.' }
+      }
       [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
       if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         # Released updaters require core/sing-box.exe. The Xray experiment is
@@ -150,6 +155,8 @@ try {
         if ((Test-Path $work) -and !(Test-Path (Join-Path $work 'committed'))) { throw 'Legacy updater did not commit the new UI receipt.' }
       }
       Verify-Files $legacy
+      if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -ne $Version) { throw 'Updater kept the old uninstaller version.' }
+      if ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $Version) { throw 'Installed programs version differs.' }
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Upgrade changed a user file.' }
       if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Upgrade changed the existing encrypted HWID.' }
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
