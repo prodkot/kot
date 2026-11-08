@@ -49,8 +49,8 @@ with sync_playwright() as p:
     assert options.locator('[onerror],script').count()==0
     expect(options.locator('[data-subscription=bad] strong')).to_contain_text('<img src=x onerror=alert(1)>')
     page.keyboard.press('ArrowDown');expect(options.locator('[data-subscription=sub2]')).to_be_focused()
-    page.keyboard.press('Enter');expect(menu).not_to_be_visible();expect(trigger).to_be_disabled()
-    page.evaluate('for(let i=0;i<20;i++)fixtureSnapshot({})');expect(trigger).to_be_disabled()
+    page.keyboard.press('Enter');expect(trigger).to_be_disabled()
+    page.evaluate('for(let i=0;i<20;i++)fixtureSnapshot({})');expect(trigger).to_be_disabled();expect(menu).not_to_be_visible()
     expect(trigger).to_have_attribute('data-subscription','sub2');expect(trigger).to_be_enabled();expect(trigger).to_be_focused()
     assert page.evaluate("actions.filter(a=>a.action==='switchSubscription').length")==1
     trigger.click();trigger.click();expect(menu).not_to_be_visible()

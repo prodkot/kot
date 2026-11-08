@@ -31,7 +31,7 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     $('toolsStatus').textContent=t.status?(t.server?t.server+' · ':'')+t.status:'Запустите проверку, чтобы найти причину проблем с соединением.';
     $('toolsError').textContent=t.error||'';$('toolsError').hidden=!t.error;
     const key=JSON.stringify(t.steps||[]);if(key!==lastResultKey){lastResultKey=key;$('toolsResults').replaceChildren(...(t.steps||[]).map(s=>{const row=document.createElement('div');row.className='tool-result';row.dataset.status=s.status;const name=document.createElement('strong');name.textContent=s.name+(s.status==='ok'?' · OK':s.status==='error'?' · Ошибка':s.status==='checking'?' · Проверка':s.status==='cancelled'?' · Отменено':'');const detail=document.createElement('p');detail.textContent=s.detail;row.append(name,detail);return row;}));}
-    $('testQuality').disabled=busy||model.state!=='connected';$('cancelQuality').hidden=!t.busy||!quality;
+    $('testQuality').disabled=busy||model.state!=='connected';$('testQuality').textContent=quality&&t.quality?'Проверить ещё раз':'Проверить';$('cancelQuality').hidden=!t.busy||!quality;
     const q=quality?t.quality:null,settings=model.ping?.settings||{};
     $('qualityAddress').textContent=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
     $('qualityNote').textContent=model.state==='connected'?'HTTP-проверка через подключённый VPN. Адрес, число попыток и таймаут берутся из настроек пинга.':'Подключите VPN, чтобы проверить адрес.';

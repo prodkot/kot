@@ -63,8 +63,11 @@ def close_all(page):
     for _ in range(6):
         if page.locator('dialog[open]').count() == 0:
             return
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(160)
+        if page.locator('#discardDialog').is_visible():
+            page.locator('#discardChanges').click()
+        else:
+            page.keyboard.press('Escape')
+        page.wait_for_timeout(240)
     assert not page.locator('dialog[open]').count(), 'dialog stack cannot be dismissed'
 
 def geometry(page, selector):

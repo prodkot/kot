@@ -1,5 +1,5 @@
 'use strict';
-window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
+window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,requestClose}) => {
   const $=id=>document.getElementById(id);
   let provider='zapret', resultKey='', historyKey='', strategyKey='', settingService='', settingsSession=0, savingSettings=false, rotatingSecret=false, starting=new Set();
   const state=()=>getModel().services||{items:[],zapret:{},telegram:{}};
@@ -10,7 +10,7 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
     try{return await perform('serviceAction',{service,operation,...extra});}
     finally{starting.delete(service);render();}
   }
-  function showProvider(id){provider=id;document.querySelectorAll('[data-service-tab]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.serviceTab===id));$('zapretPanel').hidden=id!=='zapret';$('telegramPanel').hidden=id!=='telegram';render();}
+  function showProvider(id){document.querySelector('.service-tabs').dataset.selected=id==='telegram'?'1':'0';provider=id;document.querySelectorAll('[data-service-tab]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.serviceTab===id));$('zapretPanel').hidden=id!=='zapret';$('telegramPanel').hidden=id!=='telegram';render();}
   function text(id,value){const el=$(id);if(el.textContent!==String(value))el.textContent=String(value);}
   function render(){
     const s=state();$('serviceAutoUpdates').checked=s.checkUpdates!==false;
@@ -95,7 +95,7 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
     try{if(await perform('serviceRotateSecret')){closeDialog($('serviceSecretDialog'));toast('Secret обновлён. Подключите Telegram по новой ссылке.');}}
     finally{rotatingSecret=false;$('serviceSecretConfirm').disabled=false;}
   });
-  $('serviceSettingsClose').addEventListener('click',()=>closeDialog($('serviceSettingsDialog')));
+  $('serviceSettingsClose').addEventListener('click',()=>requestClose($('serviceSettingsDialog')));
   $('serviceSettingsDialog').addEventListener('close',()=>{settingsSession++;$('telegramSecret').value='';});
   $('serviceSettingsForm').addEventListener('submit',async event=>{
     event.preventDefault();if(savingSettings)return;savingSettings=true;const session=settingsSession,b=$('serviceSettingsSave');b.disabled=true;
@@ -112,7 +112,7 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog}) => {
   });
   $('zapretTestAll').addEventListener('click',()=>{$('zapretTestStrategies').querySelectorAll('input').forEach(i=>{i.checked=true;});});
   $('zapretTestNone').addEventListener('click',()=>{$('zapretTestStrategies').querySelectorAll('input').forEach(i=>{i.checked=false;});});
-  $('zapretTestClose').addEventListener('click',()=>closeDialog($('zapretTestDialog')));
+  $('zapretTestClose').addEventListener('click',()=>requestClose($('zapretTestDialog')));
   $('zapretTestRun').addEventListener('click',async()=>{const strategies=[...$('zapretTestStrategies').querySelectorAll('input:checked')].map(i=>i.value);if(!strategies.length){text('zapretTestError','Выберите хотя бы одну стратегию.');return;}if(await operation('zapret','test',{strategies}))closeDialog($('zapretTestDialog'));});
   $('zapretHistorySelect').addEventListener('change',()=>perform('serviceSelectTest',{started:$('zapretHistorySelect').value}));
   $('zapretCopyResults').addEventListener('click',async()=>{if(await perform('serviceCopyResults'))toast('Результаты скопированы');});

@@ -106,7 +106,11 @@ def interrupted_power(page):
     page.evaluate('nodes=>fixtureSnapshot({nodes,state:"connected"})', NODES)
     page.wait_for_timeout(35)
     page.evaluate("fixtureSnapshot({state:'idle'})")
-    assert not page.locator('#powerIcon').evaluate("e=>e.getAnimations().some(a=>a.playState==='running')"), 'connected pulse persists after disconnect'
+    # The P5.1 return interpolates the interrupted pulse instead of snapping.
+    animations = page.locator('#powerIcon').evaluate("e=>e.getAnimations().filter(a=>a.playState==='running').map(a=>a.effect.getTiming().duration)")
+    assert animations == [300], animations
+    page.wait_for_timeout(340)
+    assert not page.locator('#powerIcon').evaluate("e=>e.getAnimations().some(a=>a.playState==='running')"), 'return persists after disconnect'
 
 
 def layouts(page):
