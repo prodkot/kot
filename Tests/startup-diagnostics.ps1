@@ -4,7 +4,7 @@ $script=Join-Path $PSScriptRoot '../QA/Startup-Diagnostics.ps1'
 $tokens=$null; $errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($script,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
-$allowed=@('Failure','ReleaseCom','SafeChoice','TaskDate','ComTaskSummary','SamePath','VersionOf','IdentityMatches','SafeDuration','TaskEvents','New-Object','Get-WinEvent','Get-Date',
+$allowed=@('Failure','ReleaseCom','SafeChoice','TaskDate','PathShape','ActionFacts','TaskNameKind','ComTaskSummary','SamePath','VersionOf','IdentityMatches','SafeDuration','TaskEvents','New-Object','Get-WinEvent','Get-Date',
  'ForEach-Object','Where-Object','Select-Object','Get-ScheduledTask','Get-ScheduledTaskInfo','Test-Path','Get-Process','Start-Sleep',
  'Join-Path','Get-Item','Get-ChildItem','Get-Service','ConvertTo-Json','Get-Content','ConvertFrom-Json')
 foreach ($command in $ast.FindAll({param($a) $a -is [Management.Automation.Language.CommandAst]},$true)) {
@@ -16,7 +16,7 @@ Write-Host 'PASS diagnostic AST accepts only read operations and stdout serializ
 if ($ParseOnly) { return }
 $json=& $script
 $result=$json | ConvertFrom-Json
-if ($result.schema -ne 'kot.startup-diagnostics.v2' -or !$result.capturedUtc -or !$result.limitations) { throw 'Incomplete diagnostic result.' }
+if ($result.schema -ne 'kot.startup-diagnostics.v3' -or !$result.capturedUtc -or !$result.limitations) { throw 'Incomplete diagnostic result.' }
 if ($result.taskRead.com -ne 'complete' -or $result.taskRead.cim -ne 'complete' -or $result.taskRead.source -ne 'com') { throw 'A healthy Windows runner must support both readers.' }
 if (!$result.schedulerService.available -or $result.schedulerService.status -ne 'Running') { throw 'Service status is missing or wrong.' }
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -63,6 +63,40 @@ try {
   if (($fallbackJson -join "`n") -match '(?i)(https?://|[a-z]:\\\\|S-1-5-21-)') { throw 'Fallback exposed a URL, path or SID.' }
   if ($registered.Xml -ne $originalXml -or $registered.LastRunTime -ne $originalRun -or $registered.Enabled) { throw 'Diagnostic changed or launched the task.' }
   Write-Host 'PASS actual COM reads hidden task after injected 0x80131501; preserves task, last-run state and privacy'
+
+  # Real Windows PowerShell 5.1 regression: GetDirectoryName throws on a quoted
+  # executable. Preserve the task summary even when path normalization fails.
+  $plainExe=$action.Path
+  $action.Path='"'+$plainExe+'"'
+  [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($registered)
+  $registered=$folder.RegisterTaskDefinition($name,$definition,6,$sid,$null,3,$null)
+  $originalXml=$registered.Xml; $originalRun=$registered.LastRunTime
+  $quotedJson=& $script; $quoted=$quotedJson | ConvertFrom-Json
+  if ($quoted.taskRead.cim -ne 'complete' -or $quoted.taskRead.com -ne 'complete' -or $quoted.readErrors.Count) { throw 'Quoted executable broke task collection.' }
+  $fixture=@($quoted.tasks | Where-Object { $_.testName -and $_.actions[0].quotedExecutable })
+  if ($fixture.Count -ne 1 -or !$fixture[0].actions[0].normalizedExists -or $fixture[0].actions[0].exists -or $fixture[0].actions[0].literalPathError -ne '0x80070057') { throw 'Quoted task path evidence was lost.' }
+  if (!$fixture[0].currentPrincipal -or !$fixture[0].triggers[0].currentUser -or $fixture[0].nameKind -ne 'test' -or !$fixture[0].lastResult) { throw 'A malformed path hid task identity or run history.' }
+  if ($registered.Xml -ne $originalXml -or $registered.LastRunTime -ne $originalRun -or $registered.Enabled) { throw 'Quoted task was changed or launched.' }
+  foreach ($secret in @($sid,$plainExe,$env:USERPROFILE,$env:COMPUTERNAME,$name)) {
+    if ($secret -and ($quotedJson -join "`n").Contains($secret)) { throw 'Quoted task diagnostic leaked an identifier.' }
+  }
+  Write-Host 'PASS actual quoted action survives both CIM and COM on Windows PowerShell 5.1 with unchanged definition and last-run'
+
+  # Exercise a range of malformed values without registering or launching them.
+  # Load just the pure helpers from the diagnostic source under test.
+  foreach ($functionAst in $ast.FindAll({param($a) $a -is [Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -in @('PathShape','ActionFacts','SamePath','VersionOf')},$true)) {
+    . ([scriptblock]::Create($functionAst.Extent.Text))
+  }
+  $exe=$plainExe
+  foreach ($badPath in @('', ' ', '"unterminated', 'C:\bad|path\Kot.exe', ('C:\bad'+[char]0+'path'), '\\private.invalid\share\Kot.exe', '"C:\not-installed\Kot.exe" --startup')) {
+    $facts=ActionFacts $badPath '' '--startup' 'Exec'
+    if ($facts.exists -or $facts.normalizedExists -or ($badPath.StartsWith('\\') -and $facts.localFixedDrive)) { throw 'Unsafe/nonexistent path was probed as an existing local executable.' }
+    $encoded=$facts | ConvertTo-Json -Depth 5
+    if ($encoded.Contains('private.invalid') -or $encoded.Contains('not-installed')) { throw 'Path helper leaked a raw path.' }
+  }
+  $quotedInline=ActionFacts ('"'+$plainExe+'" --startup') ([IO.Path]::GetDirectoryName($plainExe)) '' 'Exec'
+  if (!$quotedInline.inlineArgumentsInExecutable -or !$quotedInline.normalizedRegisteredExecutable -or $quotedInline.registeredExecutable -or $quotedInline.startupArgument) { throw 'Normalized candidate confused with a healthy raw task action.' }
+  Write-Host 'PASS malformed, empty, inline-argument and UNC paths retain sanitized evidence without aborting'
 
   # Both APIs unavailable: report unknown, not "task absent". Also distinguish the
   # service from a disabled operational log. Neither simulation starts/stops anything.

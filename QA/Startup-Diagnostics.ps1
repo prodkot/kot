@@ -9,7 +9,7 @@ function Failure($stage,$errorRecord) {
   $chain=@(); $ex=$errorRecord.Exception
   for ($i=0; $ex -and $i -lt 5; $i++) {
     $name=$ex.GetType().FullName
-    if ($name -notin @('System.SystemException','System.Exception','System.InvalidOperationException',
+    if ($name -notin @('System.SystemException','System.Exception','System.ArgumentException','System.NotSupportedException','System.IO.PathTooLongException','System.InvalidOperationException',
       'System.UnauthorizedAccessException','System.IO.FileNotFoundException','System.IO.DirectoryNotFoundException',
       'System.Runtime.InteropServices.COMException','System.ComponentModel.Win32Exception',
       'System.Management.Automation.RuntimeException','System.Management.Automation.CmdletInvocationException',
@@ -31,6 +31,45 @@ function TaskDate($value) {
   if ($value -and ([DateTime]$value).Year -gt 2000) { return ([DateTime]$value).ToUniversalTime().ToString('o') }
   return $null
 }
+function PathShape($value) {
+  $s=[string]$value; $candidate=$s.Trim(); $quoted=$false; $inline=$false
+  if ($candidate -match '^"([^"\r\n]+)"\s*(.*)$') {
+    $quoted=$true; $candidate=$Matches[1]; $inline=![string]::IsNullOrWhiteSpace($Matches[2])
+  }
+  $vars=$candidate -match '%[^%]+%'
+  if ($vars) { $candidate=[Environment]::ExpandEnvironmentVariables($candidate) }
+  $parent=$null; $valid=$false; $local=$false; $exists=$false; $code=$null
+  try {
+    if (![string]::IsNullOrWhiteSpace($candidate)) {
+      $parent=[IO.Path]::GetDirectoryName($candidate)
+      $valid=$candidate -notmatch '["<>|\x00-\x1f]' -and $candidate -match '^[a-zA-Z]:[\\/]'
+      # Never probe UNC paths or mapped network drives from an untrusted task.
+      if ($valid) { $drive=[IO.DriveInfo]::new($candidate.Substring(0,3)); $local=$drive.DriveType -eq [IO.DriveType]::Fixed }
+      if ($local) { $exists=[IO.File]::Exists($candidate) }
+    }
+  } catch { $code='0x{0:X8}' -f ($_.Exception.GetBaseException().HResult -band 0xffffffffL) }
+  return @{candidate=$candidate;parent=$parent;quoted=$quoted;inlineArguments=$inline;environmentVariables=$vars;
+    valid=$valid;local=$local;exists=$exists;pathError=$code;changed=($candidate -cne $s)}
+}
+function ActionFacts($path,$directory,$arguments,$type) {
+  $p=PathShape $path; $d=PathShape $directory
+  $rawParent=$null; $rawError=$null
+  try { if (![string]::IsNullOrWhiteSpace($path)) { $rawParent=[IO.Path]::GetDirectoryName($path) } }
+  catch { $rawError='0x{0:X8}' -f ($_.Exception.GetBaseException().HResult -band 0xffffffffL) }
+  return @{type=$type;exists=[bool](!$p.changed -and $p.exists);registeredExecutable=(SamePath $path $exe);
+    workingDirectoryMatchesExecutable=[bool]($rawParent -and (SamePath $directory $rawParent));
+    startupArgument=($arguments -ceq '--startup');version=$(if ($p.exists) { VersionOf $p.candidate });
+    quotedExecutable=$p.quoted;inlineArgumentsInExecutable=$p.inlineArguments;environmentVariables=$p.environmentVariables;
+    literalPathError=$rawError;candidatePathValid=$p.valid;candidatePathError=$p.pathError;localFixedDrive=$p.local;
+    normalizedExists=$p.exists;normalizedRegisteredExecutable=(SamePath $p.candidate $exe);
+    normalizedWorkingDirectoryMatchesExecutable=[bool]($p.parent -and (SamePath $d.candidate $p.parent));
+    workingDirectoryPresent=![string]::IsNullOrWhiteSpace($directory);quotedWorkingDirectory=$d.quoted}
+}
+function TaskNameKind($name) {
+  if ($name -match '^KotVPN-S-1-[0-9-]+$') { return 'sid' }
+  if ($name -match '^(KotQA|KotVPN-test-)') { return 'test' }
+  return 'other-kot'
+}
 function ComTaskSummary($task,$index) {
   $xml=New-Object System.Xml.XmlDocument
   $xml.XmlResolver=$null
@@ -38,10 +77,7 @@ function ComTaskSummary($task,$index) {
   $root=$xml.DocumentElement
   $actions=@(foreach ($action in $root.Actions.ChildNodes) {
     $path=[string]$action.Command
-    @{type=(SafeChoice $action.LocalName @('Exec','ComHandler','SendEmail','ShowMessage'));
-      exists=[bool]($path -and (Test-Path -LiteralPath $path -PathType Leaf));registeredExecutable=(SamePath $path $exe);
-      workingDirectoryMatchesExecutable=[bool]($path -and (SamePath ([string]$action.WorkingDirectory) ([IO.Path]::GetDirectoryName($path))));
-      startupArgument=([string]$action.Arguments -ceq '--startup');version=(VersionOf $path)}
+    ActionFacts $path ([string]$action.WorkingDirectory) ([string]$action.Arguments) (SafeChoice $action.LocalName @('Exec','ComHandler','SendEmail','ShowMessage'))
   })
   $triggers=@(foreach ($trigger in $root.Triggers.ChildNodes) {
     @{type=(SafeChoice $trigger.LocalName @('LogonTrigger','BootTrigger','TimeTrigger','CalendarTrigger','EventTrigger','IdleTrigger','SessionStateChangeTrigger','RegistrationTrigger'));
@@ -49,7 +85,7 @@ function ComTaskSummary($task,$index) {
       hasStartBoundary=[bool]$trigger.StartBoundary;hasEndBoundary=[bool]$trigger.EndBoundary}
   })
   $s=$root.Settings; $p=$root.Principals.Principal
-  return @{alias=('task-'+$index);canonicalCurrentUser=($task.Name -eq ('KotVPN-'+$sid));testName=($task.Name -match '^(KotQA|KotVPN-test-)');
+  return @{alias=('task-'+$index);nameKind=(TaskNameKind $task.Name);canonicalCurrentUser=($task.Name -eq ('KotVPN-'+$sid));testName=($task.Name -match '^(KotQA|KotVPN-test-)');
     state=(SafeChoice ([string]$task.State) @('0','1','2','3','4'));stateSource='TASK_STATE';enabled=[bool]$task.Enabled;
     currentPrincipal=(IdentityMatches ([string]$p.UserId));
     logonType=(SafeChoice ([string]$p.LogonType) @('InteractiveToken','Password','S4U','InteractiveTokenOrPassword','ServiceAccount','Group','None'));
@@ -122,16 +158,14 @@ try {
     $info=$null; try { $info=Get-ScheduledTaskInfo -InputObject $task } catch { Failure 'task-info' $_ }
     $actions=@(foreach ($action in $task.Actions) {
       $path=$action.Execute
-      @{type=$action.CimClass.CimClassName;exists=[bool]($path -and (Test-Path -LiteralPath $path -PathType Leaf));registeredExecutable=(SamePath $path $exe);
-        workingDirectoryMatchesExecutable=[bool]($path -and (SamePath $action.WorkingDirectory ([IO.Path]::GetDirectoryName($path))));
-        startupArgument=($action.Arguments -ceq '--startup');version=(VersionOf $path)}
+      ActionFacts $path $action.WorkingDirectory $action.Arguments $action.CimClass.CimClassName
     })
     $triggers=@(foreach ($trigger in $task.Triggers) {
       @{type=$trigger.CimClass.CimClassName;enabled=$trigger.Enabled;currentUser=(IdentityMatches $trigger.UserId);delay=(SafeDuration $trigger.Delay);
         hasStartBoundary=[bool]$trigger.StartBoundary;hasEndBoundary=[bool]$trigger.EndBoundary}
     })
     $s=$task.Settings
-    $tasks+=@{alias=('task-'+$taskIndex);canonicalCurrentUser=($task.TaskName -eq ('KotVPN-'+$sid));testName=($task.TaskName -match '^(KotQA|KotVPN-test-)');
+    $tasks+=@{alias=('task-'+$taskIndex);nameKind=(TaskNameKind $task.TaskName);canonicalCurrentUser=($task.TaskName -eq ('KotVPN-'+$sid));testName=($task.TaskName -match '^(KotQA|KotVPN-test-)');
       state=[string]$task.State;enabled=$s.Enabled;currentPrincipal=(IdentityMatches $task.Principal.UserId);
       logonType=[string]$task.Principal.LogonType;runLevel=[string]$task.Principal.RunLevel;actions=$actions;triggers=$triggers;
       conditions=@{batteryBlocked=$s.DisallowStartIfOnBatteries;stopOnBattery=$s.StopIfGoingOnBatteries;networkRequired=$s.RunOnlyIfNetworkAvailable;
@@ -221,7 +255,7 @@ try {
     }
   }
 } catch { Failure 'startup-receipt' $_ }
-[ordered]@{schema='kot.startup-diagnostics.v2';capturedUtc=[DateTime]::UtcNow.ToString('o');elevated=$admin;
+[ordered]@{schema='kot.startup-diagnostics.v3';capturedUtc=[DateTime]::UtcNow.ToString('o');elevated=$admin;
   powershellVersion=$PSVersionTable.PSVersion.ToString();is64BitProcess=[Environment]::Is64BitProcess;
   installed=@{registered=[bool]$install;displayVersion=$registeredVersion;clientVersion=(VersionOf $exe);uninstallerVersion=(VersionOf $uninstaller)};
   tasks=$tasks;taskRead=$taskRead;schedulerService=$schedulerService;processes=$processes;lifecycle=$lifecycle;alternateStartup=$otherStartup;startupLinkCount=$startupLinks;
