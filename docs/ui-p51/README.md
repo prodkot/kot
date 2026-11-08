@@ -20,6 +20,11 @@ implementations are unchanged. No prototype bridge, sample results, review toolb
 or animation laboratory is shipped. The original nested HWID Back/Escape behavior
 is retained.
 
+The existing website demo reuses these production assets. Its build includes the
+new dialog module, and its isolated bridge/help selectors and browser assertions
+follow the updated markup. The demo remains sandboxed and cannot perform real
+networking, installations or updates.
+
 ## Before / after
 
 These are screenshots of the **production HTML/JS rendered in Chromium**, with the
@@ -62,6 +67,8 @@ python3 Tests/about_ui.py
 python3 Tests/ui_polish.py
 python3 Tests/ui_resilience.py
 python3 Tests/ui_p51.py
+python3 site/check.py
+python3 site/demo_browser_check.py
 ```
 
 `ui_p51.py` exercises dirty forms, errors/retry/success, three cycles of each of
