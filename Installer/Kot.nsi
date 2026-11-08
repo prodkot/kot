@@ -40,7 +40,13 @@ LoadLanguageFile "${NSISDIR}/Contrib/Language files/Russian.nlf"
 Function .onInit
 !ifdef GENERATE_UNINSTALLER
   SetSilent silent
+  ClearErrors
   WriteUninstaller "${GENERATE_UNINSTALLER}"
+  ${If} ${Errors}
+    SetErrorLevel 1
+  ${Else}
+    SetErrorLevel 0
+  ${EndIf}
   Quit
 !endif
   ${IfNot} ${RunningX64}
@@ -132,16 +138,17 @@ Section "Uninstall"
     StrCpy $InstallError "Не удалось закрыть kot. Закройте приложение и повторите удаление."
     !insertmacro FailInstall
   ${EndIf}
-  ExecWait '$\"$INSTDIR\Kot.exe$\" --remove-owned-startup' $0
-  ${If} $0 != 0
-    StrCpy $InstallError "Не удалось отключить автозапуск kot. Удаление остановлено."
-    !insertmacro FailInstall
-  ${EndIf}
   ExecWait '$\"$INSTDIR\Kot.exe$\" --disable-kill-switch' $0
   ${If} $0 != 0
     StrCpy $InstallError "Не удалось снять блокировку сети. Удаление остановлено."
     !insertmacro FailInstall
   ${EndIf}
+  ${EndIf}
+  ; Exact-path task cleanup is safe even if another copy owns the ARP registration.
+  ExecWait '$\"$INSTDIR\Kot.exe$\" --remove-owned-startup' $0
+  ${If} $0 != 0
+    StrCpy $InstallError "Не удалось отключить автозапуск kot. Удаление остановлено."
+    !insertmacro FailInstall
   ${EndIf}
   IfSilent +2
   KotUI::Stage /NOUNLOAD "2"

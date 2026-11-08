@@ -28,7 +28,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Uninstaller generator compilation failed.' }
 $generate=Start-Process $generator -PassThru
 try {
   if (!$generate.WaitForExit(30000)) { $generate.Kill(); throw 'Uninstaller generation timed out.' }
-  if ($generate.ExitCode -ne 0 -or !(Test-Path "$publish/Uninstall.exe")) { throw 'Uninstaller generation failed.' }
+  if ($generate.ExitCode -ne 0 -or !(Test-Path "$publish/Uninstall.exe")) { throw "Uninstaller generation failed (exit $($generate.ExitCode), output exists: $(Test-Path "$publish/Uninstall.exe"))." }
 } finally { $generate.Dispose() }
 if ((Get-Item "$publish/Uninstall.exe").VersionInfo.ProductVersion -ne $version) { throw 'Uninstaller version differs from client.' }
 ./Release/sign.ps1 -Folder $publish -Version $version -Key $Key

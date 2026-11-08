@@ -101,7 +101,12 @@ try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
       Add-Type -AssemblyName System.Security.Cryptography.ProtectedData
-      $oldProfile='{"name":"Setup upgrade fixture","nodes":[],"selected":"","theme":"light","accent":"purple","mode":"smart","connectionMode":"proxy","startup":false,"autoConnect":false,"tray":true,"killSwitch":false,"sendHwid":false,"subscriptions":[],"favorites":[]}'
+      # Synthetic, nonempty data. No actual subscription or network connection is used.
+      $nodeId='A'*64; $subscriptionId='fixture-subscription'; $routingId='11111111111111111111111111111111'
+      $node=@{id=$nodeId;name='Fixture node';protocol='vless';outbound=@{type='vless';server='127.0.0.1';server_port=9;uuid='11111111-1111-1111-1111-111111111111'}}
+      $subscription=@{id=$subscriptionId;name='Setup upgrade fixture';address='https://example.invalid/subscription/fixture';nodes=@($node);selected=$nodeId;favorites=@($nodeId)}
+      $routing=@{id=$routingId;rules=@{version=1;name='Preserved routing';defaultAction='proxy';directDomains=@('example.invalid')};sourceUrl='';refreshHours=0}
+      $oldProfile=@{name=$subscription.name;address=$subscription.address;nodes=@($node);selected=$nodeId;theme='light';mode='smart';connectionMode='proxy';startup=$false;autoConnect=$false;tray=$true;killSwitch=$false;sendHwid=$false;subscriptions=@($subscription);activeSubscription=$subscriptionId;favorites=@($nodeId);routingProfiles=@($routing);activeRoutingProfile=$routingId;automation=@{refreshHours=0;pingMinutes=0;autoMinutes=3;autoToleranceMs=50;reconnect=$true}} | ConvertTo-Json -Depth 20 -Compress
       $profileBytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($oldProfile),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)
       $deviceBytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::ASCII.GetBytes(('C'*64)),[Text.Encoding]::UTF8.GetBytes('KotVPN.device.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)
       $traffic='{"version":1,"firstRecorded":"2026-10-11T00:00:00+00:00","allTime":{"download":8192,"upload":1024,"connectedMilliseconds":90000,"sessions":2},"lastSession":null,"days":[]}'
@@ -162,6 +167,7 @@ try {
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
+      if ($newProfile.subscriptions.Count -ne 1 -or $newProfile.activeSubscription -ne $subscriptionId -or $newProfile.subscriptions[0].address -ne $subscription.address -or $newProfile.nodes[0].id -ne $nodeId -or $newProfile.nodes[0].outbound.uuid -ne $node.outbound.uuid -or $newProfile.favorites[0] -ne $nodeId -or $newProfile.routingProfiles[0].id -ne $routingId -or $newProfile.routingProfiles[0].rules.directDomains[0] -ne 'example.invalid' -or $newProfile.activeRoutingProfile -ne $routingId) { throw 'Upgrade lost subscription, node, favorite or routing profile data.' }
       if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         Write-Host "PASS signed Setup upgrades an authentic $sourceVersion installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved."
       } else {

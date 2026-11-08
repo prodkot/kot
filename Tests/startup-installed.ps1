@@ -13,7 +13,7 @@ foreach ($file in 'profile.bin','device.bin') { if (Test-Path (Join-Path $profil
 $receipt=Join-Path $profile 'startup-lifecycle.json'
 $moved=Join-Path $env:RUNNER_TEMP ('kot moved тест '+[Guid]::NewGuid().ToString('N'))
 $copy=Join-Path $env:RUNNER_TEMP ('KotQA '+[Guid]::NewGuid().ToString('N'))
-$success=$false; $running=$null
+$success=$false; $running=$null; $ownedFixtureName='KotVPN-S-1-0-0'
 function Run($path,$argument,[switch]$Failure) {
   $p=Start-Process $path -ArgumentList $argument -PassThru
   try {
@@ -68,9 +68,16 @@ try {
   Assert ($folder.GetTask($name).Xml -eq $before) 'rejected copy leaves the installed task unchanged'
   Run $Setup "/S /D=$moved" | Out-Null
   Assert ((Get-ScheduledTask -TaskName $name).Actions[0].Execute -ieq (Join-Path $moved 'Kot.exe')) 'Setup at a new path repairs an enabled task'
+  # A second task pointing at the old path must be cleaned without touching the current task.
+  $definition=$service.NewTask(0); $definition.XmlText=$folder.GetTask($name).Xml
+  $definition.Actions.Item(1).Path=$exe; $definition.Actions.Item(1).WorkingDirectory=$target
+  $ownedFixture=$folder.RegisterTaskDefinition($ownedFixtureName,$definition,6,$sid,$null,3,$null)
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($ownedFixture) | Out-Null
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($definition) | Out-Null
   # Remove the old registration owner without disturbing the new one.
   Run (Join-Path $target 'Uninstall.exe') "/S _?=$target" | Out-Null
   Assert ((Get-ScheduledTask -TaskName $name).Actions[0].Execute -ieq (Join-Path $moved 'Kot.exe')) 'old-copy uninstall preserves the new installation task'
+  Assert (@(Get-ScheduledTask -TaskName $ownedFixtureName -ErrorAction SilentlyContinue).Count -eq 0) 'old-copy uninstall removes only tasks pointing at the removed executable'
   Assert ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').InstallLocation -ieq $moved) 'old-copy uninstall preserves the new registration'
   Run $Setup "/S /D=$target" | Out-Null
   Run (Join-Path $moved 'Uninstall.exe') "/S _?=$moved" | Out-Null
@@ -79,6 +86,7 @@ try {
   Write-Host 'PASS scheduler launch and integration. Actual Windows sign-out/sign-in remains a separate user-PC test.'
 } finally {
   if ($running) { try { if (!$running.HasExited) { $running.Kill($true); $running.WaitForExit(10000) | Out-Null } } finally { $running.Dispose() } }
+  Unregister-ScheduledTask -TaskName $ownedFixtureName -Confirm:$false -ErrorAction SilentlyContinue
   if (!$success) { Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue }
   foreach ($dir in @($copy,$moved)) { if (Test-Path $dir) { Remove-Item $dir -Recurse -Force } }
   # Only synthetic profile created by the fixture. Leave it for uninstall-preservation assertion.
