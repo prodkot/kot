@@ -23,14 +23,17 @@ $installerScript=Join-Path $PWD 'Installer/Kot.nsi'
 # Build the actual versioned uninstaller BEFORE signing the shared update payload.
 # The generator exits in .onInit and never installs/registers anything.
 $generator=Join-Path $extractorFolder 'make-uninstaller.exe'
-& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$generator" "/DGENERATE_UNINSTALLER=$publish/Uninstall.exe" $installerScript
+# This string is consumed by the NSIS runtime, whose filename sanitizer removes '/'.
+# Unlike compiler File/Icon paths, WriteUninstaller needs native Windows separators.
+$uninstaller=Join-Path $publish 'Uninstall.exe'
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$generator" "/DGENERATE_UNINSTALLER=$uninstaller" $installerScript
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller generator compilation failed.' }
 $generate=Start-Process $generator -PassThru
 try {
   if (!$generate.WaitForExit(30000)) { $generate.Kill(); throw 'Uninstaller generation timed out.' }
-  if ($generate.ExitCode -ne 0 -or !(Test-Path "$publish/Uninstall.exe")) { throw "Uninstaller generation failed (exit $($generate.ExitCode), output exists: $(Test-Path "$publish/Uninstall.exe"))." }
+  if ($generate.ExitCode -ne 0 -or !(Test-Path $uninstaller)) { throw "Uninstaller generation failed (exit $($generate.ExitCode), output exists: $(Test-Path $uninstaller))." }
 } finally { $generate.Dispose() }
-if ((Get-Item "$publish/Uninstall.exe").VersionInfo.ProductVersion -ne $version) { throw 'Uninstaller version differs from client.' }
+if ((Get-Item $uninstaller).VersionInfo.ProductVersion -ne $version) { throw 'Uninstaller version differs from client.' }
 ./Release/sign.ps1 -Folder $publish -Version $version -Key $Key
 New-Item -ItemType Directory -Force artifacts | Out-Null
 $archive=Join-Path $PWD "artifacts/Kot-Client-$version-beta-Windows-x64.zip"
