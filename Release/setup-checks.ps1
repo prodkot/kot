@@ -97,6 +97,10 @@ try {
       if (Test-Path (Join-Path $profile $name)) { throw 'Legacy update test requires a fresh Windows test account. Existing user data was left untouched.' }
     }
     $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch ('legacy client '+$sourceVersion); $parent=$null; $recoveryWork=$null
+    $fixtureTaskCreated=$false; $startupExpected=$false
+    $fixtureSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $fixtureTaskName='KotVPN-'+$fixtureSid
+    if (@(Get-ScheduledTask -TaskName $fixtureTaskName -ErrorAction SilentlyContinue).Count) { throw 'Upgrade fixture refuses to replace an existing autostart task.' }
     try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
@@ -123,6 +127,14 @@ try {
         # Real old NSIS creates its old Uninstall.exe and ARP registration.
         Run-Checked $oldSetup @() $scratch -Timeout 150000 -RawArguments "/S /D=$legacy" | Out-Null
         if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw 'Old uninstaller fixture version mismatch.' }
+        # Exercise the real old updater with both enabled and externally disabled autostart.
+        $action=New-ScheduledTaskAction -Execute (Join-Path $legacy 'Kot.exe') -Argument '--startup' -WorkingDirectory $legacy
+        $trigger=New-ScheduledTaskTrigger -AtLogOn -User $fixtureSid
+        $principal=New-ScheduledTaskPrincipal -UserId $fixtureSid -LogonType Interactive -RunLevel Highest
+        $settings=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+        Register-ScheduledTask -TaskName $fixtureTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+        $fixtureTaskCreated=$true; $startupExpected=$sourceVersion -ne '0.8.1'
+        if (!$startupExpected) { Disable-ScheduledTask -TaskName $fixtureTaskName | Out-Null }
       }
       [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
       if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
@@ -165,6 +177,11 @@ try {
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Upgrade changed a user file.' }
       if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Upgrade changed the existing encrypted HWID.' }
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
+      if ($fixtureTaskCreated) {
+        $task=Get-ScheduledTask -TaskName $fixtureTaskName
+        if ($task.Settings.Enabled -ne $startupExpected -or $task.Actions[0].Execute -ine (Join-Path $legacy 'Kot.exe') -or $task.Actions[0].Arguments -cne '--startup' -or $task.Actions[0].WorkingDirectory.TrimEnd('\') -ine $legacy.TrimEnd('\') -or $newProfile.startup -ne $startupExpected) { throw 'Upgrade changed autostart state/path or failed to synchronize the app setting.' }
+        Write-Host "PASS authentic $sourceVersion updater preserves autostart enabled=$startupExpected and the new UI synchronizes its setting."
+      }
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
       if ($newProfile.subscriptions.Count -ne 1 -or $newProfile.activeSubscription -ne $subscriptionId -or $newProfile.subscriptions[0].address -ne $subscription.address -or $newProfile.nodes[0].id -ne $nodeId -or $newProfile.nodes[0].outbound.uuid -ne $node.outbound.uuid -or $newProfile.favorites[0] -ne $nodeId -or $newProfile.routingProfiles[0].id -ne $routingId -or $newProfile.routingProfiles[0].rules.directDomains[0] -ne 'example.invalid' -or $newProfile.activeRoutingProfile -ne $routingId) { throw 'Upgrade lost subscription, node, favorite or routing profile data.' }
@@ -203,6 +220,7 @@ try {
       Write-Host 'PASS installed startup recovery restores a journal containing the running Kot.exe, removes partial new files and restarts the application through a separate helper.'
 
     } finally {
+      if ($fixtureTaskCreated) { Unregister-ScheduledTask -TaskName $fixtureTaskName -Confirm:$false }
       if ($null -ne $parent) { if (!$parent.HasExited) { $parent.Kill($true); $parent.WaitForExit(5000) | Out-Null }; $parent.Dispose() }
       if ($ownedProfile) {
         try { if (Test-Path (Join-Path $legacy 'Kot.exe')) { Run-Checked (Join-Path $legacy 'Kot.exe') @('--shutdown') $legacy -Timeout 40000 | Out-Null } }
