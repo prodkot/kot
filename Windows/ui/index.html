@@ -142,6 +142,20 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allo
 .micro-player{margin:24px 0 20px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.micro-controls{display:flex;gap:10px;align-items:center}.micro-controls .icon-button{width:32px;height:32px;flex-shrink:0}.micro-controls .music-play{background:var(--accent);color:var(--ink);border-color:transparent}.micro-title{min-width:0;flex:1;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.micro-progress{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.micro-progress progress{width:100%;height:3px;accent-color:var(--accent)}.micro-status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}.about-credit{display:block;padding:0;background:none;border:0;color:var(--muted);font-size:10px;text-align:left;line-height:1.6}.about-credit:hover{color:var(--text);text-decoration:underline}.astra-dialog{padding:12px;width:min(600px,calc(100vw - 32px))}.astra-dialog img{display:block;width:100%;max-height:70vh;object-fit:contain;border-radius:9px}.astra-dialog .dialog-actions{margin-top:12px}
 /* P5.1 shared geometry. Keep these tokens consistent across product dialogs. */
 .quiet-button{min-height:40px;padding:9px 13px;line-height:20px}.primary{min-height:40px;padding:10px 14px;line-height:20px}
+/* Recommendation and saved selection are independent states. Keep all action labels stationary. */
+.service-result{--strategy-accent:#d5f88c;--strategy-ink:#26331c;--strategy-detail:#d4f58a;align-items:center}
+.theme-light .service-result{--strategy-accent:#cbe991;--strategy-detail:#55752a}
+.strategy-best{display:block;width:fit-content;margin-top:7px;padding:3px 7px;border-radius:5px;background:color-mix(in srgb,var(--strategy-accent) 12%,transparent);color:var(--strategy-detail);font-size:10px;font-weight:650;line-height:16px}
+.service-result .strategy-apply{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:144px;flex:0 0 144px;white-space:nowrap;transform:none}
+.strategy-check{visibility:hidden;width:14px;font-size:14px;font-weight:700}
+.strategy-apply[aria-pressed=true] .strategy-check{visibility:visible}
+.service-result[data-recommended=true] .strategy-apply{background:var(--strategy-accent);border-color:var(--strategy-accent);color:var(--strategy-ink);font-weight:650}
+.strategy-apply[aria-pressed=true]{background:color-mix(in srgb,var(--strategy-accent) 12%,var(--surface));border-color:var(--strategy-detail);color:var(--strategy-detail);box-shadow:inset 0 2px 4px #0003}
+.service-result[data-recommended=true] .strategy-apply[aria-pressed=true]{background:color-mix(in srgb,var(--strategy-accent) 85%,var(--strategy-ink));border-color:var(--strategy-detail);box-shadow:inset 0 2px 4px #0004}
+.strategy-apply[aria-disabled=true]{cursor:default}
+.strategy-apply[aria-busy=true]{opacity:.65;cursor:wait}
+.strategy-apply:active:not(:disabled){transform:none}
+
 :root{--dialog-pad:20px;--control-height:40px;--section-gap:16px}
 .dialog{padding:var(--dialog-pad);max-height:calc(100vh - 32px)}
 .dialog[open]{display:flex;flex-direction:column;overflow:hidden}

@@ -1,7 +1,7 @@
 'use strict';
 window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,requestClose}) => {
   const $=id=>document.getElementById(id);
-  let provider='zapret', resultKey='', historyKey='', strategyKey='', settingService='', settingsSession=0, savingSettings=false, rotatingSecret=false, starting=new Set();
+  let provider='zapret', resultKey='', resultControls=[], strategyPending='', historyKey='', strategyKey='', settingService='', settingsSession=0, savingSettings=false, rotatingSecret=false, starting=new Set();
   const state=()=>getModel().services||{items:[],zapret:{},telegram:{}};
   const item=id=>state().items?.find(s=>s.id===id)||{id,status:'Не установлен'};
   async function perform(action,data={}){try{await rpc(action,data);return true;}catch(e){toast(e.message);return false;}}
@@ -15,12 +15,12 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,request
   function render(){
     const s=state();$('serviceAutoUpdates').checked=s.checkUpdates!==false;
     for(const id of ['zapret','telegram']){
-      const e=item(id),busy=!!e.busy||starting.has(id),prefix=id==='zapret'?'zapret':'telegram';
+      const e=item(id),busy=!!e.busy||starting.has(id)||(id==='zapret'&&!!strategyPending),prefix=id==='zapret'?'zapret':'telegram';
       text(prefix+'Status',e.phase||e.status||'Не установлен');$(prefix+'Status').dataset.running=!!e.running;
       text(prefix+'Version',e.installedVersion?'Установлена '+e.installedVersion:'Пакет ещё не установлен');
       text(prefix+'Update',e.updateAvailable?'Доступна '+e.availableVersion:e.checkedAt?'Проверено '+new Date(e.checkedAt).toLocaleString('ru-RU'): '');
       $(prefix+'Error').hidden=!e.error;text(prefix+'Error',e.error||'');
-      const progress=$(prefix+'Progress');progress.hidden=!busy;progress.value=Math.min(1,Math.max(0,e.progress||0));
+      const progress=$(prefix+'Progress');progress.hidden=!e.busy&&!starting.has(id);progress.value=Math.min(1,Math.max(0,e.progress||0));
       const install=$(prefix+'Install');install.textContent=e.installedVersion?'Обновить':'Установить';install.hidden=!!e.installedVersion&&!e.updateAvailable;install.disabled=busy||!!s.testing;
       $(prefix+'Start').hidden=!!e.running||!e.installedVersion;$(prefix+'Start').disabled=busy||!!s.testing;
       $(prefix+'Stop').hidden=!e.running;$(prefix+'Stop').disabled=busy||!!s.testing;
@@ -32,11 +32,11 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,request
         const logs=(e.logs||[]).join('\n');if($(prefix+'Log').textContent!==logs)$(prefix+'Log').textContent=logs||'Здесь появится журнал сервиса.';
       }
     }
-    const z=item('zapret'),busy=!!z.busy||starting.has('zapret');
+    const z=item('zapret'),busy=!!z.busy||starting.has('zapret')||!!strategyPending;
     $('zapretTest').disabled=busy||!z.installedVersion||!!s.networkBusy;
     text('zapretTestNote',s.networkBusy?'Для подбора отключите VPN и kill switch. Иначе результат будет относиться к VPN.':'Проверяем прямое соединение, затем стратегии. HTTP-тесты не подтверждают работу видео и голосовых звонков.');
     const strategies=z.strategies||[],key=JSON.stringify(strategies);if(key!==strategyKey){strategyKey=key;$('zapretStrategy').replaceChildren(...strategies.map(name=>{const o=document.createElement('option');o.value=name;o.textContent=name.replace(/\.bat$/i,'');return o;}));}
-    $('zapretStrategy').disabled=busy||!strategies.length||!!s.testing;if(s.zapret?.strategy&&document.activeElement!==$('zapretStrategy'))$('zapretStrategy').value=s.zapret.strategy;
+    $('zapretStrategy').disabled=busy||!strategies.length||!!s.testing;if(s.zapret?.strategy&&document.activeElement!==$('zapretStrategy'))$('zapretStrategy').value=strategyPending||s.zapret.strategy;
     text('zapretAutoStart',s.zapret?.autoStart?'Запускается вместе с kot':'Запуск вручную');text('telegramAutoStart',s.telegram?.autoStart?'Запускается вместе с kot':'Запуск вручную');
     text('telegramAddress','127.0.0.1:'+(s.telegram?.port||1443));
     $('telegramOpen').disabled=!item('telegram').running||!!item('telegram').busy;$('telegramCopy').disabled=!item('telegram').installedVersion;
@@ -48,26 +48,56 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,request
     if(getPage()==='services')renderResults(s.test);
   }
   function renderResults(run){
-    const key=JSON.stringify([run,!!state().testing,!!item('zapret').busy,item('zapret').strategies]);if(key===resultKey)return;resultKey=key;
-    const root=$('zapretResults');root.replaceChildren();
+    // Service snapshots and selection must update controls without closing details or losing focus.
+    const key=JSON.stringify(run);
     $('zapretResultsSection').hidden=!run;
+    if(key!==resultKey){
+      resultKey=key;resultControls=[];
+      const root=$('zapretResults');root.replaceChildren();
+      if(!run)return;
+      text('zapretResultSummary',(run.cancelled?'Подбор остановлен. ':'')+'Без zapret: '+(run.baseline||[]).filter(c=>c.success).length+'/'+(run.baseline||[]).length+' доступных адресов. '+(run.recommended?'Рекомендация: '+run.recommended:'Улучшение не подтверждено.'));
+      const summary=document.createElement('details');const heading=document.createElement('summary');heading.textContent='Проверки без zapret';summary.append(heading);appendChecks(summary,run.baseline||[]);root.append(summary);
+      for(const result of run.results||[]){
+        const row=document.createElement('div');row.className='service-result';row.dataset.recommended=run.recommended===result.strategy;
+        const detail=document.createElement('details'),title=document.createElement('summary');
+        const passed=(result.checks||[]).filter(c=>c.success).length;
+        title.textContent=result.strategy.replace(/\.bat$/i,'')+' · '+passed+'/'+(run.baseline||[]).length;
+        if(run.recommended===result.strategy){const badge=document.createElement('span');badge.className='strategy-best';badge.textContent='Лучший результат';title.append(badge);}
+        detail.append(title);
+        if(result.error){const error=document.createElement('p');error.className='error';error.textContent=result.error;detail.append(error);}
+        appendChecks(detail,result.checks||[]);row.append(detail);
+        const apply=document.createElement('button');apply.className='quiet-button strategy-apply';apply.type='button';
+        const mark=document.createElement('span');mark.className='strategy-check';mark.setAttribute('aria-hidden','true');mark.textContent='✓';
+        const label=document.createElement('span');apply.append(mark,label);
+        apply.addEventListener('click',()=>saveStrategy(result.strategy));row.append(apply);root.append(row);
+        resultControls.push({row,apply,label,result,passed});
+      }
+    }
     if(!run)return;
-    text('zapretResultSummary',(run.cancelled?'Подбор остановлен. ':'')+'Без zapret: '+(run.baseline||[]).filter(c=>c.success).length+'/'+(run.baseline||[]).length+' доступных адресов. '+(run.recommended?'Рекомендация: '+run.recommended:'Улучшение не подтверждено.'));
-    const summary=document.createElement('details');const heading=document.createElement('summary');heading.textContent='Проверки без zapret';summary.append(heading);appendChecks(summary,run.baseline||[]);root.append(summary);
-    for(const result of run.results||[]){
-      const row=document.createElement('div');row.className='service-result';
-      const detail=document.createElement('details'),title=document.createElement('summary');
-      const passed=(result.checks||[]).filter(c=>c.success).length;
-      title.textContent=result.strategy.replace(/\.bat$/i,'')+' · '+passed+'/'+(run.baseline||[]).length+(run.recommended===result.strategy?' · рекомендуется':'');detail.append(title);
-      if(result.error){const error=document.createElement('p');error.className='error';error.textContent=result.error;detail.append(error);}
-      appendChecks(detail,result.checks||[]);row.append(detail);
-      const apply=document.createElement('button');apply.className='quiet-button';apply.textContent='Выбрать';apply.disabled=!!state().testing||!!item('zapret').busy||!!result.error||!passed||!(item('zapret').strategies||[]).includes(result.strategy);
-      apply.addEventListener('click',()=>saveStrategy(result.strategy));row.append(apply);root.append(row);
+    const s=state(),z=item('zapret'),busy=!!s.testing||!!z.busy||starting.has('zapret')||!!strategyPending;
+    for(const {row,apply,label,result,passed} of resultControls){
+      const available=(z.strategies||[]).includes(result.strategy),pending=strategyPending===result.strategy;
+      const selected=available&&s.zapret?.strategy===result.strategy&&!pending;
+      row.dataset.selected=selected;
+      apply.setAttribute('aria-pressed',String(selected));apply.setAttribute('aria-busy',String(pending));
+      apply.setAttribute('aria-disabled',String(busy||selected||!available||!!result.error||!passed));
+      // Keep the clicked control focusable during its request and after selection.
+      apply.disabled=!pending&&((busy&&!selected)||!available||!!result.error||!passed);
+      const caption=pending?'Сохранение…':selected?'Выбран':'Выбрать';
+      if(label.textContent!==caption)label.textContent=caption;
+      apply.setAttribute('aria-label',caption+': '+result.strategy.replace(/\.bat$/i,''));
+      apply.title=!available?'Стратегия отсутствует в установленном пакете':selected?'Сохранённая стратегия zapret':run.recommended===result.strategy?'Лучший результат этого подбора':'Выбрать стратегию';
     }
     const history=state().history||[];text('zapretHistory','Сохранено прогонов: '+history.length+' из 10. Версия пакета: '+run.version+'. '+new Date(run.started).toLocaleString('ru-RU'));
   }
   function appendChecks(root,checks){for(const check of checks){const line=document.createElement('p');line.className='service-check';line.textContent=(check.success?'Доступен':'Ошибка')+' · '+check.target+' · '+check.milliseconds+' мс'+(check.status?' · HTTP '+check.status:'')+(check.error?' · '+check.error:'');root.append(line);}}
-  async function saveStrategy(strategy){if(await perform('serviceSettings',{service:'zapret',settings:{...state().zapret,strategy},restart:!!item('zapret').running}))toast('Стратегия сохранена');render();}
+  async function saveStrategy(strategy){
+    const s=state(),z=item('zapret');
+    if(strategyPending||s.testing||z.busy||starting.has('zapret')||strategy===s.zapret?.strategy||!(z.strategies||[]).includes(strategy))return;
+    strategyPending=strategy;render();
+    try{if(await perform('serviceSettings',{service:'zapret',settings:{...s.zapret,strategy},restart:!!z.running}))toast('Стратегия сохранена');}
+    finally{strategyPending='';$('zapretStrategy').value=state().zapret?.strategy||'';render();}
+  }
   function settings(service){
     settingService=service;settingsSession++;$('serviceSettingsSave').disabled=savingSettings;const s=state(),z=s.zapret||{},t=s.telegram||{};
     text('serviceSettingsTitle',service==='zapret'?'Настройки zapret':'Настройки Telegram');$('zapretSettingsFields').hidden=service!=='zapret';$('telegramSettingsFields').hidden=service!=='telegram';
