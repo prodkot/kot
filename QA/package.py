@@ -20,7 +20,9 @@ def build(publish, setup, output):
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     pin = json.loads((root / 'upstream/xray-experiment.json').read_text())
     version = re.search(r'Version\s*=\s*"(\d+\.\d+\.\d+)"', (root / 'Core/ClientIdentity.cs').read_text()).group(1)
-    manifest = {'schema': 1, 'commit': commit, 'version': version, 'coreCommit': pin['commit'],
+    stamp = json.loads((publish / 'build-info.json').read_text(encoding='utf-8-sig'))
+    assert stamp['version'] == version and stamp['commit'] == commit
+    manifest = {'schema': 1, 'commit': commit, 'version': version, 'build': stamp['build'], 'displayVersion': stamp['displayVersion'], 'coreCommit': pin['commit'],
                 'coreVersion': pin['version'], 'goVersion': pin['goVersion'],
                 'setup': {'name': setup.name, 'sha256': sha(setup)},
                 'files': {p.relative_to(publish).as_posix(): sha(p) for p in sorted(publish.rglob('*')) if p.is_file()}}
@@ -29,7 +31,7 @@ def build(publish, setup, output):
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.iterdir()):
             archive.write(path, path.name)
-    (output / 'candidate.json').write_text(json.dumps({**{k: manifest[k] for k in ('commit','version','coreCommit')},
+    (output / 'candidate.json').write_text(json.dumps({**{k: manifest[k] for k in ('commit','version','build','displayVersion','coreCommit')},
         'setup': manifest['setup'], 'qa': {'name': target.name, 'sha256': sha(target)}}, indent=2), encoding='utf-8')
     print('PASS QA kit bound to ' + commit)
 

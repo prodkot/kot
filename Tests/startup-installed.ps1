@@ -23,6 +23,14 @@ function Run($path,$argument,[switch]$Failure) {
   } finally { $p.Dispose() }
 }
 function Assert($condition,$message) { if (!$condition) { throw $message }; Write-Host "PASS $message" }
+function Assert-BuildIdentity($directory) {
+  $stamp=Get-Content (Join-Path $directory 'build-info.json') -Raw | ConvertFrom-Json
+  foreach ($file in @($Setup,(Join-Path $directory 'Kot.exe'),(Join-Path $directory 'Uninstall.exe'))) {
+    Assert ((Get-Item $file).VersionInfo.ProductVersion -ceq $stamp.displayVersion) 'installed client, Setup and uninstaller share the build identity'
+  }
+  $arp=Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN'
+  Assert ($arp.DisplayVersion -ceq $stamp.displayVersion -and $arp.InstallLocation -ieq $directory) 'installed programs show the exact build at the registered path'
+}
 function Launch-And-Observe {
   if (Test-Path $receipt) { Remove-Item $receipt }
   $task=$folder.GetTask($name)
@@ -40,6 +48,8 @@ function Launch-And-Observe {
       Start-Sleep -Milliseconds 250
     }
     Assert ($seen -and $seen.uiReady -and $seen.trayVisible -and $seen.stage -eq 'ready') 'scheduled actual client reaches WebView ready with its tray icon enabled'
+    $stamp=Get-Content (Join-Path $target 'build-info.json') -Raw | ConvertFrom-Json
+    Assert ($seen.buildNumber -ceq $stamp.build -and $seen.version -ceq $stamp.version) 'running scheduled client reports the packaged build identity'
     $script:running=Get-Process -Id $seen.pid
     Assert ($script:running.SessionId -eq $session -and $script:running.Path -ieq $exe) 'scheduled client runs the installed executable in the interactive user session'
     Start-Sleep -Seconds 15
@@ -51,6 +61,7 @@ function Launch-And-Observe {
   } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($instance) | Out-Null; [Runtime.InteropServices.Marshal]::FinalReleaseComObject($task) | Out-Null }
 }
 try {
+  Assert-BuildIdentity $target
   Run $exe '--enable-startup' | Out-Null
   Launch-And-Observe
   Run $exe '--disable-startup' | Out-Null
@@ -58,6 +69,7 @@ try {
   Run $exe '--enable-startup' | Out-Null
   Disable-ScheduledTask -TaskName $name | Out-Null
   Run $Setup "/S /D=$target" | Out-Null
+  Assert-BuildIdentity $target
   Assert (!(Get-ScheduledTask -TaskName $name).Settings.Enabled) 'same-version Setup respects external Windows disable'
   Run $exe '--enable-startup' | Out-Null
   # A fresh scheduler invocation in the same session tests repeatability, not a login trigger.
@@ -67,6 +79,7 @@ try {
   Assert ((Run (Join-Path $copy 'Kot.exe') '--enable-startup' -Failure) -ne 0) 'unregistered KotQA-like copy cannot take over installed autostart'
   Assert ($folder.GetTask($name).Xml -eq $before) 'rejected copy leaves the installed task unchanged'
   Run $Setup "/S /D=$moved" | Out-Null
+  Assert-BuildIdentity $moved
   Assert ((Get-ScheduledTask -TaskName $name).Actions[0].Execute -ieq (Join-Path $moved 'Kot.exe')) 'Setup at a new path repairs an enabled task'
   # A second task pointing at the old path must be cleaned without touching the current task.
   $definition=$service.NewTask(0); $definition.XmlText=$folder.GetTask($name).Xml
@@ -80,6 +93,7 @@ try {
   Assert (@(Get-ScheduledTask -TaskName $ownedFixtureName -ErrorAction SilentlyContinue).Count -eq 0) 'old-copy uninstall removes only tasks pointing at the removed executable'
   Assert ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').InstallLocation -ieq $moved) 'old-copy uninstall preserves the new registration'
   Run $Setup "/S /D=$target" | Out-Null
+  Assert-BuildIdentity $target
   Run (Join-Path $moved 'Uninstall.exe') "/S _?=$moved" | Out-Null
   Assert ((Get-ScheduledTask -TaskName $name).Actions[0].Execute -ieq $exe) 'moving back keeps autostart on the installed executable'
   $success=$true

@@ -63,7 +63,7 @@ public sealed class StartupScreen : UserControl
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         titleBar = title;
         title.Paint += (_, e) => { using var pen = new Pen(line); e.Graphics.DrawLine(pen, 0, title.Height - 1, title.Width, title.Height - 1); };
-        var version = new Label { Text = "", Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0), AccessibleName = "kot. " + ClientIdentity.Version };
+        var version = new Label { Text = "", Font = small, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(16, 0, 0, 0), AccessibleName = "kot. " + ClientIdentity.DisplayVersion };
         version.Paint += (_, e) =>
         {
             // A separate square follows the word's visual centre, not the font baseline.
@@ -75,7 +75,7 @@ public sealed class StartupScreen : UserControl
             int dot = Math.Max(2, (int)Math.Round(2 * dpi));
             using var brush = new SolidBrush(muted);
             e.Graphics.FillRectangle(brush, x + word.Width + (int)Math.Round(2 * dpi), (version.Height - dot) / 2, dot, dot);
-            TextRenderer.DrawText(e.Graphics, ClientIdentity.Version, small,
+            TextRenderer.DrawText(e.Graphics, ClientIdentity.DisplayVersion, small,
                 new Point(x + word.Width + dot + (int)Math.Round(12 * dpi), y), muted, flags);
         };
         title.Controls.Add(version);

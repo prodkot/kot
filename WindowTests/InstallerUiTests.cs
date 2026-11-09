@@ -327,6 +327,7 @@ static class InstallerUiTests
     public static void Run(string setup,string folder,Action<bool,string> check)
     {
         Directory.CreateDirectory(folder);
+        string displayVersion=FileVersionInfo.GetVersionInfo(setup).ProductVersion ?? throw new Exception("Missing Setup product version");
         string target=Path.Combine(Path.GetTempPath(),"kot-setup-ui-"+Guid.NewGuid().ToString("N"),"Проверка kot");
         List<Process> processes=[];
         if(!ReadSystemFlag(0x1042,0,out bool originalAnimations,0)) throw new Exception("Cannot read Windows animation preference");
@@ -378,6 +379,7 @@ static class InstallerUiTests
             check(progressClient.Right==progressWindow.Right-progressWindow.Left&&progressClient.Bottom==progressWindow.Bottom-progressWindow.Top,"progress track fills its window without a native non-client outline");
             Wait(()=>IsWindowEnabled(GetDlgItem(window,1)),"installation completion",120);
             Click(GetDlgItem(window,1)); Wait(()=>ByText(window,"Установка завершена")!=IntPtr.Zero,"finish");
+            check(ByText(window,displayVersion)!=IntPtr.Zero,"Setup finish shows the exact version and build");
             ButtonStates(window,folder,"setup-finish",check); Capture(window,folder,"setup-finish",check);
             var run=ByText(window,"Открыть kot после установки"); check(run!=IntPtr.Zero,"finish offers application launch"); SendMessage(run,0xF1,IntPtr.Zero,IntPtr.Zero);
             Click(GetDlgItem(window,1)); Close(install,true);

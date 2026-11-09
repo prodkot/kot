@@ -169,7 +169,8 @@
     $('refreshButton').disabled=refreshBusy||!data.hasSubscription||!!data.localSubscription;$('removeSubscription').hidden=!data.hasSubscription;
     if(!$('advancedDialog').open)$('bypassDomains').value=data.settings.bypass||'';
     $('skippedDetails').hidden=!data.warnings?.length;$('skippedNodes').replaceChildren(...(data.warnings||[]).slice(0,50).map(w=>{const p=document.createElement('p');p.textContent=w;return p;}));
-    $('titleVersion').textContent=data.version||'';$('version').textContent='kot. '+data.version+' · Xray experimental'+(data.updated?' · '+data.updated:'');
+    const displayVersion=data.displayVersion||data.version||'';
+    $('titleVersion').textContent=displayVersion;$('version').textContent='kot. '+displayVersion+' · Xray experimental'+(data.updated?' · '+data.updated:'');
     const ping=data.ping||{};
     $('pingAll').disabled=!data.nodes.length||!!ping.busy;$('pingAll').dataset.busy=!!ping.busy;
     $('pingProgress').hidden=!ping.busy;$('pingProgress').textContent=(ping.done||0)+' / '+(ping.total||0);$('cancelPing').hidden=!ping.busy;

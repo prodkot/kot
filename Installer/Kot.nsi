@@ -5,6 +5,10 @@ Unicode true
 !ifndef VERSION
 !define VERSION "0.8.3"
 !endif
+!ifndef BUILD_ID
+!define BUILD_ID "local"
+!endif
+!define DISPLAY_VERSION "${VERSION} (${BUILD_ID})"
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
 !endif
@@ -15,7 +19,7 @@ Unicode true
 !error "Pass /DPAYLOAD_KB=installed-payload-size-in-KB"
 !endif
 !ifndef OUTPUT
-!define OUTPUT "Kot-Setup-${VERSION}-Windows-x64.exe"
+!define OUTPUT "Kot-Setup-${VERSION}-build-${BUILD_ID}-Windows-x64.exe"
 !endif
 Name "kot."
 OutFile "${OUTPUT}"
@@ -27,7 +31,7 @@ VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=1033 "ProductName" "kot."
 VIAddVersionKey /LANG=1033 "FileDescription" "kot. Windows x64 installer"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
-VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${DISPLAY_VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Kot contributors"
 Icon "${PAYLOAD}/kot.ico"
 UninstallIcon "${PAYLOAD}/kot.ico"
@@ -113,7 +117,7 @@ Section "kot." SEC_MAIN
     !insertmacro FailInstall
   ${EndIf}
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayName" "kot."
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayVersion" "${DISPLAY_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "DisplayIcon" "$INSTDIR\kot.ico"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'

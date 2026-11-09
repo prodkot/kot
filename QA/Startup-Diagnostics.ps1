@@ -104,7 +104,7 @@ function SamePath($a,$b) {
 function VersionOf($path) {
   try {
     $value=[Diagnostics.FileVersionInfo]::GetVersionInfo($path).ProductVersion
-    if ($value -match '^\d+\.\d+\.\d+(\.\d+)?') { return $Matches[0] }
+    if ($value -match '^\d+\.\d+\.\d+(\.\d+)?(?: \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?') { return $Matches[0] }
   } catch { }
   return $null
 }
@@ -145,7 +145,7 @@ try {
   $registry=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry64)
   try {
     $key=$registry.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN',$false)
-    if ($key) { try { $install=$key.GetValue('InstallLocation'); $v=$key.GetValue('DisplayVersion'); if ($v -match '^\d+\.\d+\.\d+$') { $registeredVersion=$v } } finally { $key.Dispose() } }
+    if ($key) { try { $install=$key.GetValue('InstallLocation'); $v=$key.GetValue('DisplayVersion'); if ($v -match '^\d+\.\d+\.\d+(?: \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?$') { $registeredVersion=$v } } finally { $key.Dispose() } }
   } finally { $registry.Dispose() }
 } catch { Failure 'install-registration' $_ }
 $exe=if ($install) { Join-Path $install 'Kot.exe' } else { $null }
@@ -252,6 +252,7 @@ try {
     if ($r.stage -in @('starting','ready','exited','failed') -and $r.version -match '^\d+\.\d+\.\d+$') {
       $lifecycle=@{stage=[string]$r.stage;version=[string]$r.version;pid=[int]$r.pid;uiReady=($r.uiReady -eq $true);trayVisible=($r.trayVisible -eq $true);
         startedUtc=([DateTime]$r.startedUtc).ToUniversalTime().ToString('o');updatedUtc=([DateTime]$r.updatedUtc).ToUniversalTime().ToString('o')}
+      if ($r.buildNumber -match '^(?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)$') { $lifecycle.buildNumber=[string]$r.buildNumber }
     }
   }
 } catch { Failure 'startup-receipt' $_ }

@@ -19,7 +19,7 @@ Function ${prefix}.onGUIInit
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   File /oname=Manrope.ttf "${PAYLOAD}\ui\fonts\Manrope.ttf"
-  KotUI::Init /NOUNLOAD "$PLUGINSDIR\Manrope.ttf" "${VERSION}" "${mode}"
+  KotUI::Init /NOUNLOAD "$PLUGINSDIR\Manrope.ttf" "${DISPLAY_VERSION}" "${mode}"
 FunctionEnd
 !macroend
 !insertmacro InitSkin "" "install"
@@ -90,7 +90,7 @@ Function Finish
   !insertmacro NewPage "finish"
   !insertmacro Label "Установка завершена" 0 78 512 48 "heading"
   !insertmacro Label "Версия" 0 204 110 22 "small"
-  !insertmacro Label "${VERSION} · Windows x64" 280 204 232 22 "body"
+  !insertmacro Label "${DISPLAY_VERSION}" 130 204 382 22 "body"
   !insertmacro Label "Установлено в" 0 247 110 22 "small"
   !insertmacro Label "$INSTDIR" 130 245 382 28 "path"
   !insertmacro Label "Ярлык на рабочем столе" 0 293 300 22 "small"

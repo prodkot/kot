@@ -18,7 +18,7 @@ internal static class StartupEvidence
             Directory.CreateDirectory(Store.Folder);
             using var process = Process.GetCurrentProcess();
             File.WriteAllText(Path.Combine(Store.Folder, "startup-lifecycle.json"), JsonSerializer.Serialize(new {
-                version = ClientIdentity.Version, pid = Environment.ProcessId, session = process.SessionId,
+                version = ClientIdentity.Version, buildNumber = ClientIdentity.BuildNumber, pid = Environment.ProcessId, session = process.SessionId,
                 startedUtc = started, updatedUtc = DateTimeOffset.UtcNow, stage, uiReady = ready, trayVisible = tray
             }));
         }

@@ -8,6 +8,8 @@ param(
 $ErrorActionPreference='Stop'
 $Setup=[IO.Path]::GetFullPath($Setup); $Extractor=[IO.Path]::GetFullPath($Extractor); $Publish=[IO.Path]::GetFullPath($Publish)
 $scratch=Join-Path ([IO.Path]::GetTempPath()) ('kot setup проверка ' + [Guid]::NewGuid().ToString('N'))
+$stamp=Get-Content (Join-Path $Publish 'build-info.json') -Raw | ConvertFrom-Json
+$displayVersion=$stamp.displayVersion
 $backup=$null
 New-Item -ItemType Directory $scratch | Out-Null
 
@@ -53,6 +55,13 @@ function Remove-TestDirectory([string]$Directory) {
   }
 }
 try {
+  foreach ($path in @($Setup, (Join-Path $Publish 'Kot.exe'), (Join-Path $Publish 'Uninstall.exe'))) {
+    $info=(Get-Item $path).VersionInfo
+    if ($info.ProductVersion -cne $displayVersion) { throw "Build identity mismatch: $path" }
+    if ($info.FileMajorPart -ne ([version]$Version).Major -or $info.FileMinorPart -ne ([version]$Version).Minor -or $info.FileBuildPart -ne ([version]$Version).Build) { throw 'Numeric version changed with build label.' }
+  }
+  if ([IO.Path]::GetFileName($Setup) -cne "Kot-Setup-$Version-build-$($stamp.build)-Windows-x64.exe") { throw 'Installer filename has a different build identity.' }
+  Write-Host "PASS client, Setup, uninstaller and filename share $displayVersion; numeric update version remains $Version."
   # NativeAOT must produce a native PE, rather than a second bundled CLR.
   $pe=[IO.File]::ReadAllBytes($Extractor)
   $header=[BitConverter]::ToInt32($pe,0x3c)
@@ -172,8 +181,10 @@ try {
         if ((Test-Path $work) -and !(Test-Path (Join-Path $work 'committed'))) { throw 'Legacy updater did not commit the new UI receipt.' }
       }
       Verify-Files $legacy
-      if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -ne $Version) { throw 'Updater kept the old uninstaller version.' }
-      if ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $Version) { throw 'Installed programs version differs.' }
+      if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -ne $displayVersion) { throw 'Updater kept the old uninstaller version.' }
+      $metadataWait=[Diagnostics.Stopwatch]::StartNew()
+      while ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $displayVersion -and $metadataWait.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 100 }
+      if ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $displayVersion) { throw 'Installed programs version differs.' }
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Upgrade changed a user file.' }
       if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Upgrade changed the existing encrypted HWID.' }
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
