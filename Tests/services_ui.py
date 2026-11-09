@@ -49,6 +49,18 @@ if(msg.action==='serviceSettings'&&msg.data.service==='zapret'&&window.holdStrat
 else setTimeout(finish,10);
 ''')
 PREVIEW = os.environ.get('KOT_SERVICE_PREVIEW')
+def assert_strategy_content_centered(button):
+    geometry=button.evaluate("""(button)=>{
+      const box=button.getBoundingClientRect();
+      const visible=[...button.children].filter(e=>getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden');
+      const rects=visible.map(e=>e.getBoundingClientRect());
+      return {width:box.width,left:Math.min(...rects.map(r=>r.left))-box.left,
+        right:box.right-Math.max(...rects.map(r=>r.right))};
+    }""")
+    assert geometry['width']<=112,geometry
+    assert min(geometry['left'],geometry['right'])>=8,geometry
+    assert abs(geometry['left']-geometry['right'])<1,geometry
+
 def check_strategy_selection(browser):
     page = browser.new_page(viewport={'width':960,'height':640})
     errors=[]
@@ -80,6 +92,8 @@ def check_strategy_selection(browser):
         rows.nth(1).locator('summary').click()
         best.focus()
         before=best.bounding_box()
+        assert_strategy_content_centered(best)
+        assert_strategy_content_centered(chosen)
         page.evaluate('window.holdStrategy=true')
         page.keyboard.press('Enter')
         expect(best).to_have_attribute('aria-busy','true')
@@ -97,6 +111,7 @@ def check_strategy_selection(browser):
         expect(best).to_be_focused()
         assert rows.nth(1).locator('details').evaluate('(e)=>e.open')
         during=best.bounding_box()
+        assert_strategy_content_centered(best)
         assert all(abs(before[k]-during[k])<1 for k in ('x','y','width','height')),(before,during)
         page.evaluate('finishStrategy()')
         expect(best).to_have_attribute('aria-busy','false')
@@ -105,6 +120,7 @@ def check_strategy_selection(browser):
         expect(chosen).to_have_attribute('aria-pressed','false')
         expect(best).to_be_focused()
         after=best.bounding_box()
+        assert_strategy_content_centered(best)
         assert all(abs(before[k]-after[k])<1 for k in ('x','y','width','height')),(before,after)
         assert not page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').at(-1).data.restart")
         assert rows.nth(1).locator('details').evaluate('(e)=>e.open')
@@ -165,7 +181,7 @@ def check_strategy_selection(browser):
                 page.set_viewport_size({'width':width,'height':height})
                 assert page.locator('#page-services').evaluate('(e)=>e.scrollWidth<=e.clientWidth'),(theme,width)
                 button=rows.nth(1).locator('button')
-                assert button.bounding_box()['width']==144
+                assert_strategy_content_centered(button)
                 color='rgb(213, 248, 140)' if theme=='dark' else 'rgb(203, 233, 145)'
                 page.wait_for_function('(color)=>getComputedStyle(document.querySelector(".service-result[data-recommended=true] button")).backgroundColor===color',arg=color)
         page.evaluate('(run)=>fixtureServices({test:run})',run)
