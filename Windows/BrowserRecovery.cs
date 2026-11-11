@@ -54,6 +54,7 @@ public sealed partial class MainWindow
     }
     void BrowserReady()
     {
+        StartupEvidence.Ready(tray.Visible);
         if (!updateReceiptAcknowledged) { UpdateInstaller.Ready(); updateReceiptAcknowledged = true; }
         browserLoaded = true; browserDeadline = DateTimeOffset.UtcNow.AddSeconds(45); browserHeartbeat = DateTimeOffset.UtcNow.AddSeconds(15);
         browserWatch.Start(); unresponsiveEvents = 0; loading.ClearFailure(); loading.Hide();

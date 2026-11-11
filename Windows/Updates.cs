@@ -65,6 +65,13 @@ internal static partial class UpdateInstaller
             try
             {
                 InstallationCleanup.RemoveLegacyDocuments(root);
+                try
+                {
+                    using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN", true))
+                        if (string.Equals(key?.GetValue("InstallLocation") as string, root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                            key?.SetValue("DisplayVersion", ClientIdentity.DisplayVersion);
+                }
+                catch (Exception ex) { AppLog.Error("update version metadata", ex); }
                 // The helper may still hold Updater.exe open just after releasing
                 // the mutex. Retry briefly, leaving recovery folders on failure.
                 for (int attempt = 0; attempt < 20; attempt++)

@@ -38,12 +38,14 @@ public sealed class Tunnel
     public async Task<bool> Probe(CancellationToken ct)
     {
         int port = ProxyPort, session = Session; bool tun = usesTun;
-        if (State != "connected" || port == 0) return false;
+        var observed = core;
+        if (State != "connected" || port == 0 || observed == null || observed.HasExited || !observed.XrayStarted) return false;
+        if (tun && !TunnelHealth.AdapterReady()) return false;
         using var handler = NetworkRequests.Handler(port);
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
         {
-            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelDns.Probe(target, ct))) return State == "connected" && Session == session; }
+            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelHealth.Probe(target, ct))) return State == "connected" && Session == session && core == observed && !observed.HasExited; }
             catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException && !ct.IsCancellationRequested) { AppLog.Write("health", e.GetType().Name); }
         }
         return false;
@@ -175,15 +177,19 @@ public sealed class Tunnel
             ct.ThrowIfCancellationRequested();
             portReservation.Dispose();
             core = XraySession.Start(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), "kot. Xray", text => AppLog.Write("tunnel-core", text));
-            AppLog.Write("tunnel", "waiting for proxy health");
+            AppLog.Write("tunnel", "waiting for complete core startup and traffic health");
             using var handler = NetworkRequests.Handler(port);
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
+            bool healthy = false, proxyHealthy = false, dnsHealthy = false, tunPermitted = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
             while (!healthDeadline.IsCancellationRequested)
             {
                 ct.ThrowIfCancellationRequested();
                 if (core.HasExited) throw new UserError(await ExitReason(core));
+                // The HTTP listener can already answer while TUN creation is
+                // still pending (and may fail 15 seconds later on Windows).
+                if (!core.XrayStarted || usesTun && !TunnelHealth.AdapterReady())
+                { await Task.Delay(250, ct); continue; }
                 try
                 {
                     string target = healthTargets[healthIndex++ % healthTargets.Length];
@@ -197,6 +203,8 @@ public sealed class Tunnel
                             // interface before checking resolution with the guard on.
                             if (profile.KillSwitch && !tunPermitted) { KillSwitch.Arm(KillSwitch.TunnelInterface()); tunPermitted = true; }
                             if (!await TunnelDns.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
+                            dnsHealthy = true;
+                            if (!await TunnelHealth.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
                         }
                         healthy = true; break;
                     }
@@ -210,6 +218,8 @@ public sealed class Tunnel
             if (!healthy)
             {
                 CoreDetails = CoreDiagnostics.Tail(Clean(await core.ReadRecentOutput(false)));
+                if (!core.XrayStarted || usesTun && !TunnelHealth.AdapterReady()) throw new UserError("Xray не завершил запуск" + (usesTun ? ": TUN Windows не готов." : ".") + " " + CoreDiagnostics.Summary(CoreDetails));
+                if (usesTun && proxyHealthy && dnsHealthy) throw new UserError("Сервер доступен, но трафик через TUN Windows не проходит. Подключение не установлено.");
                 if (usesTun && proxyHealthy) throw new UserError("Сервер доступен, но DNS Windows через туннель не отвечает. Переподключитесь или проверьте настройки DNS.");
                 throw new UserError("Сервер не ответил на проверку соединения. " + (CoreDetails.Length > 0 ? CoreDiagnostics.Summary(CoreDetails) : "Попробуйте другой сервер."));
             }
@@ -246,9 +256,12 @@ public sealed class Tunnel
     string Clean(string text) => AppLog.Clean(CoreDiagnostics.Redact(text, activeNode, Store.Folder, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
     async Task<string> ExitReason(NativeCore observed)
     {
-        CoreDetails = CoreDiagnostics.Tail(Clean(await observed.ReadRecentOutput(true)));
+        string output = Clean(await observed.ReadRecentOutput(true));
+        CoreDetails = CoreDiagnostics.Tail(output);
         CoreExitCode = observed.ExitCode;
         AppLog.Write("tunnel", "unexpected exit=" + CoreExitCode);
+        if (usesTun && CoreDiagnostics.TunAdapterFailed(output))
+            return "Windows не удалось запустить TUN-адаптер kot. VPN не подключён.\n" + CoreDiagnostics.Summary(CoreDetails);
         return $"Xray завершился (код {CoreExitCode}, 0x{unchecked((uint)CoreExitCode.Value):X8}).\n" + CoreDiagnostics.Summary(CoreDetails);
     }
     async Task StopCore()

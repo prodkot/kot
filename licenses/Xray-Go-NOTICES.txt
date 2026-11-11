@@ -1,8 +1,8 @@
 Third-party notices for the pinned official Xray source a4a3dff5b20c2faae567b742c172c7b95e75c083, Windows amd64.
-Built with Go 1.27.3. Module list obtained from go version -m on the shipped executable.
+Built with Go 1.27.4. Module list obtained from go version -m on the shipped executable.
 
-Go 1.27.3 standard library license
-Source: https://raw.githubusercontent.com/golang/go/go1.27.3/LICENSE
+Go 1.27.4 standard library license
+Source: https://raw.githubusercontent.com/golang/go/go1.27.4/LICENSE
 
 Copyright 2009 The Go Authors.
 

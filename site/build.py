@@ -69,6 +69,7 @@ def build(destination, release):
     shutil.copy2(client / "app.js", demo / "client.js")
     shutil.copy2(client / "client-tools.js", demo / "client-tools.js")
     shutil.copy2(client / "services.js", demo / "services.js")
+    shutil.copy2(client / "dialog-ui.js", demo / "dialog-ui.js")
     shutil.copy2(client / "about.js", demo / "about.js")
     shutil.copy2(client / "astra.jpg", demo / "astra.jpg")
     shutil.copy2(client / "brand-icon.svg", demo / "brand-icon.svg")

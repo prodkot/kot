@@ -8,13 +8,9 @@ if ([IO.File]::ReadAllText('Windows/app.manifest') -notmatch ('assemblyIdentity 
 $publish=Join-Path $PWD ('publish-' + [Guid]::NewGuid().ToString('N'))
 ./build.ps1 -PublishDirectory $publish
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
-./Release/sign.ps1 -Folder $publish -Version $version -Key $Key
-New-Item -ItemType Directory -Force artifacts | Out-Null
-$archive=Join-Path $PWD "artifacts/Kot-Client-$version-beta-Windows-x64.zip"
-python Release/archive.py $publish $archive
-if ($LASTEXITCODE -ne 0) { throw 'Update archive creation failed.' }
-dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $archive $version
-if ($LASTEXITCODE -ne 0) { throw 'The client rejected the generated update package.' }
+$stamp=Get-Content (Join-Path $publish 'build-info.json') -Raw | ConvertFrom-Json
+$build=$stamp.build; $displayVersion=$stamp.displayVersion
+if ((Get-Item (Join-Path $publish 'Kot.exe')).VersionInfo.ProductVersion -ne $displayVersion) { throw 'Client build identity differs.' }
 python Release/installer-files.py $publish Installer/uninstall-files.nsh
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller file list generation failed.' }
 $extractorFolder=Join-Path $PWD ('.build-cache/setup-' + [Guid]::NewGuid().ToString('N'))
@@ -24,10 +20,32 @@ $extractor=Join-Path $extractorFolder 'Kot.Setup.Extract.exe'
 if (!(Test-Path $extractor) -or (Get-Item $extractor).Length -gt 16MB) { throw 'Missing or unexpectedly large native installer helper.' }
 $uiFolder=Join-Path $extractorFolder 'ui'
 ./Release/build-installer-ui.ps1 -Output $uiFolder
-$setup=Join-Path $PWD "artifacts/Kot-Setup-$version-Windows-x64.exe"
+$setup=Join-Path $PWD "artifacts/Kot-Setup-$version-build-$build-Windows-x64.exe"
 $payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
 $installerScript=Join-Path $PWD 'Installer/Kot.nsi'
-& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" $installerScript
+# Build the actual versioned uninstaller BEFORE signing the shared update payload.
+# The generator exits in .onInit and never installs/registers anything.
+$generator=Join-Path $extractorFolder 'make-uninstaller.exe'
+# This string is consumed by the NSIS runtime, whose filename sanitizer removes '/'.
+# Unlike compiler File/Icon paths, WriteUninstaller needs native Windows separators.
+$uninstaller=Join-Path $publish 'Uninstall.exe'
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DBUILD_ID=$build" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$generator" "/DGENERATE_UNINSTALLER=$uninstaller" $installerScript
+if ($LASTEXITCODE -ne 0) { throw 'Uninstaller generator compilation failed.' }
+$generate=Start-Process $generator -PassThru
+try {
+  if (!$generate.WaitForExit(30000)) { $generate.Kill(); throw 'Uninstaller generation timed out.' }
+  if ($generate.ExitCode -ne 0 -or !(Test-Path $uninstaller)) { throw "Uninstaller generation failed (exit $($generate.ExitCode), output exists: $(Test-Path $uninstaller))." }
+} finally { $generate.Dispose() }
+if ((Get-Item $uninstaller).VersionInfo.ProductVersion -ne $displayVersion) { throw 'Uninstaller version differs from client.' }
+./Release/sign.ps1 -Folder $publish -Version $version -Key $Key
+New-Item -ItemType Directory -Force artifacts | Out-Null
+$archive=Join-Path $PWD "artifacts/Kot-Client-$version-beta-Windows-x64.zip"
+python Release/archive.py $publish $archive
+if ($LASTEXITCODE -ne 0) { throw 'Update archive creation failed.' }
+dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $archive $version
+if ($LASTEXITCODE -ne 0) { throw 'The client rejected the generated update package.' }
+$payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DBUILD_ID=$build" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" $installerScript
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 ./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version

@@ -243,8 +243,9 @@
     snapshot(); navigate('home');
   });
   document.querySelectorAll('[data-page]').forEach(button => { button.setAttribute('aria-label', button.textContent.trim()); });
-  document.querySelector('#deviceDialog .dialog-note').textContent = 'Это вымышленный ID. Демо не читает данные твоего устройства.';
-  document.querySelector('#onlineUpdateDialog > .dialog-note:last-child').textContent = 'На сайте ничего не скачивается и не устанавливается. Эта проверка показывает только интерфейс.';
+  document.querySelector('#advancedDialogHelp .dialog-note:last-child').textContent = 'Это вымышленный ID. Демо не читает данные твоего устройства.';
+  document.querySelector('#onlineUpdateDialog .update-consequence').textContent = 'На сайте ничего не скачивается и не устанавливается.';
+  document.querySelector('#onlineUpdateDialogHelp .dialog-note').textContent = 'Эта проверка показывает только интерфейс. Настоящие обновления доступны в установленной программе.';
   document.getElementById('addTitle').textContent = 'Добавить пример';
   document.querySelector('label[for=profileLink]').textContent = 'Пример ссылки';
   document.getElementById('profileLink').placeholder = 'Настоящая ссылка не нужна';

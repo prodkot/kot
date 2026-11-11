@@ -22,7 +22,7 @@ public sealed class TrayMenu : ContextMenuStrip
         regular = new Font(family, 9.5f); bold = new Font(family, 11, FontStyle.Bold); Font = regular;
         ShowImageMargin = false; ShowCheckMargin = false; AutoSize = false;
         Renderer = new MenuRenderer(this); AccessibleName = "Меню kot.";
-        heading = Label("kot. " + ClientIdentity.Version, "heading"); heading.Font = bold;
+        heading = Label("kot. " + ClientIdentity.DisplayVersion, "heading"); heading.Font = bold;
         status = Label("Не подключено", "status");
         Add("Открыть приложение", "open", open);
         toggle = Add("Подключить", "power", () => _ = Run(this.connection));

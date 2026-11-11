@@ -8,6 +8,8 @@ param(
 $ErrorActionPreference='Stop'
 $Setup=[IO.Path]::GetFullPath($Setup); $Extractor=[IO.Path]::GetFullPath($Extractor); $Publish=[IO.Path]::GetFullPath($Publish)
 $scratch=Join-Path ([IO.Path]::GetTempPath()) ('kot setup проверка ' + [Guid]::NewGuid().ToString('N'))
+$stamp=Get-Content (Join-Path $Publish 'build-info.json') -Raw | ConvertFrom-Json
+$displayVersion=$stamp.displayVersion
 $backup=$null
 New-Item -ItemType Directory $scratch | Out-Null
 
@@ -53,6 +55,13 @@ function Remove-TestDirectory([string]$Directory) {
   }
 }
 try {
+  foreach ($path in @($Setup, (Join-Path $Publish 'Kot.exe'), (Join-Path $Publish 'Uninstall.exe'))) {
+    $info=(Get-Item $path).VersionInfo
+    if ($info.ProductVersion -cne $displayVersion) { throw "Build identity mismatch: $path" }
+    if ($info.FileMajorPart -ne ([version]$Version).Major -or $info.FileMinorPart -ne ([version]$Version).Minor -or $info.FileBuildPart -ne ([version]$Version).Build) { throw 'Numeric version changed with build label.' }
+  }
+  if ([IO.Path]::GetFileName($Setup) -cne "Kot-Setup-$Version-build-$($stamp.build)-Windows-x64.exe") { throw 'Installer filename has a different build identity.' }
+  Write-Host "PASS client, Setup, uninstaller and filename share $displayVersion; numeric update version remains $Version."
   # NativeAOT must produce a native PE, rather than a second bundled CLR.
   $pe=[IO.File]::ReadAllBytes($Extractor)
   $header=[BitConverter]::ToInt32($pe,0x3c)
@@ -90,18 +99,27 @@ try {
     # Keep the original updater compatibility fixture and also exercise the latest
     # stable client when crossing to Xray. Only run in a disposable Windows account.
     $sourceVersions=if ([version]$Version -ge [version]'0.8.0') { @('0.6.1','0.7.3') } else { @('0.6.1') }
-    if ([version]$Version -gt [version]'0.8.0') { $sourceVersions += '0.8.0' }
+    foreach ($old in @('0.8.0','0.8.1','0.8.2')) { if ([version]$Version -gt [version]$old) { $sourceVersions += $old } }
     foreach ($sourceVersion in $sourceVersions) {
     $profile=Join-Path $env:LOCALAPPDATA 'KotVPN'
     foreach ($name in 'profile.bin','device.bin','traffic-history.json') {
       if (Test-Path (Join-Path $profile $name)) { throw 'Legacy update test requires a fresh Windows test account. Existing user data was left untouched.' }
     }
     $backup=Join-Path $scratch 'original-profile'; $ownedProfile=$false; $legacy=Join-Path $scratch ('legacy client '+$sourceVersion); $parent=$null; $recoveryWork=$null
+    $fixtureTaskCreated=$false; $startupExpected=$false
+    $fixtureSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $fixtureTaskName='KotVPN-'+$fixtureSid
+    if (@(Get-ScheduledTask -TaskName $fixtureTaskName -ErrorAction SilentlyContinue).Count) { throw 'Upgrade fixture refuses to replace an existing autostart task.' }
     try {
       if (Test-Path $profile) { Move-Item $profile $backup }
       New-Item -ItemType Directory $profile | Out-Null; $ownedProfile=$true
       Add-Type -AssemblyName System.Security.Cryptography.ProtectedData
-      $oldProfile='{"name":"Setup upgrade fixture","nodes":[],"selected":"","theme":"light","accent":"purple","mode":"smart","connectionMode":"proxy","startup":false,"autoConnect":false,"tray":true,"killSwitch":false,"sendHwid":false,"subscriptions":[],"favorites":[]}'
+      # Synthetic, nonempty data. No actual subscription or network connection is used.
+      $nodeId='A'*64; $subscriptionId='fixture-subscription'; $routingId='11111111111111111111111111111111'
+      $node=@{id=$nodeId;name='Fixture node';protocol='vless';outbound=@{type='vless';server='127.0.0.1';server_port=9;uuid='11111111-1111-1111-1111-111111111111'}}
+      $subscription=@{id=$subscriptionId;name='Setup upgrade fixture';address='https://example.invalid/subscription/fixture';nodes=@($node);selected=$nodeId;favorites=@($nodeId)}
+      $routing=@{id=$routingId;rules=@{version=1;name='Preserved routing';defaultAction='proxy';directDomains=@('example.invalid')};sourceUrl='';refreshHours=0}
+      $oldProfile=@{name=$subscription.name;address=$subscription.address;nodes=@($node);selected=$nodeId;theme='light';mode='smart';connectionMode='proxy';startup=$false;autoConnect=$false;tray=$true;killSwitch=$false;sendHwid=$false;subscriptions=@($subscription);activeSubscription=$subscriptionId;favorites=@($nodeId);routingProfiles=@($routing);activeRoutingProfile=$routingId;automation=@{refreshHours=0;pingMinutes=0;autoMinutes=3;autoToleranceMs=50;reconnect=$true}} | ConvertTo-Json -Depth 20 -Compress
       $profileBytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($oldProfile),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)
       $deviceBytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::ASCII.GetBytes(('C'*64)),[Text.Encoding]::UTF8.GetBytes('KotVPN.device.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)
       $traffic='{"version":1,"firstRecorded":"2026-10-11T00:00:00+00:00","allTime":{"download":8192,"upload":1024,"connectedMilliseconds":90000,"sessions":2},"lastSession":null,"days":[]}'
@@ -114,6 +132,19 @@ try {
       # The pinned publisher key validates both the old Setup and its payload.
       Extract $oldSetup $legacy $sourceVersion
       if ((Get-Item (Join-Path $legacy 'Kot.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw "Legacy fixture does not contain the released $sourceVersion client." }
+      if ([version]$sourceVersion -ge [version]'0.8.0') {
+        # Real old NSIS creates its old Uninstall.exe and ARP registration.
+        Run-Checked $oldSetup @() $scratch -Timeout 150000 -RawArguments "/S /D=$legacy" | Out-Null
+        if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -notlike ($sourceVersion+'*')) { throw 'Old uninstaller fixture version mismatch.' }
+        # Exercise the real old updater with both enabled and externally disabled autostart.
+        $action=New-ScheduledTaskAction -Execute (Join-Path $legacy 'Kot.exe') -Argument '--startup' -WorkingDirectory $legacy
+        $trigger=New-ScheduledTaskTrigger -AtLogOn -User $fixtureSid
+        $principal=New-ScheduledTaskPrincipal -UserId $fixtureSid -LogonType Interactive -RunLevel Highest
+        $settings=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+        Register-ScheduledTask -TaskName $fixtureTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+        $fixtureTaskCreated=$true; $startupExpected=$sourceVersion -ne '0.8.1'
+        if (!$startupExpected) { Disable-ScheduledTask -TaskName $fixtureTaskName | Out-Null }
+      }
       [IO.File]::WriteAllText((Join-Path $legacy 'user-note.txt'),'keep through update')
       if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         # Released updaters require core/sing-box.exe. The Xray experiment is
@@ -150,11 +181,21 @@ try {
         if ((Test-Path $work) -and !(Test-Path (Join-Path $work 'committed'))) { throw 'Legacy updater did not commit the new UI receipt.' }
       }
       Verify-Files $legacy
+      if ((Get-Item (Join-Path $legacy 'Uninstall.exe')).VersionInfo.ProductVersion -ne $displayVersion) { throw 'Updater kept the old uninstaller version.' }
+      $metadataWait=[Diagnostics.Stopwatch]::StartNew()
+      while ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $displayVersion -and $metadataWait.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 100 }
+      if ((Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN').DisplayVersion -ne $displayVersion) { throw 'Installed programs version differs.' }
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Upgrade changed a user file.' }
       if (!(Test-Path (Join-Path $profile 'device.bin')) -or (Get-FileHash (Join-Path $profile 'device.bin')).Hash -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($deviceBytes))) { throw 'Upgrade changed the existing encrypted HWID.' }
       $newProfile=[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $profile 'profile.bin')),[Text.Encoding]::UTF8.GetBytes('KotVPN.profile.v1'),[Security.Cryptography.DataProtectionScope]::CurrentUser)) | ConvertFrom-Json
+      if ($fixtureTaskCreated) {
+        $task=Get-ScheduledTask -TaskName $fixtureTaskName
+        if ($task.Settings.Enabled -ne $startupExpected -or $task.Actions[0].Execute -ine (Join-Path $legacy 'Kot.exe') -or $task.Actions[0].Arguments -cne '--startup' -or $task.Actions[0].WorkingDirectory.TrimEnd('\') -ine $legacy.TrimEnd('\') -or $newProfile.startup -ne $startupExpected) { throw 'Upgrade changed autostart state/path or failed to synchronize the app setting.' }
+        Write-Host "PASS authentic $sourceVersion updater preserves autostart enabled=$startupExpected and the new UI synchronizes its setting."
+      }
       $history=Get-Content (Join-Path $profile 'traffic-history.json') -Raw | ConvertFrom-Json
       if ($newProfile.name -ne 'Setup upgrade fixture' -or $newProfile.theme -ne 'light' -or $newProfile.sendHwid -ne $false -or $history.allTime.download -ne 8192 -or $history.allTime.sessions -ne 2) { throw 'Upgrade changed the old profile or traffic history.' }
+      if ($newProfile.subscriptions.Count -ne 1 -or $newProfile.activeSubscription -ne $subscriptionId -or $newProfile.subscriptions[0].address -ne $subscription.address -or $newProfile.nodes[0].id -ne $nodeId -or $newProfile.nodes[0].outbound.uuid -ne $node.outbound.uuid -or $newProfile.favorites[0] -ne $nodeId -or $newProfile.routingProfiles[0].id -ne $routingId -or $newProfile.routingProfiles[0].rules.directDomains[0] -ne 'example.invalid' -or $newProfile.activeRoutingProfile -ne $routingId) { throw 'Upgrade lost subscription, node, favorite or routing profile data.' }
       if ([version]$Version -ge [version]'0.8.0' -and [version]$sourceVersion -lt [version]'0.8.0') {
         Write-Host "PASS signed Setup upgrades an authentic $sourceVersion installation to native Xray and initializes its UI; encrypted HWID, preferences, history and user files are preserved."
       } else {
@@ -189,7 +230,37 @@ try {
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Startup recovery changed a user file.' }
       Write-Host 'PASS installed startup recovery restores a journal containing the running Kot.exe, removes partial new files and restarts the application through a separate helper.'
 
+    } catch {
+      # This fixture owns a synthetic profile. Preserve only bounded failure
+      # evidence before finally removes it, never the encrypted profile itself.
+      $failure=$_
+      Write-Host "Upgrade/recovery failure for authentic $sourceVersion`: $failure"
+      foreach ($name in 'startup-error.json','startup-lifecycle.json','maintenance-error.txt') {
+        $evidence=Join-Path $profile $name
+        if ((Test-Path $evidence) -and (Get-Item $evidence).Length -le 65536) {
+          Write-Host "$name`: $([IO.File]::ReadAllText($evidence))"
+        }
+      }
+      if ($recoveryWork -and (Test-Path $recoveryWork)) {
+        foreach ($name in 'journal.json','recovery.json','rolled-back','error.txt') {
+          $evidence=Join-Path $recoveryWork $name
+          if ((Test-Path $evidence) -and (Get-Item $evidence).Length -le 65536) {
+            Write-Host "Recovery $name`: $([IO.File]::ReadAllText($evidence))"
+          }
+        }
+        Write-Host "Partial file still present: $(Test-Path (Join-Path $legacy 'interrupted-update.tmp'))"
+      }
+      foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot') + [Diagnostics.Process]::GetProcessesByName('Recovery')) {
+        try {
+          if (!$app.HasExited -and $app.MainModule.FileName.StartsWith($legacy+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "Fixture process: $($app.ProcessName) pid=$($app.Id) title=$($app.MainWindowTitle)"
+          }
+        } catch { Write-Host 'Fixture process exited during evidence collection.' }
+        finally { $app.Dispose() }
+      }
+      throw $failure
     } finally {
+      if ($fixtureTaskCreated) { Unregister-ScheduledTask -TaskName $fixtureTaskName -Confirm:$false }
       if ($null -ne $parent) { if (!$parent.HasExited) { $parent.Kill($true); $parent.WaitForExit(5000) | Out-Null }; $parent.Dispose() }
       if ($ownedProfile) {
         try { if (Test-Path (Join-Path $legacy 'Kot.exe')) { Run-Checked (Join-Path $legacy 'Kot.exe') @('--shutdown') $legacy -Timeout 40000 | Out-Null } }

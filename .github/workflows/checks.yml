@@ -19,6 +19,7 @@ jobs:
       - name: Repository consistency
         run: |
           python3 Tests/repository.py
+          python3 Tests/build_identity.py
           python3 Tests/release_ref.py
           python3 Tests/xray_source.py
       - name: Website assets and download provenance
@@ -38,8 +39,10 @@ jobs:
           python3 Tests/services_ui.py
           python3 Tests/ui_controls.py
           python3 Tests/about_ui.py
+          python3 Tests/build_identity_ui.py
           python3 Tests/ui_polish.py
           python3 Tests/ui_resilience.py
+          python3 Tests/ui_p51.py
   integration:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -52,10 +55,15 @@ jobs:
           global-json-file: global.json
       - uses: actions/setup-go@7d2730e317c8366225b42fced34583b26440a9cc
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: false
       - name: Generate fixtures and check core logic
         run: dotnet run --project Tests/Kot.Tests.csproj -c Release
+      - name: Compiled build identity survives rebuilds without stale metadata
+        run: |
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.1 -p:KotSourceCommit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -- --identity dev.123.1 aaaaaaaaaaaa
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.2 -p:KotSourceCommit=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -- --identity dev.123.2 bbbbbbbbbbbb
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -- --identity local -
       - name: Build the pinned official Xray and exercise real native traffic
         run: |
           python3 Release/xray-core.py artifacts/core --target linux
@@ -80,6 +88,11 @@ jobs:
         run: |
           dotnet run --project Tests/Kot.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+      - name: Read-only startup diagnostic privacy and syntax
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests/startup-diagnostics.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Startup diagnostic validation failed.' }
       - name: Native Windows process launcher
         shell: pwsh
         run: |

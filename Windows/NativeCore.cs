@@ -17,6 +17,8 @@ public sealed class NativeCore : IDisposable
     static readonly object launchLock = new();
     readonly CoreLogBuffer log = new();
     readonly Action<string>? report;
+    int xrayStarted;
+    public bool XrayStarted => Volatile.Read(ref xrayStarted) != 0;
     static readonly SemaphoreSlim consoleGate = new(1);
     Task readOutput = Task.CompletedTask;
     Task writeInput = Task.CompletedTask;
@@ -125,14 +127,21 @@ public sealed class NativeCore : IDisposable
                 log.Append(buffer.AsSpan(0, count));
                 foreach (char c in buffer.AsSpan(0, count))
                 {
-                    if (c == '\n' || line.Length == 1500) { report?.Invoke(line.ToString().TrimEnd('\r')); line.Clear(); }
+                    if (c == '\n' || line.Length == 1500) { ReportLine(line.ToString().TrimEnd('\r')); line.Clear(); }
                     if (c != '\n') line.Append(c);
                 }
             }
-            if (line.Length > 0) report?.Invoke(line.ToString());
+            if (line.Length > 0) ReportLine(line.ToString());
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException) { report?.Invoke("output pipe closed: " + ex.GetType().Name); }
         catch (Exception ex) { report?.Invoke("output capture exception: " + ex); }
+    }
+    void ReportLine(string line)
+    {
+        // Xray emits this only after every feature/inbound Start has succeeded.
+        // Keep it outside the bounded log tail, which busy traffic can evict.
+        if (CoreDiagnostics.IsXrayStarted(line)) Volatile.Write(ref xrayStarted, 1);
+        report?.Invoke(line);
     }
     public async Task<string> ReadRecentOutput(bool exited)
     {

@@ -3,11 +3,15 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 python Tests/repository.py
 if ($LASTEXITCODE -ne 0) { throw 'Repository checks failed.' }
+$stampJson=python Release/build-identity.py
+if ($LASTEXITCODE -ne 0) { throw 'Build identity generation failed.' }
+$stamp=$stampJson | ConvertFrom-Json
 # A fresh directory prevents old loose DLLs from surviving a new single-file publish.
 $publish = if ($PublishDirectory) { [IO.Path]::GetFullPath($PublishDirectory) } else { Join-Path $PSScriptRoot ('publish-' + [Guid]::NewGuid().ToString('N')) }
 if (Test-Path $publish) { throw 'Publish directory must be new; existing files will not be overwritten.' }
-dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -m:1 -p:EnableWindowsTargeting=true -o $publish
+dotnet publish Windows/Kot.Windows.csproj -c Release -r win-x64 --self-contained true -m:1 -p:EnableWindowsTargeting=true "-p:Version=$($stamp.version)" "-p:KotBuildId=$($stamp.build)" "-p:KotSourceCommit=$($stamp.commit)" -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+[IO.File]::WriteAllText((Join-Path $publish 'build-info.json'),($stamp | ConvertTo-Json))
 $cache = Join-Path $PSScriptRoot '.build-cache'
 New-Item -ItemType Directory -Force $cache | Out-Null
 python Release/xray-core.py "$publish/core"

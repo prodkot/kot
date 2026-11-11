@@ -31,7 +31,7 @@ jobs:
           python-version: '3.x'
       - uses: actions/setup-go@7d2730e317c8366225b42fced34583b26440a9cc
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: false
       - name: Verify tag and run core tests
         shell: pwsh
@@ -174,6 +174,8 @@ jobs:
         run: |
           $version=[regex]::Match((Get-Content Core/ClientIdentity.cs -Raw),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
           $tag="v$version"
+          $candidate=Get-Content artifacts/candidate.json -Raw | ConvertFrom-Json
+          Copy-Item (Join-Path 'artifacts' $candidate.setup.name) "artifacts/Kot-Setup-$version-Windows-x64.exe"
           $arguments=@('release','create',$tag,"artifacts/Kot-Setup-$version-Windows-x64.exe",'--title',"kot. $version",'--notes-file','Release/NOTES.md')
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             if ($env:GITHUB_REF_NAME -ne $tag) { throw 'Tag and application version disagree.' }

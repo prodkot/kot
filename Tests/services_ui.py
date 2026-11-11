@@ -22,7 +22,7 @@ window.fixtureServiceModel=()=>structuredClone(model.services);
 MOCK = MOCK.replace('window.chrome=', EXTRA + 'window.chrome=')
 MOCK = MOCK.replace("window.statisticsRequests.push(msg);setTimeout(()=>{window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:true}});},10);", r'''
 window.statisticsRequests.push(msg);window.serviceRequests.push(msg);
-setTimeout(()=>{
+const finish=()=>{
  const data=msg.data||{},s=model.services,e=s.items.find(e=>e.id===data.service);let error='';
  if(msg.action==='serviceAction'){
   if(data.operation==='install')Object.assign(e,{installedVersion:e.id==='zapret'?'1.10.3':'v1.11.2',status:'Остановлен',strategies:e.id==='zapret'?['general.bat','general (ALT).bat','general (ALT2).bat']:undefined});
@@ -33,17 +33,172 @@ setTimeout(()=>{
   if(data.operation==='remove')Object.assign(e,{installedVersion:null,running:false,status:'Не установлен',strategies:[]});
  }
  if(msg.action==='serviceSettings'){
-  if(data.service==='telegram'&&data.settings.port===1024)error='Локальный порт Telegram занят.';
+  if(data.service==='zapret'&&window.strategyError)error=window.strategyError;
+  else if(data.service==='telegram'&&data.settings.port===1024)error='Локальный порт Telegram занят.';
   else s[data.service]=structuredClone(data.settings);
  }
  if(msg.action==='serviceUpdateSettings')s.checkUpdates=data.enabled;
  if(msg.action==='serviceCancel')Object.assign(s,{testing:false}),Object.assign(e,{busy:false,phase:'',error:'Операция отменена.'});
  if(msg.action==='serviceSelectTest')s.test=window.fixtureRuns.find(r=>r.started===data.started);
  if(msg.action==='serviceClearLog')e.logs=[];
- window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:!error,error}});
-},10);
+ if(!error)window.fixtureStatistics();
+ listener({data:{kind:'reply',id:msg.id,ok:!error,error}});
+ if(error)window.fixtureStatistics();
+};
+if(msg.action==='serviceSettings'&&msg.data.service==='zapret'&&window.holdStrategy)window.finishStrategy=finish;
+else setTimeout(finish,10);
 ''')
 PREVIEW = os.environ.get('KOT_SERVICE_PREVIEW')
+def assert_strategy_content_centered(button):
+    geometry=button.evaluate("""(button)=>{
+      const box=button.getBoundingClientRect();
+      const visible=[...button.children].filter(e=>getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden');
+      const rects=visible.map(e=>e.getBoundingClientRect());
+      return {width:box.width,left:Math.min(...rects.map(r=>r.left))-box.left,
+        right:box.right-Math.max(...rects.map(r=>r.right))};
+    }""")
+    assert geometry['width']<=112,geometry
+    assert min(geometry['left'],geometry['right'])>=8,geometry
+    assert abs(geometry['left']-geometry['right'])<1,geometry
+
+def check_strategy_selection(browser):
+    page = browser.new_page(viewport={'width':960,'height':640})
+    errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    page.set_default_timeout(6000)
+    try:
+        page.add_init_script(MOCK)
+        page.goto((ROOT / 'Windows/ui/index.html').as_uri())
+        page.locator('.nav-button[data-page=services]').click()
+        page.locator('#zapretInstall').click()
+        expect(page.locator('#zapretStrategy')).to_be_enabled()
+        checks=[{'target':'https://example.com/','success':True,'milliseconds':73,'status':200,'error':''}]
+        names=['general.bat','general (ALT).bat','general (ALT2).bat']
+        run={'started':'2026-11-08T23:00:00Z','version':'1.10.3','cancelled':False,
+             'baseline':[dict(checks[0],success=False,error='timeout')],
+             'results':[{'strategy':name,'checks':checks,'error':''} for name in names],
+             'recommended':names[1]}
+        page.evaluate('(run)=>fixtureServices({test:run,history:[{...run,count:3}]})',run)
+        rows=page.locator('#zapretResults .service-result')
+        chosen,best,other=[rows.nth(i).locator('button') for i in range(3)]
+        expect(chosen).to_have_attribute('aria-pressed','true')
+        expect(best).to_have_attribute('aria-pressed','false')
+        expect(rows.nth(1).locator('.strategy-best')).to_have_text('Лучший результат')
+        assert rows.locator('.strategy-best').count()==1
+        before_calls=page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').length")
+        chosen.focus();page.keyboard.press('Enter')
+        assert page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').length")==before_calls
+        # Local request guard must prevent double clicks before any native busy snapshot.
+        rows.nth(1).locator('summary').click()
+        best.focus()
+        before=best.bounding_box()
+        assert_strategy_content_centered(best)
+        assert_strategy_content_centered(chosen)
+        page.evaluate('window.holdStrategy=true')
+        page.keyboard.press('Enter')
+        expect(best).to_have_attribute('aria-busy','true')
+        expect(best).to_contain_text('Сохранение…')
+        expect(best).to_have_attribute('aria-pressed','false')
+        expect(chosen).to_have_attribute('aria-pressed','true')
+        expect(best).to_be_focused()
+        expect(page.locator('#zapretStrategy')).to_be_disabled()
+        expect(page.locator('#zapretStart')).to_be_disabled()
+        expect(page.locator('#zapretTest')).to_be_disabled()
+        best.evaluate('(e)=>{e.click();e.click()}')
+        other.evaluate('(e)=>e.click()')
+        assert page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').length")==before_calls+1
+        page.evaluate("fixtureServiceItem('zapret',{logs:['snapshot while saving']})")
+        expect(best).to_be_focused()
+        assert rows.nth(1).locator('details').evaluate('(e)=>e.open')
+        during=best.bounding_box()
+        assert_strategy_content_centered(best)
+        assert all(abs(before[k]-during[k])<1 for k in ('x','y','width','height')),(before,during)
+        page.evaluate('finishStrategy()')
+        expect(best).to_have_attribute('aria-busy','false')
+        expect(best).to_have_attribute('aria-pressed','true')
+        expect(best).to_contain_text('Выбран')
+        expect(chosen).to_have_attribute('aria-pressed','false')
+        expect(best).to_be_focused()
+        after=best.bounding_box()
+        assert_strategy_content_centered(best)
+        assert all(abs(before[k]-after[k])<1 for k in ('x','y','width','height')),(before,after)
+        assert not page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').at(-1).data.restart")
+        assert rows.nth(1).locator('details').evaluate('(e)=>e.open')
+        # Save failure keeps the real selection, shows the native error and permits retry.
+        page.evaluate("window.strategyError='Не удалось сохранить стратегию.'")
+        other.click();page.evaluate('finishStrategy()')
+        expect(page.locator('#toast')).to_have_text('Не удалось сохранить стратегию.')
+        expect(best).to_have_attribute('aria-pressed','true')
+        expect(other).to_have_attribute('aria-pressed','false')
+        expect(other).to_be_enabled()
+        expect(page.locator('#zapretStrategy')).to_have_value(names[1])
+        # Changing via the dropdown must also roll back on failure, even while focused.
+        page.locator('#zapretStrategy').select_option(names[0]);page.evaluate('finishStrategy()')
+        expect(page.locator('#zapretStrategy')).to_have_value(names[1])
+        expect(best).to_have_attribute('aria-pressed','true')
+        page.evaluate("window.strategyError='';fixtureServiceItem('zapret',{running:true,status:'Работает'})")
+        other.click();page.evaluate('finishStrategy()')
+        expect(other).to_have_attribute('aria-pressed','true')
+        expect(best).to_have_attribute('aria-pressed','false')
+        assert page.evaluate("serviceRequests.filter(r=>r.action==='serviceSettings').at(-1).data.restart")
+        # Selection means persisted settings, not proof that the restarted worker is running.
+        page.evaluate("fixtureServiceItem('zapret',{busy:true,phase:'Перезапуск',running:false})")
+        expect(other).to_have_attribute('aria-pressed','true')
+        expect(best).to_be_disabled()
+        page.evaluate("fixtureServiceItem('zapret',{busy:false,phase:'',error:'Ошибка запуска',running:false})")
+        expect(page.locator('#zapretError')).to_have_text('Ошибка запуска')
+        expect(other).to_have_attribute('aria-pressed','true')
+        page.evaluate("window.holdStrategy=false;fixtureServiceItem('zapret',{error:''})")
+        page.locator('#zapretStrategy').select_option(names[1])
+        expect(best).to_have_attribute('aria-pressed','true')
+        page.locator('.nav-button[data-page=settings]').click()
+        page.locator('.nav-button[data-page=services]').click()
+        expect(best).to_have_attribute('aria-pressed','true')
+        # All asynchronous model changes refresh selection; testing and obsolete history remain guarded.
+        page.evaluate("fixtureServices({zapret:{...fixtureServiceModel().zapret,strategy:'general.bat'}})")
+        expect(chosen).to_have_attribute('aria-pressed','true')
+        expect(best).to_have_attribute('aria-pressed','false')
+        page.evaluate('fixtureServices({testing:true})')
+        expect(best).to_be_disabled()
+        page.evaluate("fixtureServices({testing:false});fixtureServiceItem('zapret',{strategies:['general.bat']})")
+        expect(best).to_be_disabled()
+        expect(best).to_have_attribute('title','Стратегия отсутствует в установленном пакете')
+        page.evaluate('(names)=>fixtureServiceItem("zapret",{strategies:names})',names)
+        for variant in (dict(run,recommended=None),dict(run,results=[dict(run['results'][1],error='worker exited')]),dict(run,results=[dict(run['results'][1],checks=[])])):
+            page.evaluate('(run)=>fixtureServices({test:run})',variant)
+            if variant['recommended'] is None:
+                assert rows.locator('.strategy-best').count()==0
+                assert page.locator('#zapretResults .service-result[data-recommended=true]').count()==0
+            else:
+                expect(rows.locator('button')).to_be_disabled()
+        # Long names, both themes, an alternate accent setting, reduced motion and minimum window size.
+        long_name='general ('+'длинное имя '*9+').bat'
+        display_run=dict(run,results=[run['results'][0],dict(run['results'][1],strategy=long_name)],recommended=long_name)
+        page.evaluate('(args)=>{fixtureServices({test:args.run});fixtureServiceItem("zapret",{strategies:args.names})}',{'run':display_run,'names':names+[long_name]})
+        for theme in ('dark','light'):
+            page.evaluate('(theme)=>fixtureStatistics({settings:{theme,accent:"pink"}})',theme)
+            for width,height in ((800,600),(960,640),(1080,770)):
+                page.set_viewport_size({'width':width,'height':height})
+                assert page.locator('#page-services').evaluate('(e)=>e.scrollWidth<=e.clientWidth'),(theme,width)
+                button=rows.nth(1).locator('button')
+                assert_strategy_content_centered(button)
+                color='rgb(213, 248, 140)' if theme=='dark' else 'rgb(203, 233, 145)'
+                page.wait_for_function('(color)=>getComputedStyle(document.querySelector(".service-result[data-recommended=true] button")).backgroundColor===color',arg=color)
+        page.evaluate('(run)=>fixtureServices({test:run})',run)
+        page.emulate_media(reduced_motion='reduce')
+        page.set_viewport_size({'width':960,'height':640})
+        rows.nth(1).locator('button').focus();page.keyboard.press('Space')
+        expect(rows.nth(1).locator('button')).to_have_attribute('aria-pressed','true')
+        if PREVIEW:
+            for theme in ('dark','light'):
+                page.evaluate('(theme)=>fixtureStatistics({settings:{theme,accent:"lime"}})',theme)
+                page.locator('#zapretResultsSection').scroll_into_view_if_needed()
+                expect(page.locator('#toast')).not_to_be_visible(timeout=5000)
+                page.screenshot(path=str(Path(PREVIEW)/('zapret-selection-'+theme+'.png')),animations='disabled')
+        assert not errors,errors
+        print('PASS zapret recommendation and selection: actual saved state, duplicate guard, delayed RPC, retry/rollback, restart failure, history, focus, stable geometry, themes and keyboard')
+    finally: page.close()
+
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
@@ -193,5 +348,6 @@ with sync_playwright() as p:
         page.locator('.nav-button[data-page=services]').click()
         expect(page.locator('#page-services')).to_be_visible()
         assert not errors,errors
+        check_strategy_selection(browser)
         print('PASS services UI: navigation, installation, state, settings, cancellation, test history, secret handling, themes and minimum size')
     finally: browser.close()
