@@ -230,6 +230,35 @@ try {
       if ([IO.File]::ReadAllText((Join-Path $legacy 'user-note.txt')) -ne 'keep through update') { throw 'Startup recovery changed a user file.' }
       Write-Host 'PASS installed startup recovery restores a journal containing the running Kot.exe, removes partial new files and restarts the application through a separate helper.'
 
+    } catch {
+      # This fixture owns a synthetic profile. Preserve only bounded failure
+      # evidence before finally removes it, never the encrypted profile itself.
+      $failure=$_
+      Write-Host "Upgrade/recovery failure for authentic $sourceVersion`: $failure"
+      foreach ($name in 'startup-error.json','startup-lifecycle.json','maintenance-error.txt') {
+        $evidence=Join-Path $profile $name
+        if ((Test-Path $evidence) -and (Get-Item $evidence).Length -le 65536) {
+          Write-Host "$name`: $([IO.File]::ReadAllText($evidence))"
+        }
+      }
+      if ($recoveryWork -and (Test-Path $recoveryWork)) {
+        foreach ($name in 'journal.json','recovery.json','rolled-back','error.txt') {
+          $evidence=Join-Path $recoveryWork $name
+          if ((Test-Path $evidence) -and (Get-Item $evidence).Length -le 65536) {
+            Write-Host "Recovery $name`: $([IO.File]::ReadAllText($evidence))"
+          }
+        }
+        Write-Host "Partial file still present: $(Test-Path (Join-Path $legacy 'interrupted-update.tmp'))"
+      }
+      foreach ($app in [Diagnostics.Process]::GetProcessesByName('Kot') + [Diagnostics.Process]::GetProcessesByName('Recovery')) {
+        try {
+          if (!$app.HasExited -and $app.MainModule.FileName.StartsWith($legacy+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "Fixture process: $($app.ProcessName) pid=$($app.Id) title=$($app.MainWindowTitle)"
+          }
+        } catch { Write-Host 'Fixture process exited during evidence collection.' }
+        finally { $app.Dispose() }
+      }
+      throw $failure
     } finally {
       if ($fixtureTaskCreated) { Unregister-ScheduledTask -TaskName $fixtureTaskName -Confirm:$false }
       if ($null -ne $parent) { if (!$parent.HasExited) { $parent.Kill($true); $parent.WaitForExit(5000) | Out-Null }; $parent.Dispose() }
