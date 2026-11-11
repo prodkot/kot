@@ -5,6 +5,14 @@ static class LogTests
 {
     public static void Run(Action<bool, string> check)
     {
+        string ready = "2026/11/11 17:12:02.927 [Warning] core: Xray " + XrayRuntime.Version + " started";
+        check(CoreDiagnostics.IsXrayStarted(ready), "readiness recognizes the pinned core's all-inbounds-started event");
+        foreach (string pending in new[] { "Creating adapter", "Using existing driver 0.14", "accepted tcp:example.com:443 [kot-health -> proxy]",
+            "Xray " + XrayRuntime.Version + " started", ready + " failed", ready.Replace("core:", "proxy/http:"),
+            "2026/11/11 17:12:02.927 [Warning] core: Xray 0.0.0 started" })
+            check(!CoreDiagnostics.IsXrayStarted(pending), "partial startup and HTTP listener activity do not prove core readiness");
+        check(CoreDiagnostics.TunAdapterFailed("Failed to setup adapter (problem code: 0x1F, ntstatus: 0xC00002F0)")
+            && !CoreDiagnostics.TunAdapterFailed("Failed to start: invalid config"), "Windows adapter failure is distinguished from configuration and server errors");
         string startup = StartupDiagnostics.Capture("interface", new IOException("secret-password https://secret.example/sub private-user", new InvalidOperationException("private-token")));
         check(startup.Contains("System.IO.IOException") && startup.Contains("System.InvalidOperationException") && startup.Contains("hresult")
             && !startup.Contains("secret") && !startup.Contains("private"), "pre-profile startup diagnostics keep exception types and codes without private messages");

@@ -22,6 +22,13 @@ public sealed class CoreLogBuffer(int capacity = 32768)
 
 public static class CoreDiagnostics
 {
+    public static bool IsXrayStarted(string line) => Regex.IsMatch(line,
+        @"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? \[Warning\] core: Xray "
+        + Regex.Escape(XrayRuntime.Version) + @" started\s*$", RegexOptions.CultureInvariant);
+
+    public static bool TunAdapterFailed(string clean) => clean.Contains("Failed to setup adapter", StringComparison.OrdinalIgnoreCase)
+        || clean.Contains("Timed out waiting for device query", StringComparison.OrdinalIgnoreCase);
+
     public static string Redact(string raw, Node? node, params string[] privateValues)
         => RedactMany(raw, node == null ? [] : new[] { node }, privateValues);
     public static string RedactMany(string raw, IEnumerable<Node> nodes, params string[] privateValues)
