@@ -12,7 +12,7 @@ Xray 26.10.31 (official release source build)
 Их лицензии: licenses/Xray-Go-NOTICES.txt.
 Исходники: https://github.com/XTLS/Xray-core/tree/a4a3dff5b20c2faae567b742c172c7b95e75c083
 Точный архив: upstream/Xray-core-a4a3dff5b20c2faae567b742c172c7b95e75c083-source.tar.gz.
-Повторяемая сборка: Release/xray-core.py, Go 1.27.3.
+Повторяемая сборка: Release/xray-core.py, Go 1.27.4.
 
 Wintun 0.14.1
 

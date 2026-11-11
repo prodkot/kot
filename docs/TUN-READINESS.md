@@ -46,3 +46,7 @@ post-stop probes without direct fallback. Existing real-core crash and WFP leak
 checks remain part of the development workflow.
 
 Real Windows CI execution is required before distributing the candidate.
+
+## Build dependency follow-up
+
+The first CI attempt stopped on newly published [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), an HTTP/1 server crash in the Go standard library. The pinned compiler and all CI build jobs now use Go 1.27.4, which contains the fix. The Xray source commit and protocol modules are unchanged. This is a separate dependency correction, not an explanation for the reported Windows adapter creation failure.
