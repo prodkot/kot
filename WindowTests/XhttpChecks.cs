@@ -35,7 +35,7 @@ public static class XhttpChecks
     }
     public static async Task Run(string xray, Action<bool, string> check)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(110)); var ct = deadline.Token;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(180)); var ct = deadline.Token;
         // The production Auto path discovers the bundled executable itself. Use
         // that same path for the server and explicit probes: the WFP permit is
         // deliberately restricted to one core identity, even for identical bytes.
@@ -89,6 +89,7 @@ public static class XhttpChecks
             {
                 using var client = ConnectionTools.Client(probe.Port);
                 check(await client.GetStringAsync($"http://127.0.0.1:{webPort}/", ct) == "OK", "one native Xray probe carries a real HTTP request over XHTTP");
+                check(!await TunnelHealth.Probe($"http://127.0.0.1:{webPort}/", ct), "a working HTTP proxy and local origin cannot pass TUN health without a TUN");
                 check(await Latency.Http($"http://127.0.0.1:{webPort}/", probe.Port, 3000, ct) >= 0, "native XHTTP HTTP latency measurement succeeds");
             }
             check(Directory.GetFiles(Store.Folder, "probe-*.json").Length == before, "XHTTP probe uses stdin without creating a credential configuration");
@@ -107,7 +108,8 @@ public static class XhttpChecks
                 await connection.Connect(profile).WaitAsync(TimeSpan.FromSeconds(25), ct);
                 if (connection.State != "connected") Console.WriteLine(connection.Error + "\n" + connection.CoreDetails);
                 check(connection.State == "connected" && connection.HasCore && KillSwitch.Detect(), "production Tunnel.Connect completes XHTTP and uncached Windows DNS health with global WFP armed");
-                check(await connection.Probe(ct), "connected native session carries a real forced-proxy HTTP response");
+                check(await connection.Probe(ct), "connected native session passes proxy health and HTTP bound to its Windows TUN route");
+                check(!await TunnelHealth.Probe($"http://127.0.0.1:{webPort}/", ct), "loopback traffic cannot masquerade as a TUN health response even with an active adapter");
                 check(await Exchange(ct), "real Windows TUN exchanges HTTPS via native XHTTP without transport recursion");
                 var sample = await connection.ReadConnections(ct);
                 check(sample != null && sample.DownloadTotal > 0 && sample.Count == -1, "production authenticated Xray metrics report actual TUN traffic");
@@ -121,6 +123,35 @@ public static class XhttpChecks
                 check(!await Exchange(ct), "after native TUN shutdown the guard prevents direct HTTPS leakage");
             }
             finally { await connection.Stop(); KillSwitch.Release(); }
+            // A healthy proxy and resolver alone must not produce a connected
+            // transition. This origin is reachable, but only through loopback.
+            var proxyOnlyHealth = new Tunnel([$"http://127.0.0.1:{webPort}/"], TimeSpan.FromSeconds(3));
+            bool falselyConnected = false;
+            proxyOnlyHealth.Changed += () => falselyConnected |= proxyOnlyHealth.State == "connected";
+            try
+            {
+                await proxyOnlyHealth.Connect(profile, ct).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                check(!falselyConnected && proxyOnlyHealth.State == "idle" && proxyOnlyHealth.Error.Contains("трафик через TUN Windows"),
+                    "working proxy and DNS without TUN HTTP never emit connected, even transiently");
+                check(!proxyOnlyHealth.HasCore && KillSwitch.Detect(), "failed TUN health stops the core and preserves the enabled guard");
+            }
+            finally { await proxyOnlyHealth.Stop(); KillSwitch.Release(); }
+            // The failure report occurs on reconnect, so exercise the production
+            // lifecycle repeatedly, including with the optional guard disabled.
+            foreach (bool guard in new[] { false, false, true })
+            {
+                profile.KillSwitch = guard;
+                try
+                {
+                    await connection.Connect(profile, ct).WaitAsync(TimeSpan.FromSeconds(25), ct);
+                    if (connection.State != "connected") Console.WriteLine(connection.Error + "\n" + connection.CoreDetails);
+                    check(connection.State == "connected" && await connection.Probe(ct), "reconnect creates a working TUN and carries HTTP, guard=" + guard);
+                    await connection.Stop();
+                    check(!connection.HasCore && !await connection.Probe(ct), "stopped session cannot retain connected health");
+                    check(!await TunnelHealth.Probe($"http://{healthHost}:{webPort}/", ct), "TUN HTTP fails after shutdown instead of falling back to direct traffic");
+                }
+                finally { await connection.Stop(); KillSwitch.Release(); }
+            }
             var dnsFailureNode = dnsNode with { FullConfig = (JsonObject)dnsNode.FullConfig!.DeepClone() };
             dnsFailureNode.FullConfig["dns"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = Port() }) };
             var dnsFailure = new Tunnel([$"http://{brokenDnsHost}:{webPort}/"], TimeSpan.FromSeconds(5));

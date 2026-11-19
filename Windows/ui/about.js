@@ -50,7 +50,7 @@ window.KotAbout = ({getModel,openDialog,closeDialog}) => {
   }
   function pause(){attempt++;wantsPlay=false;audio.pause();render();}
   $('aboutButton').addEventListener('click',()=>{
-    $('aboutVersion').textContent='Версия '+(getModel().version||'');openDialog($('aboutDialog'));
+    $('aboutVersion').textContent='Версия '+(getModel().displayVersion||getModel().version||'');openDialog($('aboutDialog'));
     if(demo){note('Музыка доступна в приложении.');$('musicPlay').disabled=true;return;}
     library();
   });

@@ -1,0 +1,11 @@
+<Project>
+  <!-- Packaging passes the same stamp to the client and its referenced core. -->
+  <PropertyGroup Condition="'$(KotBuildId)' != ''">
+    <InformationalVersion>$(Version) ($(KotBuildId))</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KotBuildId)' != ''">
+    <AssemblyMetadata Include="KotBuildId" Value="$(KotBuildId)" />
+    <AssemblyMetadata Include="KotSourceCommit" Value="$(KotSourceCommit)" />
+  </ItemGroup>
+</Project>

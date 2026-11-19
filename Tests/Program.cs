@@ -2,6 +2,12 @@ using Kot.Core;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+if (args.Length == 3 && args[0] == "--identity")
+{
+    if (ClientIdentity.BuildNumber != args[1] || ClientIdentity.DisplayVersion != $"{ClientIdentity.Version} ({args[1]})"
+        || args[2] != "-" && ClientIdentity.Build != args[2]) throw new Exception("Compiled build identity differs from requested stamp");
+    Console.WriteLine("PASS compiled identity " + ClientIdentity.DisplayVersion); return;
+}
 if (args.Contains("--xray")) { Kot.Tests.XrayRuntimeTests.Run((ok, name) => { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }); return; }
 if (args.Length == 5 && args[0] == "--crash-update") { Kot.Tests.UpdateCrashTests.Child(args); return; }
 if (args.Length >= 2 && args[0] == "geoip-core")

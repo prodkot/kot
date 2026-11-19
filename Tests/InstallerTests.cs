@@ -13,7 +13,7 @@ public static class InstallerTests
     {
         using var rsa = RSA.Create(2048);
         string key = rsa.ExportSubjectPublicKeyInfoPem(), root = Path.Combine(folder, "setup tests с пробелами"), target = Path.Combine(root, "installed");
-        var files = new Dictionary<string, byte[]> { ["Kot.exe"] = "new app"u8.ToArray(), ["core/xray.exe"] = "new core"u8.ToArray(), ["core/wintun.dll"] = "new driver"u8.ToArray(), ["ui/index.html"] = "new UI"u8.ToArray() };
+        var files = new Dictionary<string, byte[]> { ["Kot.exe"] = "new app"u8.ToArray(), ["Uninstall.exe"] = "new uninstaller"u8.ToArray(), ["core/xray.exe"] = "new core"u8.ToArray(), ["core/wintun.dll"] = "new driver"u8.ToArray(), ["ui/index.html"] = "new UI"u8.ToArray() };
         byte[] Build(string innerVersion = "0.8.0", bool damagedInner = false)
         {
             var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -38,10 +38,11 @@ public static class InstallerTests
             if (Directory.Exists(target)) Directory.Delete(target, true);
             Directory.CreateDirectory(target);
             File.WriteAllText(Path.Combine(target, "Kot.exe"), "old app");
+            File.WriteAllText(Path.Combine(target, "Uninstall.exe"), "old uninstaller");
             File.WriteAllText(Path.Combine(target, "user-note.txt"), "keep");
             File.WriteAllBytes(setup, Build());
         }
-        bool Unchanged() => File.ReadAllText(Path.Combine(target, "Kot.exe")) == "old app" && File.ReadAllText(Path.Combine(target, "user-note.txt")) == "keep" && !Directory.EnumerateDirectories(target, ".kot-update-*").Any();
+        bool Unchanged() => File.ReadAllText(Path.Combine(target, "Uninstall.exe")) == "old uninstaller" && File.ReadAllText(Path.Combine(target, "Kot.exe")) == "old app" && File.ReadAllText(Path.Combine(target, "user-note.txt")) == "keep" && !Directory.EnumerateDirectories(target, ".kot-update-*").Any();
         try
         {
             Reset();
@@ -52,9 +53,9 @@ public static class InstallerTests
             check(File.ReadAllText(Path.Combine(target, "Kot.exe")) == "new app" && !Directory.EnumerateDirectories(target, ".kot-update-*").Any(), "same-version reinstall succeeds and cleans committed backups");
 
             Reset(); bool rolledBack = false;
-            try { SetupExtraction.Extract(setup, target, "0.8.0", key, count => { if (count == 2) throw new IOException("injected disk failure"); }); }
+            try { SetupExtraction.Extract(setup, target, "0.8.0", key, count => { if (count == files.Count) throw new IOException("injected disk failure"); }); }
             catch (IOException) { rolledBack = true; }
-            check(rolledBack && Unchanged() && !File.Exists(Path.Combine(target, "core/xray.exe")), "manual install failure restores the previous app and removes newly written files");
+            check(rolledBack && Unchanged() && !File.Exists(Path.Combine(target, "core/xray.exe")), "late install failure restores the previous app AND uninstaller and removes newly written files");
 
             foreach (string kind in new[] { "prefix", "archive", "signature", "version", "inner-version", "inner-hash", "key" })
             {
