@@ -97,7 +97,9 @@ class SiteTests(unittest.TestCase):
             from xml.etree import ElementTree
             project = ElementTree.parse(ROOT.parent / 'Windows/Kot.Windows.csproj')
             self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/Version")}"', demo)
-            self.assertIn("data:font/ttf;base64,", demo)
+            self.assertEqual((dest / "demo/fonts/Manrope.ttf").read_bytes(), (ROOT.parent / "Windows/ui/fonts/Manrope.ttf").read_bytes())
+            self.assertIn("data:font/ttf;base64,", (dest / "demo/styles/client.css").read_text())
+            self.assertEqual((dest / "demo/styles/tokens.css").read_bytes(), (ROOT.parent / "Windows/ui/styles/tokens.css").read_bytes())
             self.assertNotIn('fonts/Manrope.ttf', demo)
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
             self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
