@@ -53,7 +53,30 @@ public static class UpdateTests
         File.Delete(crashPackage); File.Delete(crashKey);
         Reset(); string success = Path.Combine(root,".kot-update-"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(success);
         using (var zip = new ZipArchive(new MemoryStream(Package()),ZipArchiveMode.Read))
-        { var t = new UpdateTransaction(root,success); t.Apply(zip,new Version("0.4.0"),"0.4.1",rsa.ExportSubjectPublicKeyInfoPem()); check(File.ReadAllText(Old("Kot.exe"))=="new app" && File.ReadAllText(Old("user-note.txt"))=="keep","update applies in place and preserves unrelated files"); new UpdateTransaction(root,success).Rollback(); check(File.ReadAllText(Old("Kot.exe"))=="old app" && !File.Exists(Old("new-file.txt")),"journal allows rollback by a fresh updater instance"); }
+        {
+            var t = new UpdateTransaction(root,success);
+            t.Apply(zip,new Version("0.4.0"),"0.4.1",rsa.ExportSubjectPublicKeyInfoPem());
+            check(File.ReadAllText(Old("Kot.exe"))=="new app" && File.ReadAllText(Old("user-note.txt"))=="keep","update applies in place and preserves unrelated files");
+            var recovery = new UpdateTransaction(root, success);
+            if (OperatingSystem.IsWindows())
+            {
+                Task rollback;
+                bool sawPendingReplace;
+                using (File.Open(Old("Kot.exe"), FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    rollback = Task.Run(recovery.Rollback);
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    while (!rollback.IsCompleted && !Directory.EnumerateFiles(root, "Kot.exe.kot-restore-*").Any() && timer.Elapsed.TotalSeconds < 5)
+                        await Task.Delay(20);
+                    await Task.Delay(250);
+                    sawPendingReplace = !rollback.IsCompleted && Directory.EnumerateFiles(root, "Kot.exe.kot-restore-*").Any();
+                }
+                await rollback;
+                check(sawPendingReplace, "rollback waits for a temporary Windows executable lock");
+            }
+            else recovery.Rollback();
+            check(File.ReadAllText(Old("Kot.exe"))=="old app" && !File.Exists(Old("new-file.txt")),"journal allows rollback by a fresh updater instance");
+        }
         // 0.6.1's updater uses the default reflection serializer for its journal.
         var legacyJournal = JsonSerializer.Deserialize<List<UpdateTransaction.Change>>(File.ReadAllText(Path.Combine(success,"journal.json")))!;
         check(legacyJournal.Count == files.Count + 2 && legacyJournal.All(c => !string.IsNullOrEmpty(c.Name)) && legacyJournal.Single(c => c.Name == "Kot.exe").Existed, "new journal remains readable by the 0.6.1 updater");
