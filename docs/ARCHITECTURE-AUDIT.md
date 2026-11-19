@@ -2,7 +2,7 @@
 
 ## Baseline and scope
 
-Base: `a92bd99159ca56becb5fd583b794a760e5671c39`, the head of [PR #51](https://github.com/prodkot/kot/pull/51), not the older main branch. Work is isolated on `refactor/architecture-foundation`; the eventual PR targets `ui/p51-polish`. Dependency PRs #52-54 remain independent. No merge, dependency upgrade, release or profile migration is part of this change.
+Base: `a92bd99159ca56becb5fd583b794a760e5671c39`, the head of [PR #51](https://github.com/prodkot/kot/pull/51), not the older main branch. Work is isolated on `dev/architecture-foundation`; the eventual PR targets `ui/p51-polish`. Dependency PRs #52-54 remain independent. No merge, dependency upgrade, release or profile migration is part of this change.
 
 ## Findings and migration order
 
@@ -18,7 +18,26 @@ Base: `a92bd99159ca56becb5fd583b794a760e5671c39`, the head of [PR #51](https://g
 | Release / installer | Signed package manifests, pinned upstream source, installer maintenance and recovery are already separated and security-sensitive. | No production behavior edits. Exercise payload completeness and installation because UI asset layout changes. |
 | Docs / agents | Feature/build docs exist, but no root agent guide and no current end-to-end ownership map. | Add concise engineering rules, architecture and UI contracts linked to existing feature docs. |
 
-## Risk controls
+## Size and coupling inventory
+
+Counts below describe the base commit, before CSS formatting/extraction. They are navigation evidence, not size targets.
+
+| File / subsystem | Base lines | Finding and disposition |
+| --- | ---: | --- |
+| `Windows/ui/app.js` | 679 | Transport, presentation, journal, statistics and routing had independent responsibilities; extracted into explicit factories/helpers, composition remains in app.js |
+| `Windows/ui/index.html` | 496 | Two dense embedded CSS blocks mixed structural markup with historical overrides; styles and approved parameters now have canonical files |
+| `Windows/MainWindow.cs` | 361 | Composition, snapshot/dispatch and gated mutations shared one file; split by responsibility while retaining one window lifetime |
+| `Windows/ManagedServices.cs` | 452 | Scheduling, package transactions, process startup and strategy tests mixed; partials retain the single owner and cancellation fields |
+| `Installer/UI/KotUI.cpp` | 665 | Cohesive native drawing, DPI, controls and NSIS callback ABI; kept intact, a broad split would add resource-lifetime risk |
+| `WindowTests/InstallerUiTests.cs` | 418 | Cohesive real installer interaction scenarios; kept rather than creating fragmented test fixtures |
+| `Windows/Tunnel.cs` | 301 | Shared generation/gate and cleanup policy; no ownership rewrite without a separate fault/concurrency design |
+| `Core/Subscriptions.cs` | 235 | Parsing/import orchestration already uses ClashImport, provider routing and Xray helpers; no speculative parser rewrite |
+| `Tests/xhttp_integration.py`, `Tests/ui_p51.py` | 381 / 366 | Scenario suites with ordered setup/teardown; line count alone does not justify splitting |
+| `site/demo/bridge.js`, `site/scripts/common.js` | 288 / 268 | Deliberate synthetic host and landing-page behavior, respectively; neither should become the native app's business logic |
+
+The audit also covered Core persistence/normalization and routing precedence, Windows automation and process exit, browser generation/error paths, signed setup/package verification, owned-file uninstall, workflow provenance and documentation links. Repeated UI values were centralized where their semantic role matches. Byte-format helpers with different displayed units and native installer drawing parameters were not silently unified.
+
+## Risk controls retained during implementation
 
 1. Preserve UI IDs, RPC action names, payloads, timeouts, native source checks and cancellation exceptions.
 2. Preserve profile normalization, DPAPI envelope, atomic replacement and recovery copies.
@@ -35,5 +54,7 @@ Base: `a92bd99159ca56becb5fd583b794a760e5671c39`, the head of [PR #51](https://g
 - P2: Extract remaining subscription/server/update UI controllers when their behavior next changes, using the same explicit dependencies. Avoid a second mutable global state store.
 - P2: Continue installer interrupted-recovery diagnostics on Windows; do not infer reliability solely from a successful clean install.
 - P2: Share browser fixture builders so fixture snapshots cannot drift independently from the documented host projection.
+- P2: Review different displayed byte units in UI helpers before sharing their formatting; they currently serve different screens and changing units is visible behavior.
+- P3: Consider a generated bridge between web design tokens and native installer constants only with a reviewed cross-runtime schema and native DPI evidence. CSS cannot be consumed by the GDI+/NSIS surface directly.
 
 Execution results and limitations are recorded in the PR/report after validation, not inferred from this plan.
