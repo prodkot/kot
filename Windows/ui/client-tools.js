@@ -1,10 +1,10 @@
 /* Optional pages share the same host bridge as the connection screen. */
 'use strict';
-window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeDialog,page}) => {
+window.KotClientTools = ({getModel,getPage,rpc,toast,openDialog,closeDialog,page}) => {
   const $=id=>document.getElementById(id);
   const formatBytes=n=>{n=Math.max(0,Number(n)||0);const units=['Б','КиБ','МиБ','ГиБ','ТиБ'];let i=0;while(n>=1024&&i<4){n/=1024;i++;}return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:i?1:0}).format(n)+' '+units[i];};
   const routeName=r=>({vpn:'Через VPN',direct:'Напрямую',unknown:'Маршрут не определён'}[r]||'Не определено');
-  let qrNode='',qrAttempt=0,importing=false,toolsStarting='',sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='';
+  let qrNode='',qrAttempt=0,importing=false,toolsStarting='',sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='',lastStatisticsPeriod='session';
   async function perform(action,data={}) {try{return await rpc(action,data);}catch(e){toast(e.message);return null;}}
   function nodeOptions(){
     const model=getModel(),nodes=model.nodes||[],key=JSON.stringify(nodes.map(n=>[n.id,n.name]));
@@ -82,6 +82,7 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     canvas.setAttribute('aria-label',(bars?'Трафик по дням':'Скорость')+'. Скачано и отправлено. Максимум '+formatBytes(max)+(bars?'':' в секунду'));
   }
   function renderStatistics(period){
+    lastStatisticsPeriod=period; // Redraw the last rendered period after resize, without calling the page controller.
     if(getPage()!=='statistics')return;const model=getModel(),detail=model.statistics?.detail;
     const today=new Date(),dayKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),lastDay=dayKey(today),first=new Date(today);first.setDate(first.getDate()-(period==='week'?6:29));const firstDay=dayKey(first);
     const key=JSON.stringify([period,detail,lastDay,getModel().settings?.theme,$('trafficChart').clientWidth]);if(key===lastStatisticsKey)return;lastStatisticsKey=key;
@@ -96,6 +97,6 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     $('trafficChartCaption').textContent=points.length?'Скачано: цвет акцента · отправлено: синий. '+(session?'Пробелы означают отсутствие измерений.':'Суммарный трафик ядра; итоги выше включают выбранный период.'):'График появится после накопления данных.';
     const labels=session?(points.length?[new Date(points[0].time).toLocaleTimeString('ru-RU'),new Date(points[points.length-1].time).toLocaleTimeString('ru-RU')]:[]):days.length?[new Date(days[0].date+'T12:00:00').toLocaleDateString('ru-RU'),new Date(days[days.length-1].date+'T12:00:00').toLocaleDateString('ru-RU')]:[];paint(points,!session,labels);
   }
-  new ResizeObserver(()=>{lastStatisticsKey='';if(getPage()==='statistics')renderStatistics(getPeriod());}).observe($('trafficChart'));
+  new ResizeObserver(()=>{lastStatisticsKey='';if(getPage()==='statistics')renderStatistics(lastStatisticsPeriod);}).observe($('trafficChart'));
   return {render,renderStatistics,share};
 };
