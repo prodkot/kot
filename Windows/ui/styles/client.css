@@ -38,7 +38,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 
 button:active:not(:disabled) {
-  transform:scale(.97)
+  transform:scale(var(--scale-press))
 }
 
 button {
@@ -800,7 +800,7 @@ svg {
   font-size:var(--font-caption);
   color:var(--muted);
   margin-top:12px;
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .dialog-error {
@@ -818,7 +818,7 @@ svg {
 }
 
 .quiet-button,.primary {
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   padding:11px var(--space-md);
   font-size:var(--font-control)
 }
@@ -1176,7 +1176,7 @@ body {
 }
 
 .icon-button:disabled,.primary:disabled,.quiet-button:disabled {
-  opacity:.5;
+  opacity:var(--opacity-disabled);
   cursor:not-allowed
 }
 
@@ -1294,7 +1294,7 @@ body {
   justify-content:center;
   gap:6px;
   border:0;
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   background:transparent;
   color:var(--muted);
   padding:9px;
@@ -1593,7 +1593,7 @@ body {
   padding:10px;
   background:var(--surface);
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   color:var(--muted);
   font-size:var(--font-caption)
 }
@@ -1860,7 +1860,7 @@ body {
   font-size:var(--font-control);
   font-weight:var(--weight-emphasis);
   overflow-wrap:anywhere;
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .profile-copy small {
@@ -1975,7 +1975,7 @@ body {
 }
 
 .update-notice button:disabled {
-  opacity:.5;
+  opacity:var(--opacity-disabled);
   cursor:not-allowed
 }
 
@@ -2021,7 +2021,7 @@ body {
   padding:10px var(--space-sm);
   background:var(--surface);
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   font-size:var(--font-control)
 }
 
@@ -2033,7 +2033,7 @@ body {
 
 .geoip-dialog .dialog-note {
   margin:10px 0;
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .geoip-dialog input {
@@ -2041,7 +2041,7 @@ body {
 }
 
 .geoip-dialog button:disabled {
-  opacity:.5
+  opacity:var(--opacity-disabled)
 }
 
 .routing-tabs {
@@ -2087,7 +2087,7 @@ body {
 .statistics-session-note {
   font-size:var(--font-caption);
   color:var(--muted);
-  line-height:1.6;
+  line-height:var(--line-body);
   margin-top:8px;
   overflow-wrap:anywhere
 }
@@ -2171,14 +2171,14 @@ body {
   margin-top:20px;
   padding-top:16px;
   border-top:1px solid var(--line);
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .statistics-error {
   font-size:var(--font-caption);
   color:var(--danger);
   margin-top:12px;
-  line-height:1.6;
+  line-height:var(--line-body);
   overflow-wrap:anywhere
 }
 
@@ -2237,7 +2237,7 @@ body {
 .tools-card p {
   font-size:var(--font-control);
   color:var(--muted);
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .tool-form {
@@ -2362,7 +2362,7 @@ body {
   height:auto;
   margin:15px auto;
   background:#fff;
-  border-radius:8px
+  border-radius:var(--radius-compact)
 }
 
 .qr-link {
@@ -2496,7 +2496,7 @@ body {
 }
 
 .tool-buttons button:disabled,.qr-node:disabled {
-  opacity:.5
+  opacity:var(--opacity-disabled)
 }
 
 .quality-progress {
@@ -2744,7 +2744,7 @@ body {
 .error {
   color:var(--danger);
   font-size:var(--font-control);
-  line-height:1.6;
+  line-height:var(--line-body);
   overflow-wrap:anywhere;
   white-space:pre-wrap
 }
@@ -2936,7 +2936,7 @@ body {
 
 .advanced-hwid {
   padding:var(--space-sm) 0;
-  min-height:42px;
+  min-height:var(--field-height);
   border-bottom:1px solid var(--line);
   margin-bottom:14px
 }
@@ -3111,7 +3111,7 @@ body.revealing .main,body.revealing .sidebar {
   flex:1;
   padding:10px var(--space-xs);
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   background:transparent;
   color:var(--muted);
   font-size:var(--font-control)
@@ -3138,7 +3138,7 @@ body.revealing .main,body.revealing .sidebar {
   height:114px;
   max-height:220px;
   font-size:var(--font-caption);
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .routing-lists .routing-block label {
@@ -3168,7 +3168,7 @@ body.revealing .main,body.revealing .sidebar {
 .routing-status {
   font-size:var(--font-caption);
   color:var(--muted);
-  line-height:1.6;
+  line-height:var(--line-body);
   margin-top:14px;
   overflow-wrap:anywhere
 }
@@ -3209,7 +3209,7 @@ body.revealing .main,body.revealing .sidebar {
 }
 
 .routing-dialog select:disabled,.routing-dialog button:disabled {
-  opacity:.5;
+  opacity:var(--opacity-disabled);
   cursor:not-allowed
 }
 
@@ -3263,7 +3263,7 @@ body.revealing .main,body.revealing .sidebar {
   background:var(--line);
   border:2px solid transparent;
   background-clip:padding-box;
-  border-radius:8px
+  border-radius:var(--radius-compact)
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -3281,7 +3281,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 }
 
 .logs-view .page-header .server-actions>button {
-  height:42px
+  height:var(--field-height)
 }
 
 .logs-view .page-header .icon-button {
@@ -3304,7 +3304,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
   width:34px;
   height:34px;
   margin-right:6px;
-  border-radius:8px
+  border-radius:var(--radius-compact)
 }
 
 .qr-node svg {
@@ -3504,7 +3504,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
   color:var(--muted);
   font-size:10px;
   text-align:left;
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .about-credit:hover {
@@ -3533,27 +3533,20 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 .quiet-button {
   min-height:var(--control-height);
   padding:9px 13px;
-  line-height:20px
+  line-height:var(--line-control)
 }
 
 .primary {
-  min-height:40px;
+  min-height:var(--control-height);
   padding:10px 14px;
-  line-height:20px
+  line-height:var(--line-control)
 }
 
 /* Recommendation and saved selection are independent states. Keep all action labels stationary. */
 .service-result {
-  --strategy-accent:#d5f88c;
-  --strategy-ink:#26331c;
-  --strategy-detail:#d4f58a;
   align-items:center
 }
 
-.theme-light .service-result {
-  --strategy-accent:#cbe991;
-  --strategy-detail:#55752a
-}
 
 .strategy-best {
   display:block;
@@ -3672,7 +3665,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
   min-width:36px;
   padding:0;
   border:0;
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   background:transparent;
   color:var(--muted)
 }
@@ -3719,7 +3712,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 
 .dialog-body::-webkit-scrollbar-thumb {
   background:var(--line);
-  border-radius:8px
+  border-radius:var(--radius-compact)
 }
 
 .dialog-body>form>label:first-child,.dialog-body>label:first-child,.dialog-body>form>.service-checkbox:first-child {
@@ -3759,7 +3752,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 .dialog .quiet-button,.dialog .primary {
   min-height:var(--control-height);
   padding:9px 13px;
-  line-height:20px
+  line-height:var(--line-control)
 }
 
 .dialog .primary {
@@ -3771,10 +3764,10 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 }
 
 .dialog input:not([type=checkbox]),.dialog select {
-  height:42px;
-  min-height:42px;
+  height:var(--field-height);
+  min-height:var(--field-height);
   padding:10px var(--space-sm);
-  line-height:20px
+  line-height:var(--line-control)
 }
 
 .dialog .ping-grid,.dialog .automation-grid,.dialog .routing-grid {
@@ -3787,7 +3780,7 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 }
 
 .dialog .dialog-note {
-  line-height:1.6;
+  line-height:var(--line-body);
   overflow-wrap:anywhere
 }
 
@@ -3825,7 +3818,7 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
   background:var(--raised);
   color:var(--text);
   box-shadow:0 12px 32px #0004;
-  line-height:1.6
+  line-height:var(--line-body)
 }
 
 .help-body p,.help-body .dialog-note {
@@ -4114,7 +4107,7 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
   height:5px;
   margin-top:12px;
   overflow:hidden;
-  border-radius:8px;
+  border-radius:var(--radius-compact);
   background:var(--line);
   transition:background var(--motion-surface)
 }
@@ -4166,8 +4159,8 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
 }
 
 #qualityStatus {
-  min-height:40px;
-  line-height:20px;
+  min-height:var(--control-height);
+  line-height:var(--line-control);
   margin:12px 0 0
 }
 
@@ -4245,7 +4238,7 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
 }
 
 .service-checkbox input:disabled {
-  opacity:.5;
+  opacity:var(--opacity-disabled);
   cursor:not-allowed
 }
 

@@ -29,6 +29,7 @@ jobs:
           python3 -m pip install -r requirements-dev.txt
           python3 -m playwright install --with-deps chromium
           python3 site/demo_browser_check.py
+          python3 Tests/architecture_ui.py
           python3 Tests/ui.py
           python3 Tests/journal_ui.py
           python3 Tests/flags_ui.py

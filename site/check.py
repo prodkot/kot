@@ -102,10 +102,20 @@ class SiteTests(unittest.TestCase):
             self.assertEqual((dest / "demo/styles/tokens.css").read_bytes(), (ROOT.parent / "Windows/ui/styles/tokens.css").read_bytes())
             self.assertNotIn('fonts/Manrope.ttf', demo)
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
-            self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
-            self.assertEqual((dest / "demo/client-tools.js").read_bytes(), (ROOT.parent / "Windows/ui/client-tools.js").read_bytes())
-            self.assertEqual((dest / "demo/services.js").read_bytes(), (ROOT.parent / "Windows/ui/services.js").read_bytes())
-            self.assertEqual((dest / "demo/dialog-ui.js").read_bytes(), (ROOT.parent / "Windows/ui/dialog-ui.js").read_bytes())
+            for source in (ROOT.parent / 'Windows/ui').glob('*.js'):
+                target = 'client.js' if source.name == 'app.js' else source.name
+                self.assertEqual((dest / 'demo' / target).read_bytes(), source.read_bytes(), target)
+            references = []
+            class DemoReferences(HTMLParser):
+                def handle_starttag(self, tag, attrs):
+                    values = dict(attrs)
+                    if tag == 'script' and 'src' in values:
+                        references.append(values['src'])
+                    if tag == 'link' and values.get('rel') == 'stylesheet':
+                        references.append(values['href'])
+            DemoReferences().feed(demo)
+            for reference in references:
+                self.assertTrue((dest / 'demo' / reference).is_file(), reference)
             self.assertTrue((dest / "demo/demo.css").is_file())
             self.assertTrue((dest / "demo/bridge.js").is_file())
             self.assertEqual((dest / "demo/flags/de.svg").read_bytes(), (ROOT.parent / "Windows/ui/flags/de.svg").read_bytes())

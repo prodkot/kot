@@ -32,7 +32,7 @@
     animate(el,[{opacity:0,transform:'translate(-50%,7px)'},{opacity:1,transform:'translate(-50%,0)'}]);
     toastTimer=setTimeout(()=>{
       const finish=()=>{if(generation!==toastGeneration)return;el.hidePopover();el.hidden=true;cancelMotion(el);};
-      const motion=animate(el,[{opacity:1,transform:'translate(-50%,0)'},{opacity:0,transform:'translate(-50%,7px)'}],{duration:200});
+      const motion=animate(el,[{opacity:1,transform:'translate(-50%,0)'},{opacity:0,transform:'translate(-50%,7px)'}],{duration:parseFloat(motionTokens.getPropertyValue('--motion-exit'))});
       if(motion)motion.finished.then(finish).catch(()=>{if(reduce.matches)finish();});else finish();
     },4000);
   }
@@ -98,7 +98,7 @@
       const icon=$('powerIcon'),from=getComputedStyle(icon).transform;cancelMotion(icon);
       if(current==='home'){
         animate($('stateLabel'),[{opacity:0,transform:'translateY(3px)'},{opacity:1,transform:'translateY(0)'}],{duration:220});
-        animate($('powerLabel'),[{opacity:0},{opacity:1}],{duration:200});
+        animate($('powerLabel'),[{opacity:0},{opacity:1}],{duration:parseFloat(motionTokens.getPropertyValue('--motion-exit'))});
         if(state==='connected')animate(icon,[{transform:'scale(.82)'},{transform:'scale(1.12)',offset:.6},{transform:'scale(1)'}],{duration:440});
         else if(from!=='none')animate(icon,[{transform:from},{transform:'scale(1)'}],{duration:300});
       }
@@ -207,7 +207,7 @@
     if(!subscriptionMenu.matches(':popover-open')||menuClosing)return;
     menuClosing=true;const generation=++menuGeneration,style=getComputedStyle(subscriptionMenu);
     const finish=()=>{if(generation!==menuGeneration)return;subscriptionMenu.hidePopover();cancelMotion(subscriptionMenu);menuClosing=false;menuExit=null;};
-    menuExit=finish;const motion=animate(subscriptionMenu,[{opacity:style.opacity,transform:style.transform},{opacity:0,transform:'translateY('+(subscriptionMenu.dataset.upwards==='true'?'4':'-4')+'px) scale(.985)'}],{duration:200});
+    menuExit=finish;const motion=animate(subscriptionMenu,[{opacity:style.opacity,transform:style.transform},{opacity:0,transform:'translateY('+(subscriptionMenu.dataset.upwards==='true'?'4':'-4')+'px) scale(.985)'}],{duration:parseFloat(motionTokens.getPropertyValue('--motion-exit'))});
     if(motion)motion.finished.then(finish).catch(()=>{if(reduce.matches)finish();});else finish();
   }
   reduce.addEventListener('change',()=>{if(reduce.matches)menuExit?.();});
@@ -274,7 +274,7 @@
   }
   function openSubscriptions(last=false){
     menuGeneration++;menuClosing=false;menuExit=null;cancelMotion(subscriptionMenu);positionSubscriptions();if(!subscriptionMenu.matches(':popover-open'))subscriptionMenu.showPopover();
-    animate(subscriptionMenu,[{opacity:0,transform:'translateY('+(subscriptionMenu.dataset.upwards==='true'?'4':'-4')+'px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:200});
+    animate(subscriptionMenu,[{opacity:0,transform:'translateY('+(subscriptionMenu.dataset.upwards==='true'?'4':'-4')+'px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:parseFloat(motionTokens.getPropertyValue('--motion-exit'))});
     const options=[...$('subscriptionOptions').querySelectorAll('.profile-option')];
     const target=last?options.at(-1):options.find(b=>b.getAttribute('aria-pressed')==='true')||options[0];
     focusSubscription(target||$('addSubscriptionOption'));
