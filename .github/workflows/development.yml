@@ -120,6 +120,8 @@ jobs:
             if (!(Test-Path $installed) -or (Get-FileHash $installed).Hash -ne (Get-FileHash $file.FullName).Hash) { throw "Installed payload mismatch: $installed" }
           }
           ./Tests/startup-installed.ps1 -InstallDirectory $target -Setup $setup.FullName
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File Tests/qa_webview.ps1 -LoaderPath "$target/WebView2Loader.dll"
+          if ($LASTEXITCODE -ne 0) { throw 'Shipped QA WebView discovery failed.' }
           python QA/package.py --publish $publish --setup $setup.FullName --output artifacts
           if ($LASTEXITCODE -ne 0) { throw 'QA kit packaging failed.' }
           # Exercise the same entry point shipped to users, on Windows PowerShell 5.1.

@@ -105,16 +105,15 @@ try {
     $version=Core 'version' 10
     if ($version.code -ne 0 -or $version.output -notmatch ('Xray '+[regex]::Escape($expected.coreVersion)+' ') -or $version.output -notmatch [regex]::Escape($expected.goVersion)) { throw 'core-version' }
     Result 'xray-version' 'PASS' ($expected.coreVersion+' '+$expected.goVersion)
-    $wv=@()
-    foreach ($base in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients','HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients','HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients')) {
-        if (Test-Path $base) {
-            foreach ($key in Get-ChildItem $base) {
-                $value=Get-ItemProperty $key.PSPath
-                if ($value.name -match 'WebView2' -and $value.pv -match '^\d+\.\d+\.\d+\.\d+$') { $wv+=$value.pv }
-            }
-        }
-    }
-    Result 'webview2-runtime' $(if ($wv.Count) {'PASS'} else {'FAIL'}) (($wv | Select-Object -Unique) -join ',')
+    # Display names in EdgeUpdate registry entries are not an availability API.
+    # Probe the verified loader used by the client; never emit private paths/errors.
+    try {
+        Add-Type -Path (Join-Path $PSScriptRoot 'WebViewRuntime.cs')
+        $wv=[KotQaWebViewRuntime]::Probe((Join-Path $InstallDirectory 'WebView2Loader.dll'))
+        if ($wv -match '^\d+\.\d+\.\d+\.\d+( (beta|dev|canary))?$' -and $wv -notmatch '^0\.0\.0\.0($| )') {
+            Result 'webview2-runtime' 'PASS' $wv
+        } else { Result 'webview2-runtime' 'FAIL' 'unavailable' }
+    } catch { Result 'webview2-runtime' 'FAIL' 'probe-failed' }
     # Only fixed fields from the new structured startup record are allowed out.
     $startupPath=Join-Path $env:LOCALAPPDATA 'KotVPN\startup-error.json'
     if ((Test-Path $startupPath) -and (Get-Item $startupPath).Length -le 16384) {

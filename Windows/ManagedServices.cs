@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace Kot.Windows;
 
 // Manages owned packages and child jobs without stopping shared Windows drivers.
-internal sealed class ManagedServices
+internal sealed partial class ManagedServices
 {
     sealed class Entry(string id)
     {
@@ -59,37 +59,6 @@ internal sealed class ManagedServices
     }
     Entry Get(string id) { ServicePackages.Repository(id); return entries.Single(e => e.Id == id); }
     bool IsBusy(Entry entry) => entry.Busy || entry.Id == "zapret" && preparingVpn;
-    string Root(string id) => Path.Combine(folder, id);
-    string Manifest(string id) => Path.Combine(Root(id), "current.json");
-    void PrepareIntegrity(Entry entry)
-    {
-        if (ServiceIntegrity.Prepare(folder, Root(entry.Id), entry.Id == "zapret" ? ServiceIntegrity.High : ServiceIntegrity.Medium))
-            AddLog(entry, "Восстановлены метки доступа файлов сервиса для корректного запуска.");
-    }
-    string Exe(Entry entry) => OwnedPath(entry.Id, entry.Installed?.Executable ?? throw new UserError("Сначала установите сервис."));
-    string OwnedPath(string id, string relative)
-    {
-        string root = Path.GetFullPath(Root(id)) + Path.DirectorySeparatorChar;
-        string path = Path.GetFullPath(Path.Combine(root, relative));
-        if (Path.IsPathRooted(relative) || !path.StartsWith(root + "packages" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new UserError("Некорректная папка управляемого сервиса.");
-        for (string? p = path; p != null && p.Length >= root.Length; p = Path.GetDirectoryName(p))
-            if ((File.Exists(p) || Directory.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0) throw new UserError("Папка сервиса содержит перенаправление.");
-        return path;
-    }
-    ServiceInstallation? ReadInstallation(string id)
-    {
-        string path = Manifest(id); if (!File.Exists(path)) return null;
-        if (new FileInfo(path).Length > 8192) throw new UserError("Некорректный манифест сервиса.");
-        var value = JsonSerializer.Deserialize<ServiceInstallation>(File.ReadAllText(path), json) ?? throw new UserError("Не прочитан манифест сервиса.");
-        if (!ServicePackages.ValidVersion(value.Version) || value.Sha256.Length != 64 || !value.Sha256.All(Uri.IsHexDigit) || Path.GetFileName(value.Executable) != (id == "zapret" ? "winws.exe" : "TgWsProxy_windows.exe") || !File.Exists(OwnedPath(id, value.Executable))) throw new UserError("Файлы установленного сервиса не найдены.");
-        return value;
-    }
-    static void Atomic(string path, byte[] data)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!); string temp = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        try { File.WriteAllBytes(temp, data); File.Move(temp, path, true); } finally { if (File.Exists(temp)) File.Delete(temp); }
-    }
-    void Commit(Entry entry, ServiceInstallation install) => Atomic(Manifest(entry.Id), JsonSerializer.SerializeToUtf8Bytes(install, json));
     void AddLog(Entry entry, string message)
     {
         string clean = AppLog.Clean(message); if (clean.Length > 1500) clean = clean[..1500];
@@ -134,11 +103,6 @@ internal sealed class ManagedServices
         }
         return logs.TakeLast(120).ToArray();
     }
-    string[] Strategies(Entry entry)
-    {
-        string root = Path.GetDirectoryName(Path.GetDirectoryName(Exe(entry)))!;
-        return Directory.GetFiles(root, "*.bat").Where(s => ZapretStrategy.ValidName(Path.GetFileName(s))).OrderBy(s => Path.GetFileName(s).Equals("general.bat", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(Path.GetFileName).Take(64).ToArray();
-    }
     public void Begin(string id, string action, string[]? selected = null)
     {
         if (shuttingDown) throw new UserError("Приложение завершает работу.");
@@ -172,201 +136,6 @@ internal sealed class ManagedServices
         catch (OperationCanceledException) { entry.Error = "Операция отменена или превышено время ожидания."; AddLog(entry, entry.Error); }
         catch (Exception ex) { entry.Error = Store.Friendly(ex); AddLog(entry, entry.Error); AppLog.Error("service " + entry.Id, ex); }
         finally { entry.Busy = false; entry.Phase = ""; if (entry.Attempt == attempt) entry.Attempt = null; attempt.Dispose(); if (!shuttingDown) changed(); }
-    }
-    async Task Check(Entry entry, CancellationToken ct)
-    {
-        entry.Latest = await ServicePackages.Latest(entry.Id, ct, transport: metadataTransport?.Invoke(), proxyPort: proxyPort()); entry.Checked = DateTimeOffset.UtcNow;
-        AddLog(entry, "Последняя стабильная версия: " + entry.Latest.Version);
-    }
-    async Task Install(Entry entry, CancellationToken ct)
-    {
-        await Check(entry, ct); var release = entry.Latest!;
-        if (entry.Installed != null && !ServicePackages.Newer(release.Version, entry.Installed.Version)) { AddLog(entry, "Установлена актуальная версия."); return; }
-        string root = Root(entry.Id); Directory.CreateDirectory(root);
-        string staging = Path.Combine(root, "staging-" + Guid.NewGuid().ToString("N")), download = Path.Combine(root, "download-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(staging);
-        string? package = null; var old = entry.Installed; bool running = entry.Process != null && !entry.Process.HasExited, committed = false, applying = false;
-        try
-        {
-            await ServicePackages.Download(release, download, new Progress<double>(p => { entry.Progress = p; }), ct, proxyPort: proxyPort());
-            entry.Phase = "Проверка и подготовка"; changed();
-            string executable;
-            if (entry.Id == "zapret")
-            {
-                await Task.Run(() => ServicePackages.Extract(download, staging, ct), ct);
-                var candidates = Directory.GetFiles(staging, "winws.exe", SearchOption.AllDirectories);
-                if (candidates.Length != 1 || Path.GetFileName(Path.GetDirectoryName(candidates[0])) != "bin") throw new UserError("В пакете отсутствует winws.exe.");
-                executable = Path.GetRelativePath(staging, candidates[0]);
-                string releaseRoot = Path.GetDirectoryName(Path.GetDirectoryName(candidates[0]))!;
-                PrepareLists(releaseRoot);
-                var strategies = Directory.GetFiles(releaseRoot, "*.bat").Where(s => ZapretStrategy.ValidName(Path.GetFileName(s))).ToArray();
-                if (strategies.Length == 0) throw new UserError("В пакете отсутствуют стратегии zapret.");
-                foreach (var strategy in strategies) ZapretStrategy.Parse(File.ReadAllText(strategy), Path.Combine(releaseRoot, "bin"), Path.Combine(releaseRoot, "lists"), options().Zapret.GameFilter);
-                if (!strategies.Any(s => Path.GetFileName(s) == options().Zapret.Strategy)) throw new UserError("Сохранённая стратегия отсутствует в обновлении. Выберите general.bat перед обновлением.");
-            }
-            else
-            {
-                executable = "TgWsProxy_windows.exe";
-                await using var file = File.OpenRead(download); byte[] signature = new byte[2]; if (await file.ReadAsync(signature, ct) != 2 || signature[0] != 'M' || signature[1] != 'Z') throw new UserError("Пакет Telegram не является Windows-приложением.");
-                File.Copy(download, Path.Combine(staging, executable));
-                File.WriteAllText(Path.Combine(staging, "LICENSE.txt"), ServicePackages.TelegramLicense);
-            }
-            ct.ThrowIfCancellationRequested();
-            string relative = Path.Combine("packages", release.Version + "-" + Guid.NewGuid().ToString("N")); package = Path.Combine(root, relative); Directory.CreateDirectory(Path.GetDirectoryName(package)!);
-            Directory.Move(staging, package); var install = new ServiceInstallation(release.Version, Path.Combine(relative, executable), release.Sha256);
-            PrepareIntegrity(entry);
-            entry.Phase = "Применение обновления"; applying = true; await Stop(entry); ct.ThrowIfCancellationRequested();
-            entry.Installed = install;
-            if (running) await Start(entry, null, ct);
-            Commit(entry, install); committed = true; AddLog(entry, "Установлена версия " + release.Version); entry.Status = entry.Process == null ? "Остановлен" : "Работает";
-            // Retain the previous package for recovery; remove older managed packages.
-            string? keep = old == null ? null : PackageDirectory(entry.Id, old.Executable);
-            foreach (string directory in Directory.GetDirectories(Path.Combine(root, "packages")))
-                if (directory != package && directory != keep)
-                {
-                    try { if (ManagedPackageFiles.Remove(root, directory)) AddLog(entry, "Занятые файлы старого пакета будут удалены после перезагрузки Windows."); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or UserError) { AddLog(entry, "Не удалось очистить старый пакет: " + Store.Friendly(ex)); }
-                }
-        }
-        catch
-        {
-            if (!committed && applying)
-            {
-                await Stop(entry); entry.Installed = old;
-                if (running && old != null && !shuttingDown) { try { await Start(entry, null, CancellationToken.None); } catch (Exception ex) { AddLog(entry, "Не удалось перезапустить предыдущую версию: " + Store.Friendly(ex)); } }
-            }
-            throw;
-        }
-        finally
-        {
-            TryDelete(download); ManagedPackageFiles.Remove(root, staging);
-            if (!committed && package != null) ManagedPackageFiles.Remove(root, package);
-        }
-    }
-    string PackageDirectory(string id, string executable)
-    {
-        string path = OwnedPath(id, executable); string packages = Path.Combine(Path.GetFullPath(Root(id)), "packages");
-        while (Path.GetDirectoryName(path) != packages) path = Path.GetDirectoryName(path) ?? throw new UserError("Некорректная папка пакета.");
-        return path;
-    }
-    void PrepareLists(string root)
-    {
-        string lists = Path.Combine(root, "lists"); if (!Directory.Exists(lists)) throw new UserError("В пакете отсутствуют списки zapret.");
-        var value = options().Zapret;
-        Atomic(Path.Combine(lists, "list-general-user.txt"), Encoding.UTF8.GetBytes("# Managed by kot\n" + string.Join('\n', Configuration.Domains(value.Domains).DefaultIfEmpty("domain.example.abc")) + "\n"));
-        Atomic(Path.Combine(lists, "list-exclude-user.txt"), Encoding.UTF8.GetBytes("# Managed by kot\n" + string.Join('\n', Configuration.Domains(value.ExcludedDomains).DefaultIfEmpty("domain.example.abc")) + "\n"));
-        if (!File.Exists(Path.Combine(lists, "ipset-exclude-user.txt"))) Atomic(Path.Combine(lists, "ipset-exclude-user.txt"), Encoding.UTF8.GetBytes("# User exclusions\n203.0.113.0/24\n"));
-    }
-    async Task Start(Entry entry, string? strategy, CancellationToken ct)
-    {
-        if (entry.Process != null && !entry.Process.HasExited) return;
-        if (entry.Process != null) { entry.Process.Dispose(); entry.Process = null; }
-        ct.ThrowIfCancellationRequested(); string exe = Exe(entry); options().Validate();
-        PrepareIntegrity(entry);
-        if (entry.Id == "telegram")
-        {
-            if (await PortOpen(options().Telegram.Port, ct)) throw new UserError("Локальный порт Telegram занят. Измените порт или остановите другой прокси.");
-            string data = Path.Combine(Path.GetDirectoryName(exe)!, "TgWsProxy_data"); Directory.CreateDirectory(data);
-            // The official application detects this pre-populated directory beside its exe.
-            // Keep its settings separate from independently installed TgWsProxy copies.
-            Atomic(Path.Combine(data, "config.json"), options().Telegram.ServiceConfig());
-            File.WriteAllText(Path.Combine(data, ".first_run_done_mtproto"), "managed by kot"); File.WriteAllText(Path.Combine(data, ".ipv6_warned"), "see kot service help");
-        }
-        string[] arguments;
-        if (entry.Id == "zapret")
-        {
-            string root = Path.GetDirectoryName(Path.GetDirectoryName(exe))!; PrepareLists(root);
-            string selected = strategy ?? options().Zapret.Strategy;
-            string path = Strategies(entry).FirstOrDefault(s => Path.GetFileName(s) == selected) ?? throw new UserError("Стратегия не найдена в установленном пакете.");
-            arguments = ZapretStrategy.Parse(File.ReadAllText(path), Path.GetDirectoryName(exe)!, Path.Combine(root, "lists"), options().Zapret.GameFilter);
-        }
-        else arguments = [];
-        entry.Status = "Запускается";
-        try
-        {
-            entry.Process = new NativeCore(exe, arguments, Path.GetDirectoryName(exe)!, "kot. " + entry.Id, line => AddLog(entry, line));
-            if (entry.Id == "telegram")
-            {
-                bool ready = false;
-                for (int i = 0; i < 80; i++) { ct.ThrowIfCancellationRequested(); if (entry.Process.HasExited) break; if (await PortOpen(options().Telegram.Port, ct)) { ready = true; break; } await Task.Delay(250, ct); }
-                if (!ready || entry.Process.HasExited) throw new UserError("Telegram-прокси не открыл локальный порт. Проверьте журнал и наличие другой копии TgWsProxy.");
-            }
-            else { await Task.Delay(1200, ct); if (entry.Process.HasExited) throw new UserError("zapret завершился при запуске. Проверьте WinDivert, права и журнал."); }
-            entry.Status = "Работает"; AddLog(entry, "Запущен" + (entry.Id == "zapret" ? ": " + (strategy ?? options().Zapret.Strategy) : " на 127.0.0.1:" + options().Telegram.Port));
-        }
-        catch { await Stop(entry); throw; }
-    }
-    internal static async Task<bool> PortOpen(int port, CancellationToken ct)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(500);
-        try { using var socket = new TcpClient(); await socket.ConnectAsync(IPAddress.Loopback, port, timeout.Token); return true; }
-        catch (SocketException) { return false; } catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; }
-    }
-    async Task Stop(Entry entry)
-    {
-        var process = entry.Process; entry.Process = null;
-        try
-        {
-            if (process != null) await process.Stop();
-        }
-        finally
-        {
-            if (entry.Id == "telegram" && entry.Installed != null) TryDelete(Path.Combine(Path.GetDirectoryName(Exe(entry))!, "TgWsProxy_data", "config.json"));
-            entry.Status = entry.Installed == null ? "Не установлен" : "Остановлен";
-        }
-        if (process != null) AddLog(entry, "Остановлен вместе с дочерними процессами");
-    }
-    async Task Test(Entry entry, string[]? selected, CancellationToken ct)
-    {
-        var value = options().Zapret; value.Validate(); var targets = ServiceProbe.Targets(value.Targets);
-        var available = Strategies(entry).Select(Path.GetFileName).ToArray();
-        var strategies = selected == null || selected.Length == 0 ? available : selected.Distinct().ToArray();
-        if (strategies.Length is < 1 or > 64 || strategies.Any(s => !available.Contains(s))) throw new UserError("Выберите стратегии из установленного пакета.");
-        bool running = entry.Process != null && !entry.Process.HasExited; Testing = true;
-        test = new StrategyTestRun { Version = entry.Installed!.Version }; changed();
-        try
-        {
-            entry.Phase = "Проверка без zapret"; await Stop(entry); await Task.Delay(600, ct);
-            test.Baseline = await ServiceProbe.Run(targets, value.TimeoutSeconds, ct); SaveHistory(test);
-            for (int i = 0; i < strategies.Length; i++)
-            {
-                ct.ThrowIfCancellationRequested(); if (networkBusy()) throw new UserError("Подключение изменилось. Подбор остановлен, результаты сохранены.");
-                string strategy = strategies[i]!; entry.Phase = $"{i + 1}/{strategies.Length}: {strategy}"; entry.Progress = i / (double)strategies.Length; changed();
-                try
-                {
-                    await Start(entry, strategy, ct); await Task.Delay(800, ct);
-                    var checks = await ServiceProbe.Run(targets, value.TimeoutSeconds, ct);
-                    if (entry.Process == null || entry.Process.HasExited) test.Results.Add(new(strategy, checks, "Процесс завершился во время теста"));
-                    else test.Results.Add(new(strategy, checks));
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { test.Results.Add(new(strategy, [], Store.Friendly(ex))); }
-                finally { await Stop(entry); }
-                SaveHistory(test); changed();
-            }
-            entry.Progress = 1; AddLog(entry, test.Recommended == null ? "Подбор завершён: улучшение относительно прямого подключения не обнаружено." : "Рекомендована стратегия " + test.Recommended);
-        }
-        catch { test.Cancelled = true; throw; }
-        finally
-        {
-            try { await Stop(entry); }
-            finally
-            {
-                try { SaveHistory(test); }
-                finally
-                {
-                    try { if (running && !shuttingDown && !lifetime.IsCancellationRequested) await Start(entry, null, CancellationToken.None); }
-                    finally { Testing = false; }
-                }
-            }
-        }
-    }
-    void SaveHistory(StrategyTestRun result)
-    {
-        if (!history.Contains(result)) history.Add(result); history = history.TakeLast(10).ToList();
-        byte[] data = JsonSerializer.SerializeToUtf8Bytes(history, json);
-        while (data.Length > 1024 * 1024 && history.Count > 1) { history.RemoveAt(0); data = JsonSerializer.SerializeToUtf8Bytes(history, json); }
-        Atomic(Path.Combine(folder, "tests.json"), data);
     }
     public Task Wait(string id) => id == "zapret" && preparingVpn ? vpnPreparation : Get(id).Work;
     public int? ProcessId(string id) => Get(id).Process?.Process.Id;

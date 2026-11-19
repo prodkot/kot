@@ -1,0 +1,77 @@
+/* Canonical approved parameters. See docs/UI-ARCHITECTURE.md. */
+:root {
+  color-scheme:dark;
+  --bg:#151718;
+  --side:#191c1d;
+  --surface:#202425;
+  --raised:#282d2e;
+  --line:#303536;
+  --text:#f2f4ed;
+  --muted:#969e9f;
+  --accent:#d5f88c;
+  --ink:#26331c;
+  --detail:#d4f58a;
+  --danger:#ffaba2;
+  --back:#0e1011;
+  --strategy-accent:#d5f88c;
+  --strategy-ink:#26331c;
+  --strategy-detail:#d4f58a;
+  --ease:cubic-bezier(.22,1,.36,1)
+}
+
+:root {
+  --dialog-pad:20px;
+  --control-height:40px;
+  --section-gap:16px
+}
+
+.theme-light {
+  color-scheme:light;
+  --bg:#f6f6f2;
+  --side:#efefeb;
+  --surface:#fff;
+  --raised:#e6e8e0;
+  --line:#dadcd5;
+  --text:#252a23;
+  --muted:#757d73;
+  --accent:#cbe991;
+  --ink:#25301c;
+  --detail:#55752a;
+  --danger:#a73a32;
+  --strategy-accent:#cbe991;
+  --strategy-detail:#55752a;
+  --back:#e5e7df
+}
+
+:root {
+  --font-ui: Manrope, sans-serif;
+  --font-body: 14px;
+  --font-caption: 11px;
+  --font-control: 12px;
+  --font-detail: 13px;
+  --line-body: 1.6;
+  --line-control: 20px;
+  --weight-body: 500;
+  --weight-emphasis: 650;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --radius-compact: 8px;
+  --radius-control: 9px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --field-height: 42px;
+  --motion-fast: .2s;
+  --motion-control: .25s;
+  --motion-normal: .3s;
+  --motion-surface: .4s;
+  --motion-enter: 280ms;
+  --motion-exit: 200ms;
+  --motion-backdrop: 200ms;
+  --motion-help: 180ms;
+  --opacity-disabled: .5;
+  --scale-press: .97;
+  --focus-ring: 2px solid var(--detail);
+  --shadow-toast: 0 10px 30px #0003;
+}
