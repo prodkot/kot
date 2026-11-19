@@ -16,6 +16,7 @@ Base: `a92bd99159ca56becb5fd583b794a760e5671c39`, the head of [PR #51](https://g
 | Tests | Strong focused core/browser/native suites exist. Browser fixtures exercise DOM and RPC shape but cannot prove WFP/TUN or WebView lifetime. | Record baseline, compare both themes/scales, run existing native CI and real TUN development workflow separately. |
 | Site | The demo reuses app source but build.py has a hand-maintained script copy list. New modules can silently be omitted. | Copy canonical UI assets, retain the isolated mock bridge and restrictive demo CSP, verify demo parity and no native operation path. Landing branding stays independent. |
 | Release / installer | Signed package manifests, pinned upstream source, installer maintenance and recovery are already separated and security-sensitive. | No production behavior edits. Exercise payload completeness and installation because UI asset layout changes. |
+| QA runtime discovery | The final Windows development run launched the installed client successfully, then the QA kit falsely reported missing WebView because it depended on a registry display name. | Use the verified SDK loader availability API, keep errors failing and private, and validate the shipped helper under Windows PowerShell 5.1. This is a validation fix; application startup is unchanged. |
 | Docs / agents | Feature/build docs exist, but no root agent guide and no current end-to-end ownership map. | Add concise engineering rules, architecture and UI contracts linked to existing feature docs. |
 
 ## Size and coupling inventory

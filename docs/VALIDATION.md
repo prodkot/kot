@@ -49,6 +49,8 @@ For a shared layout change capture the same synthetic state before and after at 
 
 Keep the tested commit, workflow URL, job conclusions and artifact names with the review. A build of the base commit is useful baseline evidence, but cannot validate changed code. A test failure caused by tool installation or a hosted runner is still a blocked check until rerun successfully; do not relabel it as passed. Do not mask failing assertions, broaden permissions or weaken readiness/signature checks to obtain green CI.
 
+The shipped QA kit queries WebView availability through the verified installed SDK loader, not an optional registry display name. `Tests/qa_webview.ps1` exercises this under Windows PowerShell 5.1 against the installed payload. Discovery is not proof of successful browser initialization; WindowTests and installed startup checks provide that separate evidence. See Microsoft's [runtime detection](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed) and [native loader API](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/webview2-idl#getavailablecorewebview2browserversionstring).
+
 On local environments bound subprocess time and log size, close browsers, and clean up owned child processes in `finally`. Windows network tests belong on a disposable/isolated machine. Never delete unrelated routes, drivers or processes as a test cleanup shortcut.
 
 ## Report honestly
