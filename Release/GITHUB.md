@@ -1,6 +1,6 @@
 # Выпуск версии
 
-1. Обнови номер в `Core/ClientIdentity.cs`, `Windows/Kot.Windows.csproj`, `Windows/app.manifest`, интерфейсе и `Installer/Kot.nsi`.
+1. Определи версию по [правилам версионирования и передачи Setup](BUILD-IDENTITY.md). Все представления должны формироваться автоматически из единого источника. В сборке 0.8.3 базовая версия берётся из `Core/ClientIdentity.cs`. Проверь её согласованность с `Windows/Kot.Windows.csproj`, `Windows/app.manifest`, интерфейсом и `Installer/Kot.nsi`.
 2. Запиши изменения в `Release/NOTES.md` и `CHANGELOG.md`.
 3. Запусти `python Tests/repository.py`, проверки из [docs/BUILD.md](../docs/BUILD.md) и CI pull request.
 4. Сначала запусти workflow **Windows release** вручную на ветке PR с выключенной галочкой публикации. Он соберёт Setup и проверит подписи его содержимого. После успешных проверок слей PR.

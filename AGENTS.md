@@ -55,7 +55,7 @@ Partial classes are organizational boundaries, not independent services. Do not 
 - Preserve Setup and package signature verification, pinned public key, version checks, exact-byte validation, archive/path/reparse defenses and rollback evidence. Do not add unsigned fallback updates or replace trusted sources silently.
 - Installer cleanup removes only owned files and preserves user data. Read [release development](Release/DEVELOPMENT.md) before changing installation/recovery.
 - Pin dependencies/actions/toolchains, update notices and corresponding source, and justify new dependencies. A refactor is not an implicit dependency upgrade.
-- Keep runtime semantic version and generated build identity distinct; follow [build identity](Release/BUILD-IDENTITY.md). Do not fabricate a new release tag for an architecture change.
+- Before preparing, naming or handing off any installer, follow the [version and installer handoff policy](Release/BUILD-IDENTITY.md). Use Beta for a user's manual test unless another channel was explicitly requested. Keep the public version distinct from build metadata. Do not fabricate a new release tag for an architecture change.
 
 ## Validation and reporting
 
