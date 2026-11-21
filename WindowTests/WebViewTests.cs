@@ -118,8 +118,10 @@ static class WebViewTests
                 // Use both sidebar layouts in the installed Windows renderer.
                 form.ClientSize = theme == "dark" ? new Size(960, 640) : new Size(640, 540);
                 Complete(core.ExecuteScriptAsync("document.querySelector('[data-page=home]').click()"));
-                string collapsed = theme == "light" ? "true" : "false";
-                PumpUntil(() => Complete(core.ExecuteScriptAsync("matchMedia('(max-width:700px)').matches")) == collapsed, "sidebar did not resize");
+                int sidebarWidth = theme == "light" ? 64 : 188;
+                PumpUntil(() => Complete(core.ExecuteScriptAsync(
+                    $"document.querySelector('.sidebar').getBoundingClientRect().width === {sidebarWidth}")) == "true",
+                    "sidebar did not finish resizing");
                 var point = Complete(core.ExecuteScriptAsync("""
                     (()=>{const r=document.getElementById('sidebarPower').getBoundingClientRect();
                     return {type:'mouseMoved',x:r.x+r.width/2,y:r.y+r.height/2};})()
@@ -147,7 +149,9 @@ static class WebViewTests
                          t.top<0||t.left<0||t.right>innerWidth||t.bottom>b.top)throw Error('hover tooltip');
                       if(Math.abs((t.left+t.width/2)-(b.left+b.width/2))>0.1||t.width>b.width+0.1)
                         throw Error('tooltip must stay centered within the button width');
-                      if((side.querySelector('span').offsetWidth===0)!==light)throw Error('sidebar layout');
+                      const label=getComputedStyle(document.getElementById('sidebarPowerLabel'));
+                      if(label.visibility!==(light?'hidden':'visible')||label.opacity!==(light?'0':'1')||
+                         document.getElementById('sidebarToggle').getAttribute('aria-expanded')!==String(!light))throw Error('sidebar layout');
                       return 'ok';
                     })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
                     """));
