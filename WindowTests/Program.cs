@@ -131,7 +131,7 @@ internal static class Program
         Kot.WindowTests.ProfileUpgradeChecks.Run(Check);
         Kot.WindowTests.ProfileRecoveryChecks.Run(Check, args.Length > 0 ? args[0] : "artifacts/window-ui");
         Kot.WindowTests.ShellTests.Run(Check);
-        Kot.WindowTests.WebViewTests.Run(Check);
+        Kot.WindowTests.WebViewTests.Run(Check, args.Length > 0 ? args[0] : "artifacts/window-ui");
         Kot.WindowTests.BrowserRecoveryChecks.Run(Check, args.Length > 0 ? args[0] : "artifacts/window-ui");
         ProxyFixture.Run(Check);
         Kot.WindowTests.QrTests.Run(Check);

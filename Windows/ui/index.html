@@ -39,7 +39,13 @@
       <button class="nav-button" data-page="services" aria-label="Сервисы"><svg><use href="#services"/></svg><span>Сервисы</span></button>
       <button class="nav-button" data-page="settings" aria-label="Настройки"><svg><use href="#settings"/></svg><span>Настройки</span></button>
     </nav>
-    <button class="subscription" data-open-add aria-label="Добавить подписку" title="Добавить подписку"><svg><use href="#plus"/></svg><span id="subscriptionName">Подписка</span></button>
+    <div class="sidebar-control">
+      <button class="sidebar-power" id="sidebarPower" type="button" aria-label="Подключить" aria-describedby="sidebarServer" aria-disabled="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#power"/><circle cx="12" cy="12" r="8" stroke-dasharray="36 15"/></svg>
+        <span id="sidebarPowerLabel">Подключить</span>
+      </button>
+      <span class="sidebar-tooltip" id="sidebarServer" role="tooltip" dir="auto">Сервер не выбран</span>
+    </div>
   </aside>
   <main class="main" data-view="home" inert>
     <section class="update-notice" id="updateNotice" aria-label="Обновление приложения" hidden>

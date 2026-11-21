@@ -85,12 +85,31 @@
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
+  let togglePending=false;
+  function updatePowerAvailability(){
+    const state=model.state;
+    const unavailable=togglePending||state==='disconnecting'||(state==='idle'&&!model.nodes.length);
+    $('powerButton').disabled=unavailable;
+    // Keep the compact control focusable so its server description is available even when idle and empty.
+    $('sidebarPower').setAttribute('aria-disabled',String(unavailable||state==='connecting'));
+  }
+  async function togglePower(event){
+    if(togglePending||event.currentTarget.getAttribute('aria-disabled')==='true')return;
+    togglePending=true;updatePowerAvailability();
+    try{await request('toggle');}
+    finally{togglePending=false;updatePowerAvailability();}
+  }
   function setState(state, previous){
     $('connection').dataset.state=state;
     document.querySelector('.title-brand').dataset.state=state;
     const texts={idle:['Не подключено','Подключить'],connecting:['Подключение','Отменить'],connected:['Подключено','Отключить'],disconnecting:['Отключение','Отключить'],waiting:['Ожидание сети · повтор подключения','Отменить']}[state]||['Не подключено','Подключить'];
     $('stateLabel').textContent=texts[0];$('powerLabel').textContent=texts[1];$('powerButton').setAttribute('aria-label',texts[1]);
-    $('powerButton').disabled=(!model.nodes.length && state==='idle')||state==='disconnecting';
+    const transitioning=state==='connecting'||state==='disconnecting';
+    const sideLabel=transitioning?texts[0]+'…':texts[1];
+    $('sidebarPowerLabel').textContent=sideLabel;
+    $('sidebarPower').setAttribute('aria-label',sideLabel);
+    $('sidebarPower').setAttribute('aria-busy',String(transitioning));
+    updatePowerAvailability();
     const blocked=model.settings?.killSwitchActive&&state==='idle';
     $('connectionError').textContent=model.error||(blocked?'Kill switch блокирует интернет. Подключитесь или отключите защиту в настройках.':'');$('connectionError').hidden=!model.error&&!blocked;$('copyErrorLog').hidden=!model.error;
     $('connectionError').title=$('connectionError').textContent;
@@ -110,9 +129,11 @@
     document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===data.settings.theme));document.querySelector('.theme-control').dataset.selected=data.settings.theme==='dark'?'0':'1';
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='tun'?'0':'1';
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));
-    label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
+    label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);
     const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
+    const tooltipNode=automatic?actual:selected;
+    $('sidebarServer').textContent=tooltipNode?serverPresentation(tooltipNode).name:'Сервер не выбран';
     label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
     const autoEligible=data.nodes.some(n=>!n.providerRouting&&n.protocol!=='xray'&&(!data.favorites?.length||data.favorites.includes(n.id)));
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=!autoEligible?'Нет обычных серверов для Авто':data.favorites?.length?'Обычные серверы из избранного':'Обычные серверы, проверенные через VPN';
@@ -296,7 +317,7 @@
   $('autoServer').addEventListener('click',async()=>{if(await request('select',{id:'auto'}))page('home');});
   document.querySelectorAll('[data-page]').forEach(el=>el.addEventListener('click',()=>page(el.dataset.page)));
   $('homeServer').addEventListener('click',()=>model.nodes.length?page('servers'):openAdd());$('serverSearch').addEventListener('input',renderServers);
-  $('powerButton').addEventListener('click',()=>request('toggle'));
+  for(const button of [$('powerButton'),$('sidebarPower')])button.addEventListener('click',togglePower);
   document.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:'mode',value:el.dataset.mode})));
   document.querySelectorAll('[data-theme]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:'theme',value:el.dataset.theme})));
   document.querySelectorAll('[data-setting]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:el.dataset.setting,value:el.getAttribute('aria-checked')!=='true'})));

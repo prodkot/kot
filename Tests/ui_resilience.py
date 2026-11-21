@@ -37,7 +37,7 @@ PAGES = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'services', 'se
 DIALOGS = [
  ('aboutDialog', 'settings', ['#aboutButton']),
  ('astraDialog', 'settings', ['#aboutButton', '#astraCredit']),
- ('addDialog', 'home', ['.sidebar [data-open-add]']),
+ ('addDialog', 'servers', ['#page-servers [data-open-add]']),
  ('advancedDialog', 'settings', ['#advancedButton']),
  ('deviceDialog', 'settings', ['#advancedButton', '#hwidButton']),
  ('pingDialog', 'servers', ['#pingSettings']),

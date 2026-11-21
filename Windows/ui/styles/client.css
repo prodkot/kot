@@ -216,8 +216,14 @@ svg {
   color:var(--detail)
 }
 
-.subscription {
+.sidebar-control {
+  position:relative;
   margin-top:auto;
+  min-width:0
+}
+
+.sidebar-power {
+  width:100%;
   display:flex;
   align-items:center;
   gap:10px;
@@ -230,20 +236,77 @@ svg {
   min-width:0
 }
 
-.subscription:hover {
+.sidebar-power:hover:not([aria-disabled=true]) {
   background:var(--surface)
 }
 
-.subscription svg {
+.sidebar-power svg {
   width:16px;
   height:16px;
   color:var(--detail)
 }
 
-.subscription span {
+.sidebar-power span {
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap
+}
+
+.sidebar-power[aria-disabled=true] {
+  cursor:default;
+  opacity:var(--opacity-disabled)
+}
+
+.sidebar-power[aria-disabled=true]:active {
+  transform:none
+}
+
+.sidebar-power circle,.sidebar-power[aria-busy=true] use {
+  display:none
+}
+
+.sidebar-power[aria-busy=true] {
+  opacity:1;
+  color:var(--muted)
+}
+
+.sidebar-power[aria-busy=true] circle {
+  display:inline
+}
+
+.sidebar-power[aria-busy=true] svg {
+  animation:spin .85s linear infinite
+}
+
+.sidebar-tooltip {
+  position:absolute;
+  z-index:2;
+  bottom:calc(100% + 8px);
+  inset-inline:0;
+  margin-inline:auto;
+  width:max-content;
+  max-width:100%;
+  padding:5px 9px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-compact);
+  background:var(--raised);
+  color:var(--text);
+  font-size:var(--font-control);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(5px);
+  transition:opacity var(--motion-help),transform var(--motion-help) var(--ease),visibility 0s var(--motion-help)
+}
+
+.sidebar-power:is(:hover,:focus-visible) + .sidebar-tooltip {
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+  transition-delay:0s
 }
 
 .main {
@@ -911,7 +974,7 @@ svg {
   transform:translateX(4px)
 }
 
-.nav-button svg,.subscription svg,.selected-mark {
+.nav-button svg,.sidebar-power svg,.selected-mark {
   transition:color .35s
 }
 
@@ -976,7 +1039,7 @@ svg {
     letter-spacing:-.065789em
   }
 
-  .nav-button span,.subscription span {
+  .nav-button span,.sidebar-power span {
     display:none
   }
 
@@ -985,7 +1048,7 @@ svg {
     padding:13px
   }
 
-  .subscription {
+  .sidebar-power {
     justify-content:center;
     padding:var(--space-sm)
   }
