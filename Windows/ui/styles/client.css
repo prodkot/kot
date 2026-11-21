@@ -17,9 +17,16 @@ body {
   min-height:100vh;
   font:var(--weight-body) var(--font-body) var(--font-ui);
   letter-spacing:.1px;
+  user-select:none;
   background:var(--back);
   color:var(--text);
   transition:background var(--motion-surface),color var(--motion-normal)
+}
+
+input,textarea,pre,.service-local-address,.service-check,.tool-result,
+.quality-values strong,.quality-samples,#qualityStatus,.about-version,
+[role=alert],.error,.dialog-error,.background-error,.tools-error,.statistics-error {
+  user-select:text
 }
 
 button,input,select,textarea {
@@ -1708,13 +1715,6 @@ body {
   background:var(--accent)
 }
 
-.update-dialog progress {
-  width:100%;
-  height:5px;
-  accent-color:var(--accent);
-  margin-top:16px
-}
-
 .settings-tools {
   gap:var(--space-md)
 }
@@ -2477,10 +2477,29 @@ body {
   margin:4px 0
 }
 
-.subscription-usage progress {
+.progress-track {
+  display:block;
   width:100%;
-  height:5px;
-  accent-color:var(--detail)
+  height:10px;
+  overflow:hidden;
+  border-radius:var(--radius-compact);
+  background:var(--line)
+}
+
+progress.progress-track {
+  appearance:none;
+  border:0;
+  margin:var(--space-xs) 0
+}
+
+progress.progress-track::-webkit-progress-bar {
+  background:transparent
+}
+
+progress.progress-track::-webkit-progress-value {
+  border-radius:var(--radius-compact);
+  background:var(--detail);
+  transition:width var(--motion-surface) var(--ease)
 }
 
 .subscription-expiry {
@@ -3458,12 +3477,16 @@ button:disabled,input:disabled,select:disabled,textarea:disabled {
 }
 
 #qualityAddress {
-  display:block;
-  padding:var(--space-sm);
+  display:grid;
+  align-content:center;
+  flex-shrink:0;
+  min-height:var(--control-height);
+  padding:var(--space-xs) var(--space-sm);
   border:1px solid var(--line);
   border-radius:var(--radius-control);
   background:var(--bg);
   font-size:var(--font-control);
+  line-height:var(--line-control);
   overflow-wrap:anywhere;
   user-select:text
 }
@@ -4167,22 +4190,18 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
 }
 
 #smoothUpdateProgress {
-  height:5px;
-  margin-top:12px;
-  overflow:hidden;
-  border-radius:var(--radius-compact);
-  background:var(--line);
-  transition:background var(--motion-surface)
+  margin-top:var(--space-sm)
 }
 
 #smoothUpdateProgress>span {
   display:block;
   width:100%;
   height:100%;
-  background:var(--accent);
+  border-radius:inherit;
+  background:var(--detail);
   transform:scaleX(0);
   transform-origin:left center;
-  transition:transform var(--motion-surface) cubic-bezier(.4,0,.2,1),background var(--motion-surface)
+  transition:transform var(--motion-surface) var(--ease)
 }
 
 #smoothUpdateProgress[data-indeterminate=true]>span {
@@ -4196,7 +4215,7 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
   }
 
   to {
-    transform:translateX(350%)
+    transform:translateX(250%)
   }
 
 }
@@ -4225,14 +4244,6 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
   min-height:var(--control-height);
   line-height:var(--line-control);
   margin:12px 0 0
-}
-
-#qualityAddress {
-  overflow-wrap:anywhere;
-  font-size:var(--font-control);
-  flex-shrink:0;
-  max-height:40px;
-  overflow:auto
 }
 
 #qualityDialog .dialog-actions {
@@ -4340,13 +4351,13 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,t
 }
 
 @media(prefers-reduced-motion:reduce) {
-  .dialog *,.help-body,#smoothUpdateProgress>span {
+  .dialog *,.help-body,progress.progress-track::-webkit-progress-value {
     transition:none!important;
     animation:none!important
   }
 
   #smoothUpdateProgress[data-indeterminate=true]>span {
-    transform:scaleX(1)
+    transform:translateX(75%)
   }
 
 }

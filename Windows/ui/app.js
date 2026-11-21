@@ -171,7 +171,7 @@
       const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+presentation.name);
       const result=item.ping;ping.dataset.status=result?.status||'idle';
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#signal');icon.append(use);
-      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'';
+      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'Проверка':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'';
       ping.title=result?.status==='ok'?(result.mode||'http').toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.setAttribute('aria-label','Пинг '+presentation.name+': '+(value.textContent||'не проверен')+'. '+ping.title);ping.append(value,icon);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
       const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.innerHTML='<svg aria-hidden="true"><use href="#ellipsis"/></svg>';qr.setAttribute('aria-label','Поделиться сервером '+presentation.name);qr.disabled=!!item.providerRouting;qr.title=item.providerRouting?'QR не сохраняет правила подписки. Используйте исходную подписку или резервную копию.':'Поделиться сервером';qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
@@ -190,7 +190,9 @@
     $('downloadUpdate').disabled=busy;
     $('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion;$('retryUpdate').hidden=!!u.availableVersion||!u.error;$('retryUpdate').disabled=busy;$('downloadUpdate').textContent=updateDownloadBusy||u.busy&&u.availableVersion?'Обновление…':u.error?'Повторить':'Обновить до '+(u.availableVersion||'');$('downloadUpdate').title=(u.error?'Повторить обновление до ':'Обновить до ')+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy;$('updateProgress').hidden=!busy;if(u.size>0){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes||0;}else $('updateProgress').removeAttribute('value');
     const visual=$('smoothUpdateProgress'),bar=visual.firstElementChild;visual.hidden=!busy;
-    visual.dataset.indeterminate=!(u.size>0);const fraction=u.size>0?Math.max(0,Math.min(1,(u.bytes||0)/u.size)):0;
+    const fraction=$('updateProgress').position;
+    visual.dataset.indeterminate=fraction<0;
+    if(fraction<0){bar.style.removeProperty('transform');return;}
     if(fraction===0){bar.style.transition='none';bar.style.transform='scaleX(0)';void bar.offsetWidth;bar.style.transition='';}
     else bar.style.transform='scaleX('+fraction+')';
   }
@@ -420,14 +422,32 @@
   $('backupButton').addEventListener('click',()=>{if(!dialogUI.isDirty($('advancedDialog')))closeDialog($('advancedDialog'));$('backupPassword').value='';$('backupError').textContent='';openDialog($('backupDialog'));});
   $('closeBackup').addEventListener('click',()=>requestClose($('backupDialog')));$('backupDialog').addEventListener('close',()=>{$('backupPassword').value='';});
   for(const [id,action] of [['exportBackup','backupExport'],['restoreBackup','backupImport']])$(id).addEventListener('click',async()=>{const password=$('backupPassword').value;if(password.length<8){dialogUI.fieldError($('backupPassword'),$('backupError'),'Пароль от 8 символов.');return;}for(const id of ['exportBackup','restoreBackup'])$(id).disabled=true;try{await rpc(action,{password});closeDialog($('backupDialog'));}catch(e){$('backupError').textContent=e.message;}finally{for(const id of ['exportBackup','restoreBackup'])$(id).disabled=false;}});
+  function dismissDialog(dialog){
+    if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();
+    else requestClose(dialog);
+  }
+  function onBackdrop(event,dialog){
+    if(event.target!==dialog)return false;
+    const rect=dialog.getBoundingClientRect();
+    return event.clientX<rect.left||event.clientX>=rect.right||event.clientY<rect.top||event.clientY>=rect.bottom;
+  }
   // Handle Escape before the browser's close watcher so repeated Escape preserves
   // nested navigation, dirty confirmation and the animated close path consistently.
   document.addEventListener('keydown',event=>{
     if(event.key!=='Escape'||event.defaultPrevented)return;
     const dialog=openDialogs.findLast(item=>item.open);if(!dialog)return;
-    event.preventDefault();if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();else requestClose(dialog);
+    event.preventDefault();dismissDialog(dialog);
   });
-  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('cancel',event=>{event.preventDefault();if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();else requestClose(dialog);});dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(!dialog.hasAttribute('data-dirty-form')&&dialog.id!=='discardDialog'&&(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom))requestClose(dialog);});});
+  for(const dialog of document.querySelectorAll('dialog')){
+    dialog.addEventListener('cancel',event=>{event.preventDefault();dismissDialog(dialog);});
+    if(dialog.id==='discardDialog'||dialog.matches('[data-dirty-form]:not([data-backdrop-close])'))continue;
+    let pressedBackdrop=false;
+    dialog.addEventListener('pointerdown',event=>{pressedBackdrop=event.button===0&&onBackdrop(event,dialog);});
+    dialog.addEventListener('click',event=>{
+      if(pressedBackdrop&&onBackdrop(event,dialog))dismissDialog(dialog);
+      pressedBackdrop=false;
+    });
+  }
   document.querySelectorAll('[data-window]').forEach(b=>b.addEventListener('click',()=>request(b.dataset.window)));
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));

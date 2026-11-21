@@ -33,7 +33,8 @@ window.KotClientTools = ({getModel,getPage,rpc,toast,openDialog,closeDialog,page
     const key=JSON.stringify(t.steps||[]);if(key!==lastResultKey){lastResultKey=key;$('toolsResults').replaceChildren(...(t.steps||[]).map(s=>{const row=document.createElement('div');row.className='tool-result';row.dataset.status=s.status;const name=document.createElement('strong');name.textContent=s.name+(s.status==='ok'?' · OK':s.status==='error'?' · Ошибка':s.status==='checking'?' · Проверка':s.status==='cancelled'?' · Отменено':'');const detail=document.createElement('p');detail.textContent=s.detail;row.append(name,detail);return row;}));}
     $('testQuality').disabled=busy||model.state!=='connected';$('testQuality').textContent=toolsStarting==='testConnection'||t.busy&&quality?'Проверка…':quality&&(t.quality||t.status||t.error)?'Проверить ещё раз':'Проверить';$('cancelQuality').hidden=!t.busy||!quality;
     const q=quality?t.quality:null,settings=model.ping?.settings||{};
-    $('qualityAddress').textContent=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
+    const address=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
+    if($('qualityAddress').textContent!==address)$('qualityAddress').textContent=address;
     $('qualityNote').textContent=model.state==='connected'?'HTTP-проверка через подключённый VPN. Адрес, число попыток и таймаут берутся из настроек пинга.':'Подключите VPN, чтобы проверить адрес.';
     $('qualityMedian').textContent=q?.medianMs!=null?q.medianMs+' мс':'Нет данных';
     $('qualitySuccess').textContent=q?q.successes+' / '+q.attempts+' ('+Math.round(q.successes/q.attempts*100)+'%)':'Нет данных';

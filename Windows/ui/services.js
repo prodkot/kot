@@ -12,6 +12,20 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,request
   }
   function showProvider(id){document.querySelector('.service-tabs').dataset.selected=id==='telegram'?'1':'0';provider=id;document.querySelectorAll('[data-service-tab]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.serviceTab===id));$('zapretPanel').hidden=id!=='zapret';$('telegramPanel').hidden=id!=='telegram';render();}
   function text(id,value){const el=$(id);if(el.textContent!==String(value))el.textContent=String(value);}
+  const deferredLogs=new Set();
+  function renderLog(id){
+    const el=$(id+'Log'),value=(item(id).logs||[]).join('\n')||'Здесь появится журнал сервиса.';
+    const selection=document.getSelection();
+    if(el.textContent!==value&&!selection.isCollapsed&&selection.containsNode(el,true)){
+      deferredLogs.add(id);
+      return;
+    }
+    deferredLogs.delete(id);
+    text(el.id,value);
+  }
+  document.addEventListener('selectionchange',()=>{
+    if(getPage()==='services')deferredLogs.forEach(renderLog);
+  });
   function render(){
     const s=state();$('serviceAutoUpdates').checked=s.checkUpdates!==false;
     for(const id of ['zapret','telegram']){
@@ -28,9 +42,7 @@ window.KotServices = ({getModel,getPage,rpc,toast,openDialog,closeDialog,request
       $(prefix+'Check').disabled=busy;$(prefix+'Settings').disabled=busy||!!s.testing;
       $(prefix+'Remove').hidden=!e.installedVersion;$(prefix+'Remove').disabled=busy||!!s.testing;
       $(prefix+'Cancel').hidden=!e.busy;$(prefix+'Cancel').disabled=false;
-      if(getPage()==='services'){
-        const logs=(e.logs||[]).join('\n');if($(prefix+'Log').textContent!==logs)$(prefix+'Log').textContent=logs||'Здесь появится журнал сервиса.';
-      }
+      if(getPage()==='services')renderLog(id);
     }
     const z=item('zapret'),busy=!!z.busy||starting.has('zapret')||!!strategyPending;
     $('zapretTest').disabled=busy||!z.installedVersion||!!s.networkBusy;

@@ -34,7 +34,7 @@ public sealed partial class MainWindow : WindowChrome
         services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token, proxyPort: () => RequestProxyPort, downloadsAvailable: () => DownloadsAvailable);
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
-        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
+        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(840, 620); StartPosition = FormStartPosition.CenterScreen;
         BackColor = ColorTranslator.FromHtml(profile.Theme == "light" ? "#f6f6f2" : "#151718");
         web.DefaultBackgroundColor = BackColor;
         Icon = icons.Window(profile.Theme);

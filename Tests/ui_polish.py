@@ -42,6 +42,86 @@ def journal_focus(page):
     expect(journal).to_contain_text('connected')
 
 
+def drag_prefix(page, element, length):
+    element.scroll_into_view_if_needed()
+    x1, x2, y = element.evaluate('''(el, length) => {
+      const range = document.createRange();
+      range.setStart(el.firstChild, 0);
+      range.setEnd(el.firstChild, length);
+      const rect = range.getBoundingClientRect();
+      return [rect.left, rect.right, rect.top + rect.height / 2];
+    }''', length)
+    page.mouse.move(x1, y)
+    page.mouse.down()
+    page.mouse.move(x2, y, steps=8)
+    page.mouse.up()
+
+
+def quality_address(page):
+    page.emulate_media(reduced_motion='reduce')
+    url = 'https://www.gstatic.com/generate_204'
+    page.evaluate("fixtureSnapshot({state:'connected'});fixtureNavigate('servers')")
+    page.locator('#qualityButton').click()
+    address = page.locator('#qualityAddress')
+    for width, height in [(960, 640), (640, 540)]:
+        page.set_viewport_size({'width': width, 'height': height})
+        for value in [url, 'https://example.org/' + 'x' * 1800]:
+            page.evaluate("address=>fixtureSnapshot({tools:{kind:'connection',address}})", value)
+            expect(address).to_have_text(value)
+            assert address.evaluate('e=>e.scrollWidth===e.clientWidth && e.scrollHeight===e.clientHeight')
+            if value == url:
+                assert address.bounding_box()['height'] == 40
+                address.hover()
+                page.mouse.wheel(0, 100)
+                page.wait_for_timeout(100)
+                assert address.evaluate('e=>e.scrollTop===0')
+                drag_prefix(page, address, len(url))
+                page.evaluate('fixtureSnapshot({})')
+                assert page.evaluate('getSelection().toString()') == url
+            else:
+                assert address.bounding_box()['height'] > 40
+                expect(page.locator('#closeQuality')).to_be_in_viewport()
+
+
+def copy_log_selection(page):
+    page.emulate_media(reduced_motion='reduce')
+    search = page.locator('#logSearch')
+
+    def snapshot(suffix):
+        page.evaluate('patch=>fixtureSnapshot(patch)', {
+            'journal': 'client log' + suffix,
+            'services': {'items': [{'id': service, 'logs': [service + ' log' + suffix]}
+                                   for service in ['zapret', 'telegram']]}
+        })
+
+    for provider in ['client', 'zapret', 'telegram']:
+        prefix = provider + ' log'
+        if provider == 'client':
+            page.evaluate("fixtureNavigate('logs')")
+            drag_prefix(page, page.locator('#page-logs h1'), 3)
+            assert page.evaluate('getSelection().toString()') == ''
+            log = page.locator('#journalText')
+        else:
+            page.evaluate("fixtureNavigate('services')")
+            page.locator(f'[data-service-tab={provider}]').click()
+            page.locator(f'#{provider}Panel .service-log summary').click()
+            log = page.locator(f'#{provider}Log')
+        snapshot(' entry')
+        expect(log).to_have_text(prefix + ' entry')
+        drag_prefix(page, log, len(prefix))
+        snapshot(' updated')
+        assert page.evaluate('getSelection().toString()') == prefix
+        page.keyboard.press('Control+c')
+        if provider != 'client':
+            log.click()
+            expect(log).to_have_text(prefix + ' updated')
+            page.evaluate("fixtureNavigate('logs')")
+        search.fill('')
+        search.focus()
+        page.keyboard.press('Control+v')
+        expect(search).to_have_value(prefix)
+
+
 def toast_layer(page):
     page.evaluate("fixtureNavigate('settings')")
     page.locator('#advancedButton').click()
@@ -262,6 +342,54 @@ def sidebar_tooltip(page):
     expect(side).to_be_focused()
 
 
+def settings_backdrop(page):
+    page.emulate_media(reduced_motion='reduce')
+    page.locator('[data-page=settings]').click()
+    for button, dialog in [('automationButton', 'automationDialog'), ('advancedButton', 'advancedDialog'),
+                           ('routingButton', 'routingDialog'), ('onlineUpdateButton', 'onlineUpdateDialog'),
+                           ('aboutButton', 'aboutDialog')]:
+        trigger = page.locator('#' + button)
+        trigger.click()
+        panel = page.locator('#' + dialog)
+        panel.locator('h2').click()
+        expect(panel).to_be_visible()
+        page.mouse.click(2, 60)
+        expect(panel).to_be_hidden()
+        expect(trigger).to_be_focused()
+
+    page.locator('#routingButton').click()
+    for button, dialog in [('routingImport', 'routingImportDialog'), ('geoIpButton', 'geoIpDialog')]:
+        page.locator('#' + button).click()
+        page.mouse.click(2, 60)
+        expect(page.locator('#' + dialog)).to_be_hidden()
+        expect(page.locator('#routingDialog')).to_be_visible()
+    page.mouse.click(2, 60)
+    page.locator('#advancedButton').click()
+    page.locator('#backupButton').click()
+    page.mouse.click(2, 60)
+    expect(page.locator('#backupDialog')).to_be_hidden()
+
+    page.locator('#advancedButton').click()
+    page.locator('#bypassDomains').fill('draft.example')
+    page.locator('#hwidButton').click()
+    page.mouse.click(2, 60)
+    expect(page.locator('#deviceDialog')).to_be_hidden()
+    expect(page.locator('#hwidButton')).to_be_focused()
+    page.locator('#bypassDomains').hover()
+    page.mouse.down()
+    page.mouse.move(2, 60)
+    page.mouse.up()
+    expect(page.locator('#discardDialog')).to_be_hidden()
+    page.mouse.click(2, 60)
+    expect(page.locator('#keepEditing')).to_be_focused()
+    page.locator('#keepEditing').click()
+    expect(page.locator('#bypassDomains')).to_have_value('draft.example')
+    page.mouse.click(2, 60)
+    page.locator('#discardChanges').click()
+    expect(page.locator('#advancedDialog')).to_be_hidden()
+    expect(page.locator('#advancedButton')).to_be_focused()
+
+
 def settings_navigation(page):
     page.set_viewport_size({'width': 800, 'height': 600})
     page.locator('[data-page=settings]').click()
@@ -303,7 +431,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, journal_focus, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, settings_navigation, startup_loading]:
+        for test in [servers, journal_focus, quality_address, copy_log_selection, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, settings_navigation, settings_backdrop, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
