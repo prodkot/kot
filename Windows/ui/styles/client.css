@@ -49,7 +49,8 @@ button:active:not(:disabled) {
 }
 
 button {
-  transition:background var(--motion-control),color var(--motion-control),border-color var(--motion-control),transform var(--motion-normal) var(--ease),box-shadow var(--motion-normal)
+  --button-transitions:background var(--motion-control),color var(--motion-control),border-color var(--motion-control),transform var(--motion-normal) var(--ease),box-shadow var(--motion-normal);
+  transition:var(--button-transitions)
 }
 
 h1,h2,p {
@@ -100,9 +101,11 @@ svg {
   background:var(--bg);
   box-shadow:0 40px 100px #0004;
   display:grid;
-  grid-template-columns:188px 1fr;
+  --sidebar-width:188px;
+  --sidebar-motion:var(--motion-control) ease-in-out;
+  grid-template-columns:var(--sidebar-width) minmax(0,1fr);
   grid-template-rows:38px 1fr;
-  transition:background var(--motion-surface),border-color var(--motion-surface),box-shadow var(--motion-surface)
+  transition:grid-template-columns var(--sidebar-motion),background var(--motion-surface),border-color var(--motion-surface),box-shadow var(--motion-surface)
 }
 
 .titlebar {
@@ -137,29 +140,34 @@ svg {
 }
 
 .sidebar {
+  position:relative;
+  z-index:1;
+  min-width:0;
   background:var(--side);
   border-right:1px solid var(--line);
-  padding:28px 14px var(--space-lg);
+  padding:14px 14px var(--space-lg);
   display:flex;
   flex-direction:column;
-  transition:background var(--motion-surface),border-color var(--motion-surface)
+  transition:padding-inline var(--sidebar-motion),background var(--motion-surface),border-color var(--motion-surface)
 }
 
 .brand {
   display:flex;
-  justify-content:center;
   align-items:center;
-  min-height:100px;
-  padding:0 var(--space-sm) 26px
+  height:40px;
+  margin-bottom:14px
 }
 
 .brand>.wordmark {
-  display:inline-block;
+  position:absolute;
+  left:20px;
+  display:inline-flex;
+  gap:0;
   padding:0;
   border:0;
   border-radius:0;
   background:transparent;
-  font-size:38px;
+  font-size:34px;
   font-weight:800;
   line-height:1;
   letter-spacing:-2.5px;
@@ -168,10 +176,56 @@ svg {
   user-select:none
 }
 
+.brand-tail {
+  interpolate-size:allow-keywords;
+  width:max-content;
+  flex:none;
+  white-space:nowrap;
+  font:inherit;
+  pointer-events:none;
+  transition:width var(--sidebar-motion),opacity 140ms ease-out 40ms
+}
+
 .brand>.wordmark>span {
+  position:relative;
   color:var(--accent);
   transition:color .35s
 }
+
+.sidebar-toggle {
+  position:absolute;
+  top:22px;
+  right:-13px;
+  z-index:1;
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  color:var(--muted);
+  background:var(--side);
+  border:1px solid var(--line);
+  border-radius:var(--radius-compact)
+}
+
+.sidebar-toggle:is(:hover,:focus-visible) {
+  background:var(--raised);
+  color:var(--text)
+}
+
+.sidebar-toggle svg {
+  width:14px;
+  height:14px;
+  transform:rotate(180deg);
+  transition:transform var(--sidebar-motion)
+}
+
+.app[data-sidebar=collapsed] { --sidebar-width:64px }
+:where(.app[data-sidebar=collapsed]) .sidebar { padding-inline:var(--space-xs) }
+:where(.app[data-sidebar=collapsed]) .brand-tail { width:0; opacity:0; transition-delay:0s }
+:where(.app[data-sidebar=collapsed]) .sidebar-toggle svg { transform:rotate(0) }
+:where(.app[data-sidebar=collapsed]) .nav-button span,
+:where(.app[data-sidebar=collapsed]) .sidebar-power span { opacity:0; visibility:hidden }
 
 .brand>.wordmark:active {
   transform:none
@@ -198,6 +252,8 @@ svg {
 }
 
 .nav-button {
+  overflow:hidden;
+  white-space:nowrap;
   display:flex;
   align-items:center;
   gap:11px;
@@ -209,6 +265,16 @@ svg {
   text-align:left;
   font-size:var(--font-control);
   min-height:44px
+}
+
+.nav-button,.sidebar-power {
+  transition:padding-inline var(--sidebar-motion),var(--button-transitions)
+}
+
+.nav-button span,.sidebar-power span {
+  flex:none;
+  white-space:nowrap;
+  transition:opacity var(--sidebar-motion),visibility var(--sidebar-motion)
 }
 
 .nav-button:hover {
@@ -230,6 +296,8 @@ svg {
 }
 
 .sidebar-power {
+  overflow:hidden;
+  min-height:42px;
   width:100%;
   display:flex;
   align-items:center;
@@ -247,16 +315,13 @@ svg {
   background:var(--surface)
 }
 
+:where(.app[data-sidebar=collapsed]) .nav-button { padding-inline:13px }
+:where(.app[data-sidebar=collapsed]) .sidebar-power { padding-inline:14px }
+
 .sidebar-power svg {
   width:16px;
   height:16px;
   color:var(--detail)
-}
-
-.sidebar-power span {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap
 }
 
 .sidebar-power[aria-disabled=true] {
@@ -1028,36 +1093,8 @@ svg {
   }
 
   .app {
-    grid-template-columns:64px 1fr;
+    --sidebar-width:156px;
     height:660px
-  }
-
-  .sidebar {
-    padding:28px var(--space-xs) 18px
-  }
-
-  .brand {
-    padding:0 0 32px;
-    justify-content:center
-  }
-
-  .brand>.wordmark {
-    font-size:22px;
-    letter-spacing:-.065789em
-  }
-
-  .nav-button span,.sidebar-power span {
-    display:none
-  }
-
-  .nav-button {
-    justify-content:center;
-    padding:13px
-  }
-
-  .sidebar-power {
-    justify-content:center;
-    padding:var(--space-sm)
   }
 
   .main {

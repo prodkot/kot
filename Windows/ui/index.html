@@ -31,8 +31,13 @@
 <div class="app">
   <header class="titlebar"><div class="title-brand"><span class="wordmark" role="img" aria-label="kot.">kot<span class="brand-dot" aria-hidden="true"></span></span><span id="titleVersion" aria-label="Версия приложения"></span></div><div class="chrome"><button data-window="minimize" aria-label="Свернуть"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button><button data-window="maximize" aria-label="Развернуть"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button><button data-window="close" aria-label="Закрыть"><svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2l-8 8"/></svg></button></div></header>
   <aside class="sidebar" inert>
-    <div class="brand"><button class="wordmark" id="brandButton" type="button" aria-label="kot.">kot<span aria-hidden="true">.</span></button></div>
-    <nav class="nav" aria-label="Навигация">
+    <div class="brand">
+      <button class="wordmark" id="brandButton" type="button" aria-label="kot.">k<b class="brand-tail" aria-hidden="true">ot</b><span aria-hidden="true">.</span></button>
+      <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-controls="sidebarNav" aria-expanded="true" aria-label="Свернуть панель">
+        <svg aria-hidden="true"><use href="#arrow"/></svg>
+      </button>
+    </div>
+    <nav class="nav" id="sidebarNav" aria-label="Навигация">
       <div class="nav-indicator" aria-hidden="true"></div>
       <button class="nav-button" data-page="home" aria-current="page" aria-label="Подключение"><svg><use href="#power"/></svg><span>Подключение</span></button>
       <button class="nav-button" data-page="servers" aria-label="Серверы"><svg><use href="#globe"/></svg><span>Серверы</span></button>

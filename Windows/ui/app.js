@@ -9,6 +9,35 @@
     if(mark.getAttribute('src')!==source)mark.src=source;
   }
   startupTheme(window.kotStartup?.theme);
+  const app=document.querySelector('.app'), sidebarToggle=$('sidebarToggle');
+  const narrowWindow=matchMedia('(max-width:700px)');
+  const sidebarChoices=new Map();
+  function sidebarKey(){return narrowWindow.matches?'kot.sidebar.narrow':'kot.sidebar.wide';}
+  function showSidebar(mode){
+    const collapsed=mode==='collapsed';
+    app.dataset.sidebar=mode;
+    sidebarToggle.setAttribute('aria-expanded',String(!collapsed));
+    sidebarToggle.title=collapsed?'Развернуть панель':'Свернуть панель';
+    sidebarToggle.setAttribute('aria-label',sidebarToggle.title);
+    for(const button of $('sidebarNav').querySelectorAll('.nav-button')){
+      if(collapsed)button.title=button.getAttribute('aria-label');
+      else button.removeAttribute('title');
+    }
+  }
+  function restoreSidebar(){
+    const key=sidebarKey();
+    let mode=sidebarChoices.get(key);
+    if(!mode){try{mode=localStorage.getItem(key);}catch{}}
+    showSidebar(mode==='expanded'||mode==='collapsed'?mode:(narrowWindow.matches?'collapsed':'expanded'));
+  }
+  sidebarToggle.addEventListener('click',()=>{
+    const key=sidebarKey(), mode=app.dataset.sidebar==='expanded'?'collapsed':'expanded';
+    showSidebar(mode);
+    sidebarChoices.set(key,mode);
+    try{localStorage.setItem(key,mode);}catch{}
+  });
+  narrowWindow.addEventListener('change',restoreSidebar);
+  restoreSidebar();
   // Bundled flag-icons 7.3.2. Never build asset paths from subscription text.
   const {label,serverPresentation,countryBadge,bytes}=window.KotPresentation;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)'), motions = new Map();

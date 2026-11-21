@@ -342,6 +342,101 @@ def sidebar_tooltip(page):
     expect(side).to_be_focused()
 
 
+def sidebar_collapse(page):
+    toggle = page.locator('#sidebarToggle')
+    servers = page.get_by_role('navigation').get_by_role('button', name='Серверы')
+    tail = page.locator('.brand-tail')
+    expect(toggle).to_have_accessible_name('Свернуть панель')
+    servers.click()
+    toggle.focus()
+    toggle.press('Space')
+    expect(toggle).to_have_accessible_name('Развернуть панель')
+    expect(toggle).to_be_focused()
+    expect(tail).to_have_css('opacity', '0')
+    expect(servers).to_have_attribute('aria-current', 'page')
+    expect(servers).to_have_attribute('title', 'Серверы')
+    expect(servers.locator('span')).to_be_hidden()
+    expect(page.locator('.sidebar')).to_have_css('width', '64px')
+    page.reload()
+    expect(page.locator('#startupScreen')).to_be_hidden()
+    expect(toggle).to_have_attribute('aria-expanded', 'false')
+    page.set_viewport_size({'width': 640, 'height': 540})
+    page.emulate_media(reduced_motion='reduce')
+    toggle.press('Enter')
+    expect(tail).to_have_css('opacity', '1')
+    expect(servers.locator('span')).to_be_visible()
+    expect(page.locator('.sidebar')).to_have_css('width', '156px')
+    assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
+    page.set_viewport_size({'width': 840, 'height': 620})
+    expect(toggle).to_have_attribute('aria-expanded', 'false')
+    toggle.click()
+    expect(page.locator('.sidebar')).to_have_css('width', '188px')
+    expect(servers.locator('span')).to_be_visible()
+
+
+def sidebar_motion(page):
+    page.evaluate("document.fonts.ready")
+    page.locator('#brandButton').evaluate("async e => {await Promise.all(e.getAnimations().map(a => a.finished))}")
+    frames = page.evaluate("""() => {
+      const logo = document.querySelector('#brandButton');
+      const tail = logo.querySelector('.brand-tail');
+      const dot = logo.querySelector('span');
+      const sidebar = logo.closest('.sidebar');
+      const controls = [...sidebar.querySelectorAll('.nav-button, .sidebar-power')];
+      const arrow = sidebar.querySelector('#sidebarToggle svg');
+      function glyph(node, index) {
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + 1);
+        const {x, y, width, height} = range.getBoundingClientRect();
+        return [x, y, width, height];
+      }
+      function frame() {
+        const rotation = new DOMMatrixReadOnly(getComputedStyle(arrow).transform);
+        const angle = Math.abs(Math.atan2(rotation.b, rotation.a) * 180 / Math.PI);
+        const positions = controls.flatMap(control => {
+          const {left, right} = control.getBoundingClientRect();
+          return [left, right, control.querySelector('svg').getBoundingClientRect().left];
+        });
+        return {angle, positions, letters: [glyph(logo.firstChild, 0), glyph(tail.firstChild, 0), glyph(tail.firstChild, 1)],
+                dot: dot.getBoundingClientRect().x, rail: sidebar.getBoundingClientRect().width};
+      }
+      const samples = [frame()];
+      for (let direction = 0; direction < 2; direction++) {
+        document.querySelector('#sidebarToggle').click();
+        const motions = document.getAnimations().filter(a => a instanceof CSSTransition);
+        for (const a of motions) a.pause();
+        const rail = motions.find(a => a.transitionProperty === 'grid-template-columns');
+        const duration = rail.effect.getTiming().duration;
+        for (const fraction of [0, .1, .25, .5, .75, .9, 1]) {
+          for (const a of motions) a.currentTime = duration * fraction;
+          samples.push(frame());
+        }
+        for (const a of motions) a.finish();
+      }
+      return samples;
+    }""")
+    wide, narrow = frames[0], min(frames, key=lambda f: f['rail'])
+    assert narrow['dot'] < wide['dot']
+    assert narrow['angle'] == 0 and wide['angle'] == 180
+    assert all(a < b for a, b in zip(narrow['positions'], wide['positions']))
+    assert frames[-1] == wide
+    assert any(narrow['rail'] < f['rail'] < wide['rail'] for f in frames)
+    for f in frames:
+        assert f['letters'] == wide['letters']
+        progress = (f['rail'] - narrow['rail']) / (wide['rail'] - narrow['rail'])
+        expected_dot = narrow['dot'] + (wide['dot'] - narrow['dot']) * progress
+        assert abs(f['dot'] - expected_dot) < 0.03
+        assert abs(f['angle'] - 180 * progress) < 0.05
+        for actual, start, end in zip(f['positions'], narrow['positions'], wide['positions']):
+            assert abs(actual - (start + (end - start) * progress)) < 0.05
+    for start, near_start, near_end, end in [(frames[1], frames[2], frames[6], frames[7]),
+                                              (frames[8], frames[9], frames[13], frames[14])]:
+        travel = abs(end['rail'] - start['rail'])
+        assert 0 < abs(near_start['rail'] - start['rail']) < .05 * travel
+        assert 0 < abs(end['rail'] - near_end['rail']) < .05 * travel
+
+
 def settings_backdrop(page):
     page.emulate_media(reduced_motion='reduce')
     page.locator('[data-page=settings]').click()
@@ -431,7 +526,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, journal_focus, quality_address, copy_log_selection, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, settings_navigation, settings_backdrop, startup_loading]:
+        for test in [servers, journal_focus, quality_address, copy_log_selection, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, sidebar_collapse, sidebar_motion, settings_navigation, settings_backdrop, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
