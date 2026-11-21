@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <VersionPrefix>0.8.4</VersionPrefix>
+    <KotChannel>Beta</KotChannel>
+    <KotPrereleaseNumber>1</KotPrereleaseNumber>
+    <VersionSuffix Condition="'$(KotChannel)' != ''">$(KotChannel.ToLowerInvariant()).$(KotPrereleaseNumber)</VersionSuffix>
+    <InformationalVersion>$(VersionPrefix)</InformationalVersion>
+    <InformationalVersion Condition="'$(KotChannel)' != ''">$(VersionPrefix) $(KotChannel) $(KotPrereleaseNumber)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

@@ -62,9 +62,10 @@ jobs:
         run: dotnet run --project Tests/Kot.Tests.csproj -c Release
       - name: Compiled build identity survives rebuilds without stale metadata
         run: |
-          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.1 -p:KotSourceCommit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -- --identity dev.123.1 aaaaaaaaaaaa
-          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.2 -p:KotSourceCommit=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -- --identity dev.123.2 bbbbbbbbbbbb
-          dotnet run --project Tests/Kot.Tests.csproj -c Release -- --identity local -
+          display=$(dotnet msbuild Core/Kot.Core.csproj -getProperty:InformationalVersion)
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.1 -p:KotSourceCommit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -- --identity dev.123.1 aaaaaaaaaaaa "$display"
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -p:KotBuildId=dev.123.2 -p:KotSourceCommit=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -- --identity dev.123.2 bbbbbbbbbbbb "$display"
+          dotnet run --project Tests/Kot.Tests.csproj -c Release -- --identity local - "$display"
       - name: Build the pinned official Xray and exercise real native traffic
         run: |
           python3 Release/xray-core.py artifacts/core --target linux

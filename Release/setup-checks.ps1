@@ -60,7 +60,7 @@ try {
     if ($info.ProductVersion -cne $displayVersion) { throw "Build identity mismatch: $path" }
     if ($info.FileMajorPart -ne ([version]$Version).Major -or $info.FileMinorPart -ne ([version]$Version).Minor -or $info.FileBuildPart -ne ([version]$Version).Build) { throw 'Numeric version changed with build label.' }
   }
-  if ([IO.Path]::GetFileName($Setup) -cne "Kot-Setup-$Version-build-$($stamp.build)-Windows-x64.exe") { throw 'Installer filename has a different build identity.' }
+  if ([IO.Path]::GetFileName($Setup) -cne "Kot-Setup-$($stamp.publicVersion)-Windows-x64.exe") { throw 'Installer filename has a different build identity.' }
   Write-Host "PASS client, Setup, uninstaller and filename share $displayVersion; numeric update version remains $Version."
   # NativeAOT must produce a native PE, rather than a second bundled CLR.
   $pe=[IO.File]::ReadAllBytes($Extractor)

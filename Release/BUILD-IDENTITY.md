@@ -22,24 +22,8 @@ Generate all representations automatically from one authoritative version record
 3. Compute SHA-256 on the final executable you will send, for example with `Get-FileHash -Algorithm SHA256 -LiteralPath $setup` in PowerShell. Compare its name and digest with `setup.name` and `setup.sha256` in that run's `candidate.json`. Keep the existing package and Setup signature checks. If the version, revision, time or digest cannot be verified, resolve the discrepancy before delivery.
 4. Give the recipient the version, filename, commit, UTC build time and verified SHA-256. Report the checks actually run on that build and their results. List untested features and known limitations explicitly. Dev, Beta and RC describe the intended audience or stage. None certifies that a test passed.
 
-## Packaging as shipped in 0.8.3
+## Packaging from 0.8.4
 
-The preceding sections specify the policy for future builds. The 0.8.3 tooling reads the base version from `Core/ClientIdentity.cs` and generates a technical stamp such as `0.8.3 (dev.123.1)`. It does not yet generate the public prerelease forms above. If tooling cannot produce the requested version throughout the installed product, report that limitation before handoff. Renaming an existing executable does not implement a channel.
+Set the numeric base, channel and sequence in `Directory.Build.props`. A stable build has empty channel and sequence fields. Reserve 0.9.0 for a substantial user-visible milestone. Small fixes and interface improvements use the next 0.8.x patch.
 
-- `dev.<run number>.<attempt>`: Windows development build workflow.
-- `release.<run number>.<attempt>`: Windows release workflow.
-- `local.<UTC timestamp>.<random suffix>`: local packaging. Ordinary un-stamped `dotnet build` displays `(local)`.
-
-The workflow prefix separates independent GitHub counters. Retrying a run changes its attempt. Missing or invalid CI metadata fails packaging instead of silently producing an ambiguous build. There is no manually maintained counter or semantic version bump per test build.
-
-`Release/build-identity.py` creates one stamp before publishing. `build.ps1` passes it to assembly metadata through `Directory.Build.targets` and writes `build-info.json`. Packaging reuses that stamp for Setup and the real uninstaller. The signed payload includes the stamp, so an edited sidecar cannot silently change a verified package. The running client reads compiled metadata, not an editable sidecar.
-
-The display identity appears in the client header, About, advanced version details, tray menu, startup screen, diagnostic export, startup evidence, Setup and uninstall UI, textual PE ProductVersion, and Windows installed-programs DisplayVersion. Source SHA remains available separately in diagnostics and packaging metadata.
-
-Development installers use `Kot-Setup-0.8.3-build-dev.123.1-Windows-x64.exe`. QA candidate metadata also records the exact build. Numeric FileVersion, AssemblyVersion and manifest version stay semantic; builds are not extra release versions.
-
-The updater still compares semantic versions and uses the existing stable release channel. Switching between two test builds with the same semantic version uses Setup. A later public release keeps the existing canonical asset name for compatibility with older clients, while retaining the build identity inside the installer. This change does not publish a release.
-
-When an older updater commits a new package, it writes a plain semantic ARP DisplayVersion. The new client waits for commit and updater completion, then restores its own display version only if the registered installation path still matches. It does not change another installation's registration.
-
-Validation covers identity generation and invalid metadata, compiled metadata across incremental rebuilds, both UI themes and window sizes, package ProductVersion consistency, real Windows installation/reinstallation and path changes, scheduled-client evidence, and upgrades through older updaters. Real sign-out/sign-in on the user's PC remains separate from CI scheduler tests.
+The build writes a single signed-payload stamp with the public version, technical build ID, UTC time and source commit. The stable updater reads the numeric base. Install subsequent betas or a stable version with the same numeric base through Setup. The stable publication workflow rejects prerelease candidates.

@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace Kot.Windows;
 public sealed partial class MainWindow
 {
-    const string AppVersion = ClientIdentity.Version;
+    static string AppVersion => ClientIdentity.Version;
     DateTimeOffset lastUpdateCheck = DateTimeOffset.MinValue, nextUpdateCheck = DateTimeOffset.MinValue;
     UpdateRelease? remoteRelease;
     CancellationTokenSource? updateAttempt;

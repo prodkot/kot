@@ -4,6 +4,7 @@ import re
 import sys
 import zipfile
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 with zipfile.ZipFile(sys.argv[1]) as archive:
     assert archive.namelist() == ['report.json'], 'Unexpected report attachment'
@@ -12,8 +13,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
 assert set(data) <= {'schema','commit','version','os','checks','manual','startup','coreSha256','clientSha256'}
 assert data['schema'] == 1 and re.fullmatch('[0-9a-f]{40}', data['commit'])
 assert re.fullmatch(r'\d+(\.\d+){1,3}', data['os'])
-identity = (Path(__file__).resolve().parents[1] / 'Core/ClientIdentity.cs').read_text(encoding='utf-8')
-assert data['version'] == re.search(r'Version\s*=\s*"(\d+\.\d+\.\d+)"', identity).group(1)
+assert data['version'] == ET.parse(Path(__file__).resolve().parents[1] / 'Directory.Build.props').findtext('PropertyGroup/VersionPrefix')
 for name in ('coreSha256','clientSha256'):
     assert re.fullmatch('[0-9a-f]{64}', data[name])
 allowed = {'exact-installed-payload','xray-version','webview2-runtime','startup-record','xray-config-acceptance',

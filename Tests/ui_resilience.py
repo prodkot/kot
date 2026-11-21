@@ -3,10 +3,11 @@ import ast
 import os
 import re
 from pathlib import Path
+import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = re.search(r'Version\s*=\s*"([0-9.]+)"', (ROOT/'Core/ClientIdentity.cs').read_text()).group(1)
+VERSION = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/VersionPrefix")
 def literal(path, name):
     return next(ast.literal_eval(n.value) for n in ast.parse((ROOT / path).read_text()).body
                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))

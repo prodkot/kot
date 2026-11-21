@@ -2,9 +2,9 @@ using Kot.Core;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-if (args.Length == 3 && args[0] == "--identity")
+if (args.Length == 4 && args[0] == "--identity")
 {
-    if (ClientIdentity.BuildNumber != args[1] || ClientIdentity.DisplayVersion != $"{ClientIdentity.Version} ({args[1]})"
+    if (ClientIdentity.BuildNumber != args[1] || ClientIdentity.DisplayVersion != args[3]
         || args[2] != "-" && ClientIdentity.Build != args[2]) throw new Exception("Compiled build identity differs from requested stamp");
     Console.WriteLine("PASS compiled identity " + ClientIdentity.DisplayVersion); return;
 }

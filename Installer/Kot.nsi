@@ -3,12 +3,11 @@ Unicode true
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "0.8.3"
+!error "Pass the numeric product version"
 !endif
-!ifndef BUILD_ID
-!define BUILD_ID "local"
+!ifndef DISPLAY_VERSION
+!error "Pass the public display version"
 !endif
-!define DISPLAY_VERSION "${VERSION} (${BUILD_ID})"
 !ifndef PAYLOAD
 !error "Pass /DPAYLOAD=published-directory"
 !endif
@@ -19,7 +18,7 @@ Unicode true
 !error "Pass /DPAYLOAD_KB=installed-payload-size-in-KB"
 !endif
 !ifndef OUTPUT
-!define OUTPUT "Kot-Setup-${VERSION}-build-${BUILD_ID}-Windows-x64.exe"
+!error "Pass /DOUTPUT=installer-file"
 !endif
 Name "kot."
 OutFile "${OUTPUT}"

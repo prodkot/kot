@@ -6,6 +6,9 @@ from pathlib import Path
 import re
 import secrets
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from product_version import read
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,12 +26,12 @@ def build_id(env, now=None, token=None):
 
 
 def identity():
-    version = re.search(r'Version\s*=\s*"(\d+\.\d+\.\d+)"', (ROOT / 'Core/ClientIdentity.cs').read_text()).group(1)
+    version, public, display = read(ROOT)
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('Invalid source revision')
     build = build_id(os.environ)
-    return {'schema': 1, 'version': version, 'build': build, 'displayVersion': f'{version} ({build})',
+    return {'schema': 1, 'version': version, 'build': build, 'publicVersion': public, 'displayVersion': display,
             'commit': commit, 'builtAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
 
