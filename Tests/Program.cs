@@ -19,6 +19,7 @@ string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0v
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
 Kot.Tests.XrayRuntimeTests.Run(Check);
 Kot.Tests.SubscriptionEditingTests.Run(Check);
+Kot.Tests.SubscriptionNodesTests.Run(Check);
 await Kot.Tests.SubscriptionValidationTests.Run(Check);
 await Kot.Tests.NetworkRequestTests.Authentication(Check);
 Kot.Tests.UpdateTests.Channel(Check);
