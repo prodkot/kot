@@ -35,7 +35,7 @@ public static class XhttpChecks
     }
     public static async Task Run(string xray, Action<bool, string> check)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(180)); var ct = deadline.Token;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(300)); var ct = deadline.Token;
         // The production Auto path discovers the bundled executable itself. Use
         // that same path for the server and explicit probes: the WFP permit is
         // deliberately restricted to one core identity, even for identical bytes.
@@ -68,6 +68,9 @@ public static class XhttpChecks
         string brokenDnsHost = "broken-" + Guid.NewGuid().ToString("N") + ".invalid";
         int serverPort = Port(); string file = Path.Combine(Path.GetTempPath(), "kot-xhttp-server-" + Guid.NewGuid().ToString("N") + ".json");
         var config = JsonNode.Parse($$$$"""{"log":{"loglevel":"warning"},"inbounds":[{"listen":"127.0.0.1","port":{{{{serverPort}}}},"protocol":"vless","settings":{"clients":[{"id":"{{{{uuid}}}}"}],"decryption":"none"},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/fixture","mode":"auto"}}}],"outbounds":[{"protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["127.0.0.0/8","::1/128"]}]}}]}""")!;
+        var clients = config["inbounds"]![0]!["settings"]!["clients"]!.AsArray();
+        clients.Add(new JsonObject { ["id"] = "22222222-2222-4222-8222-222222222222" });
+        clients.Add(new JsonObject { ["id"] = "33333333-3333-4333-8333-333333333333" });
         config["outbounds"]![0]!["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["interface"] = PhysicalNetwork.Interface } };
         config["outbounds"]![0]!["tag"] = "external";
         config["outbounds"]!.AsArray().Add(new JsonObject { ["protocol"] = "freedom", ["tag"] = "local", ["settings"] = new JsonObject { ["finalRules"] = new JsonArray(new JsonObject { ["action"] = "allow", ["ip"] = new JsonArray("127.0.0.0/8", "::1/128") }) } });
@@ -212,6 +215,9 @@ public static class XhttpChecks
                 check(KillSwitch.Detect(), "all failed Auto probes preserve the armed guard");
             }
             finally { await automatic.Stop(); KillSwitch.Release(); }
+            string Link(string id, string name) => $"vless://{id}@127.0.0.1:{serverPort}?type=xhttp&path=%2Ffixture&mode=packet-up&security=none#{name}";
+            await SubscriptionRefreshChecks.Run(Link(uuid, "Germany"), Link("22222222-2222-4222-8222-222222222222", "France"),
+                Link("33333333-3333-4333-8333-333333333333", "Austria"), $"http://127.0.0.1:{webPort}/", check, ct);
             fixturePermission.Dispose();
             KillSwitch.ArmForTests(Environment.ProcessPath!, xray);
             check(!await Open("1.1.1.1", 443, ct), "WFP blocks an unpermitted executable");

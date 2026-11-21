@@ -136,6 +136,31 @@ public sealed class SavedSubscription
     public string Selected { get; set; } = "";
     public List<string> Favorites { get; set; } = [];
     public DateTimeOffset? Updated { get; set; }
+
+    // Returns a notice only when an existing explicit choice disappeared.
+    public string? Refresh(SubscriptionResult result, DateTimeOffset now)
+    {
+        if (result.Nodes.Count == 0) throw new UserError("В подписке нет доступных серверов.");
+        var nodes = SubscriptionNodes.Match(Nodes, result.Nodes);
+        var ids = nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        string? notice = null;
+        if (Selected != "auto" && !ids.Contains(Selected))
+        {
+            var previous = Nodes.FirstOrDefault(n => n.Id == Selected);
+            // First import uses provider order. On removal prefer a surviving server in
+            // the previous list's order, independent of how the new feed was sorted.
+            string fallback = Nodes.FirstOrDefault(n => ids.Contains(n.Id))?.Id
+                ?? (Nodes.Count == 0 ? nodes[0] : nodes.MinBy(n => n.Id, StringComparer.Ordinal)!).Id;
+            Selected = fallback;
+            if (previous != null)
+                notice = $"В подписке «{Name}» сервер «{previous.Name}» больше недоступен. Выбран «{nodes.First(n => n.Id == fallback).Name}».";
+        }
+        Nodes = nodes;
+        Favorites.RemoveAll(id => !ids.Contains(id));
+        Usage = result.Usage;
+        Updated = now;
+        return notice;
+    }
 }
 public sealed class AutomationOptions
 {

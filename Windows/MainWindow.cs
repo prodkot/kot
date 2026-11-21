@@ -14,7 +14,9 @@ public sealed partial class MainWindow : WindowChrome
     readonly StartupScreen loading;
     readonly bool startupSpin = Random.Shared.Next(100) == 0;
     string? pendingTrayPage;
-    readonly Tunnel tunnel = new();
+    readonly Tunnel tunnel;
+    readonly ProfilePersistence persistence;
+    readonly Func<HttpMessageHandler>? subscriptionTransport;
     readonly PingService ping = new();
     readonly SemaphoreSlim operations = new(1);
     Profile profile;
@@ -24,8 +26,15 @@ public sealed partial class MainWindow : WindowChrome
     List<string> warnings = [];
     CancellationTokenSource? importAttempt;
     public MainWindow(bool startup, bool resumeConnection = false, Profile? initialProfile = null)
+        : this(startup, resumeConnection, initialProfile, new Tunnel(), Store.Persistence(), null) { }
+
+    internal MainWindow(bool startup, bool resumeConnection, Profile? initialProfile, Tunnel tunnel,
+        ProfilePersistence persistence, Func<HttpMessageHandler>? subscriptionTransport)
     {
-        this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? Store.Load();
+        this.tunnel = tunnel;
+        this.persistence = persistence;
+        this.subscriptionTransport = subscriptionTransport;
+        this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? persistence.Load();
         if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.DisplayVersion + " starting; OS=" + Environment.OSVersion + "; core=" + XrayRuntime.Description);
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
@@ -88,7 +97,7 @@ public sealed partial class MainWindow : WindowChrome
         icons.Apply(this, tray, profile.Theme);
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
-        trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
+        trayMenu.Update(profile.Theme, state, tunnel.SessionNode?.Name ?? name, profile.Nodes.Count > 0);
         tray.Text = AppRuntime.DisplayName + (state switch { "connected" => " · Подключено", "connecting" => " · Подключение", "waiting" => " · Ожидание сети", _ => " · Не подключено" });
     }
     async Task Initialize()

@@ -31,7 +31,7 @@ public sealed class Tunnel
     int apiPort;
     string apiSecret = "";
     IDisposable? proxyAuthentication;
-    Profile? automaticProfile;
+    public Node? SessionNode => State is "connected" or "connecting" ? activeNode : null;
     long lastAutomatic;
     string preferredNode = "";
     public string AutomaticNode { get; private set; } = "";
@@ -50,10 +50,10 @@ public sealed class Tunnel
         }
         return false;
     }
-    public async Task<bool> ReadAutomaticNode(CancellationToken ct)
+    public async Task<bool> ReadAutomaticNode(Func<Profile> currentProfile, CancellationToken ct)
     {
-        var profile = automaticProfile;
-        if (profile == null || State != "connected") return false;
+        var profile = currentProfile();
+        if (profile.Selected != "auto" || AutomaticNode.Length == 0 || State != "connected") return false;
         if (MonotonicMilliseconds - lastAutomatic < profile.Automation.AutoMinutes * 60000L) return true;
         int generation = stopGeneration;
         int session = Session; lastAutomatic = MonotonicMilliseconds;
@@ -61,15 +61,16 @@ public sealed class Tunnel
         try { selected = await SelectAutomatic(profile, ct); }
         catch (UserError ex)
         {
-            if (Session == session && State == "connected") { await Stop(); Set("idle", ex.Message); }
+            if (Session == session && State == "connected" && profile == currentProfile()) { await Stop(); Set("idle", ex.Message); }
             return false;
         }
-        if (Session != session || State != "connected") return false;
+        if (Session != session || State != "connected" || profile != currentProfile()) return false;
         if (selected != AutomaticNode)
         {
             preferredNode = selected;
             await Stop();
-            if (!ct.IsCancellationRequested && stopGeneration == generation + 1) await Connect(profile, ct);
+            var latest = currentProfile();
+            if (!ct.IsCancellationRequested && stopGeneration == generation + 1 && latest.Selected == "auto" && latest.ActiveSubscription == profile.ActiveSubscription) await Connect(latest, ct);
         }
         return State == "connected";
     }
@@ -154,7 +155,6 @@ public sealed class Tunnel
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
-            automaticProfile = automatic ? profile : null;
             if (automatic)
             {
                 string selected = preferredNode.Length > 0 ? preferredNode : await SelectAutomatic(profile, ct);

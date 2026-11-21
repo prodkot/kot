@@ -112,8 +112,10 @@
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));
     label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);
-    const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
-    label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
+    const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode)||data.activeNode;
+    label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);
+    const showingActive=data.state==='connected'&&!automatic&&data.activeNode&&data.activeNode.id!==data.selected;
+    label($('selectedCity'),showingActive?'Сейчас подключён: '+data.activeNode.name:automatic?(actual?serverPresentation(actual).name:'Быстрый доступный сервер'):selected?.protocol.toUpperCase()||'');
     const autoEligible=data.nodes.some(n=>!n.providerRouting&&n.protocol!=='xray'&&(!data.favorites?.length||data.favorites.includes(n.id)));
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=!autoEligible?'Нет обычных серверов для Авто':data.favorites?.length?'Обычные серверы из избранного':'Обычные серверы, проверенные через VPN';
     renderSubscriptions();routing.render();
@@ -146,7 +148,7 @@
       const country=document.createElement('span');country.className='country';countryBadge(country,item);
       const copy=document.createElement('span');copy.className='server-copy';const title=document.createElement('strong');title.textContent=presentation.name;title.title=presentation.name;const city=document.createElement('small');city.textContent=item.protocol.toUpperCase();copy.append(title,city);button.append(country,copy);
       if(item.id===model.selected){const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('selected-mark');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#check');icon.append(use);button.append(icon);}
-      button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
+      button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id,subscriptionId:model.activeSubscription});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
       const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+presentation.name);
       const result=item.ping;ping.dataset.status=result?.status||'idle';
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#signal');icon.append(use);
@@ -293,7 +295,7 @@
   $('addSubscriptionOption').addEventListener('click',()=>{closeSubscriptions();openAdd();});
   addEventListener('resize',()=>{if(subscriptionMenu.matches(':popover-open'))positionSubscriptions();});
   document.querySelector('.main').addEventListener('scroll',closeSubscriptions,{passive:true});
-  $('autoServer').addEventListener('click',async()=>{if(await request('select',{id:'auto'}))page('home');});
+  $('autoServer').addEventListener('click',async()=>{if(await request('select',{id:'auto',subscriptionId:model.activeSubscription}))page('home');});
   document.querySelectorAll('[data-page]').forEach(el=>el.addEventListener('click',()=>page(el.dataset.page)));
   $('homeServer').addEventListener('click',()=>model.nodes.length?page('servers'):openAdd());$('serverSearch').addEventListener('input',renderServers);
   $('powerButton').addEventListener('click',()=>request('toggle'));
@@ -322,11 +324,11 @@
     if(/^http:\/\//i.test(url)){dialogUI.fieldError($('profileLink'),$('addError'),'Нужна HTTPS-ссылка на подписку.');return;}
     const remote=/^https:\/\//i.test(url);
     const submit=$('addForm').querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;importBusy=true;submit.textContent='Загрузка';$('addError').textContent='';
-    try{await rpc(remote?'import':'importText',remote?{url,name:$('profileName').value.trim()}:{text:url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(model.warnings?.length?'Серверы добавлены. Предупреждений: '+model.warnings.length:'Серверы добавлены');}
+    try{const result=await rpc(remote?'import':'importText',remote?{url,name:$('profileName').value.trim()}:{text:url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(result?.selectionNotice||(model.warnings?.length?'Серверы добавлены. Предупреждений: '+model.warnings.length:'Серверы добавлены'));}
     catch(e){$('addError').textContent=e.message;}
     finally{submit.disabled=false;importBusy=false;submit.textContent='Добавить';}
   });
-  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{await rpc('refresh');toast(model.warnings?.length?'Обновлено. Предупреждений: '+model.warnings.length:'Подписка обновлена');}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
+  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{const result=await rpc('refresh',{subscriptionId:model.activeSubscription});toast(result?.selectionNotice||(model.warnings?.length?'Обновлено. Предупреждений: '+model.warnings.length:'Подписка обновлена'));}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
   let deviceAttempt=0;
   function clearHwid(){deviceAttempt++;$('hwidValue').value='';$('deviceName').value='';$('copyHwid').disabled=true;}
   function closeDevice(){clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';$('advancedDialog').scrollTop=0;$('hwidButton').focus({preventScroll:true});}
@@ -419,5 +421,5 @@
   const journal=window.KotJournal({getModel:()=>model,getPage:()=>current,request,toast});
   const routing=window.KotRouting({getModel:()=>model,rpc,toast,dialogUI,openDialog,closeDialog,requestClose});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){bridge.start({snapshot:apply,navigate:page});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
+  if(host){bridge.start({snapshot:apply,navigate:page,notice:toast});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
 })();
