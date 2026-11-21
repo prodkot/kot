@@ -217,7 +217,7 @@ public static class XhttpChecks
             finally { await automatic.Stop(); KillSwitch.Release(); }
             string Link(string id, string name) => $"vless://{id}@127.0.0.1:{serverPort}?type=xhttp&path=%2Ffixture&mode=packet-up&security=none#{name}";
             await SubscriptionRefreshChecks.Run(Link(uuid, "Germany"), Link("22222222-2222-4222-8222-222222222222", "France"),
-                Link("33333333-3333-4333-8333-333333333333", "Austria"), $"http://127.0.0.1:{webPort}/", check, ct);
+                Link("33333333-3333-4333-8333-333333333333", "Austria"), $"http://{healthHost}:{webPort}/", check, ct);
             fixturePermission.Dispose();
             KillSwitch.ArmForTests(Environment.ProcessPath!, xray);
             check(!await Open("1.1.1.1", 443, ct), "WFP blocks an unpermitted executable");

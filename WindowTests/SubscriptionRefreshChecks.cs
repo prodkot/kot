@@ -3,6 +3,7 @@ using Kot.Windows;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Kot.WindowTests;
 
@@ -30,16 +31,30 @@ static class SubscriptionRefreshChecks
     {
         string folder = Directory.CreateTempSubdirectory("kot-selection-").FullName;
         var disk = Store.Persistence(folder);
-        var de = Subscriptions.ParseNode(germany);
-        var fr = Subscriptions.ParseNode(france);
+        string Payload(params string[] links)
+        {
+            var configs = new JsonArray();
+            foreach (string link in links)
+            {
+                var node = Subscriptions.ParseNode(link);
+                configs.Add(new JsonObject
+                {
+                    ["remarks"] = node.Name, ["inbounds"] = new JsonArray(), ["outbounds"] = new JsonArray(XrayConfig.Outbound(node)),
+                    ["dns"] = new JsonObject { ["hosts"] = new JsonObject { [new Uri(healthUrl).Host] = "192.0.2.123" }, ["servers"] = new JsonArray("https://1.1.1.1/dns-query") }
+                });
+            }
+            return configs.ToJsonString();
+        }
+        var de = Subscriptions.Parse(Payload(germany)).Nodes.Single();
+        var fr = Subscriptions.Parse(Payload(france)).Nodes.Single();
         var first = new SavedSubscription { Address = "https://one.example/feed", Nodes = [fr, de], Selected = fr.Id };
         var second = new SavedSubscription { Address = "https://two.example/feed", Updated = DateTimeOffset.UtcNow, Nodes = [de, fr], Selected = fr.Id };
-        var initial = new Profile { ConnectionMode = "proxy", SendHwid = false, Subscriptions = [first, second] };
+        var initial = new Profile { ConnectionMode = "tun", SendHwid = false, Subscriptions = [first, second] };
         initial.Activate(first.Id);
         initial.Services.CheckUpdates = false;
         initial.Automation.RefreshHours = 0;
-        var tunnel = new Tunnel([healthUrl], TimeSpan.FromSeconds(5));
-        string body = france + "\n" + germany, otherBody = body;
+        var tunnel = new Tunnel([healthUrl], TimeSpan.FromSeconds(10));
+        string body = Payload(france, germany), otherBody = body;
         bool fail = false;
         TaskCompletionSource? entered = null, release = null;
         HttpMessageHandler Transport() => new Feed(async (request, token) =>
@@ -110,7 +125,7 @@ static class SubscriptionRefreshChecks
                 Until(() => tunnel.State == "connected", scenario + ": connection ready");
                 var probe = tunnel.Probe(ct); Until(() => probe.IsCompleted, "HTTP probe");
                 check(tunnel.HasCore && tunnel.Session == session && tunnel.SessionNode?.Id == live && probe.GetAwaiter().GetResult(),
-                    scenario + ": same live Xray session carries HTTP");
+                    scenario + ": same live Xray session carries HTTP through Windows TUN");
             }
             else check(!tunnel.HasCore && tunnel.SessionNode == null && tunnel.State == "idle", scenario + ": idle connection");
         }
@@ -129,7 +144,7 @@ static class SubscriptionRefreshChecks
             Reply(Post("automationSettings", new { refreshHours = 0 }));
             void Refresh(string scenario, params string[] links)
             {
-                body = string.Join('\n', links);
+                body = Payload(links);
                 var reply = Reply(Update(first.Id));
                 check(!reply.TryGetProperty("data", out _), scenario + ": no selection notice");
                 State(scenario, de.Id, de.Id, session);
@@ -144,7 +159,7 @@ static class SubscriptionRefreshChecks
             Refresh("same display name for two servers", same, berlin);
 
             // Concurrent updates target explicit subscriptions, including identical raw node IDs.
-            otherBody = string.Join('\n', berlin, same);
+            otherBody = Payload(berlin, same);
             int a = Update(second.Id), b = Update(first.Id);
             Reply(a); Reply(b);
             check(disk.Load().Subscriptions.Single(s => s.Id == second.Id).Selected == fr.Id, "inactive subscription retained its own choice");
@@ -153,7 +168,7 @@ static class SubscriptionRefreshChecks
             fail = true; Reply(Update(first.Id), ok: false); fail = false;
             State("failed download", de.Id, de.Id, session);
 
-            body = string.Join('\n', france, extra);
+            body = Payload(france, extra);
             var removal = Reply(Update(first.Id)).GetProperty("data").GetProperty("selectionNotice").GetString()!;
             check(removal.Contains("Berlin") && removal.Contains("France"), "one notice names the removed server and its replacement");
             State("selected server removed", fr.Id, de.Id, session);
@@ -162,7 +177,7 @@ static class SubscriptionRefreshChecks
             Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == fr.Id, "manual switch to highlighted fallback");
             check(tunnel.Session != session, "explicit selection changed the live session");
             session = tunnel.Session;
-            body = string.Join('\n', france, germany);
+            body = Payload(france, germany);
             entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             release = new(TaskCreationOptions.RunContinuationsAsynchronously);
             int refresh = Update(first.Id); Until(() => entered.Task.IsCompleted, "refresh entered network");
