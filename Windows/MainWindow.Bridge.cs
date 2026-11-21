@@ -21,6 +21,7 @@ public sealed partial class MainWindow
         nodes = profile.Nodes.Select(n => new { n.Id, n.Name, n.Protocol, providerRouting = n.FullConfig != null, ping = ping.Get(n.Id), code = n.Protocol == "xray" ? "XR" : n.Protocol == "shadowsocks" ? "SS" : n.Protocol == "hysteria2" ? "HY" : n.Protocol == "trojan" ? "TR" : n.Protocol == "vmess" ? "VM" : "VL" }),
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
         services = services.Model(visiblePage == "services"), telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
+        activeNode = tunnel.SessionNode is { } active ? new { active.Id, active.Name } : null,
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
         routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
         selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
@@ -104,10 +105,15 @@ public sealed partial class MainWindow
                     Clipboard.SetText(FullLog()); break;
                 case "copyDiagnostics": Clipboard.SetText(JsonSerializer.Serialize(ToolsModel(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true })); break;
                 case "diagnostics":
-                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.DisplayVersion, build = ClientIdentity.Build, buildNumber = ClientIdentity.BuildNumber, core = XrayRuntime.Description, os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
+                    Clipboard.SetText(JsonSerializer.Serialize(new { app = "kot. " + ClientIdentity.DisplayVersion, build = ClientIdentity.Build, buildNumber = ClientIdentity.BuildNumber, core = XrayRuntime.Description, os = Environment.OSVersion.VersionString, hwidEnabled = profile.SendHwid, state = tunnel.State, protocol = tunnel.SessionNode?.Protocol ?? profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol, nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error, coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count }, new JsonSerializerOptions { WriteIndented = true })); break;
                 default:
                     await operations.WaitAsync(lifetime.Token);
-                    try { if (!exiting) await Mutate(action, data); } finally { operations.Release(); }
+                    string? notice;
+                    try { notice = exiting ? null : await Mutate(action, data); } finally { operations.Release(); }
+                    if (notice != null)
+                    {
+                        Snapshot(); Reply(new { kind = "reply", id, ok = true, data = new { selectionNotice = notice } }); return;
+                    }
                     break;
             }
             Snapshot(); Reply(new { kind = "reply", id, ok = true });
@@ -120,7 +126,7 @@ public sealed partial class MainWindow
         {
             app = "kot. " + ClientIdentity.DisplayVersion, build = ClientIdentity.Build, buildNumber = ClientIdentity.BuildNumber, core = XrayRuntime.Description, os = Environment.OSVersion.VersionString,
             hwidEnabled = profile.SendHwid, state = tunnel.State,
-            protocol = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol,
+            protocol = tunnel.SessionNode?.Protocol ?? profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Protocol,
             nodeCount = profile.Nodes.Count, updated = profile.Updated, lastError = tunnel.Error,
             coreExitCode = tunnel.CoreExitCode, coreLog = tunnel.CoreDetails, skipped = warnings.Count,
             traffic, telemetryError, subscriptions = profile.Subscriptions.Count, automatic = profile.Selected == "auto", automation = profile.Automation, backgroundError, reconnectDesired = reconnect.Desired, retryFailures = reconnect.Failures,

@@ -8,8 +8,8 @@ namespace Kot.Windows;
 
 public sealed partial class MainWindow
 {
-    void SaveProfile(Action<Profile> change) => profile = Store.Change(profile, change);
-    async Task Mutate(string action, JsonElement data)
+    void SaveProfile(Action<Profile> change) => profile = persistence.Change(profile, change);
+    async Task<string?> Mutate(string action, JsonElement data)
     {
         switch (action)
         {
@@ -18,9 +18,14 @@ public sealed partial class MainWindow
             case "geoIpRefresh": case "geoIpSettings":
                 await MutateGeoIp(action, data); break;
             case "import": case "refresh":
-                if (action == "refresh" && profile.Local) throw new UserError("Локальный профиль обновляется повторным импортом файла.");
-                string address = action == "import" ? data.GetProperty("url").GetString()?.Trim() ?? "" : profile.Address;
-                string name = action == "import" ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : profile.Name;
+                bool importing = action == "import";
+                string address = importing ? data.GetProperty("url").GetString()?.Trim() ?? "" : "";
+                var target = importing ? profile.Subscriptions.FirstOrDefault(s => !s.Local && s.Address == address)
+                    : profile.Subscriptions.FirstOrDefault(s => s.Id == (data.TryGetProperty("subscriptionId", out var requested) ? requested.GetString() : profile.ActiveSubscription))
+                        ?? throw new UserError("Подписка уже удалена.");
+                if (!importing && target!.Local) throw new UserError("Локальный профиль обновляется повторным импортом файла.");
+                if (!importing) address = target!.Address;
+                string name = importing ? data.GetProperty("name").GetString()?.Trim() ?? "Подписка" : target!.Name;
                 AppLog.Write("subscription", action + ": starting, hwid=" + profile.SendHwid);
                 if (name.Length > 60) throw new UserError("Название слишком длинное.");
                 using (var fetchCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
@@ -29,12 +34,11 @@ public sealed partial class MainWindow
                     try
                     {
                         var device = profile.SendHwid ? DeviceIdentity.Get() : null;
-                        var result = await Subscriptions.Download(address, fetchCancellation.Token, device: device, proxyPort: RequestProxyPort);
-                        await ApplySubscription(address, name, result, action == "import", fetchCancellation.Token);
+                        var result = await Subscriptions.Download(address, fetchCancellation.Token, subscriptionTransport?.Invoke(), device: device, proxyPort: RequestProxyPort);
+                        return await ApplySubscription(target?.Id, address, name, result, importing, fetchCancellation.Token);
                     }
                     finally { if (importAttempt == fetchCancellation) importAttempt = null; }
                 }
-                break;
             case "importText": await ApplyLocalImport(data.GetProperty("text").GetString() ?? "", data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "importServersFile": await ImportServersFile(data.GetProperty("name").GetString()?.Trim() ?? ""); break;
             case "pingSettings":
@@ -42,8 +46,10 @@ public sealed partial class MainWindow
                 options.Validate(); SaveProfile(p => p.Ping = options); await ping.Stop(clear: true); AppLog.Write("ping", "settings saved"); break;
             case "select":
                 string id = data.GetProperty("id").GetString() ?? "";
+                if (data.TryGetProperty("subscriptionId", out var scope) && scope.GetString() != profile.ActiveSubscription)
+                    throw new UserError("Подписка изменилась. Выберите сервер в текущей подписке.");
                 if (id != "auto" && !profile.Nodes.Any(n => n.Id == id)) throw new UserError("Сервер уже удалён. Обновите подписку.");
-                if (id != profile.Selected) { await StopTools(); await tunnel.Stop(); try { SaveProfile(p => p.Selected = id); } finally { ResumeDesired(); } }
+                if (id != profile.Selected || id != "auto" && tunnel.SessionNode is { } active && active.Id != id) { await StopTools(); await tunnel.Stop(); try { SaveProfile(p => p.Selected = id); } finally { ResumeDesired(); } }
                 break;
             case "settings": await ChangeSetting(data); break;
             case "switchSubscription":
@@ -90,5 +96,6 @@ public sealed partial class MainWindow
                 refreshAttempts.Remove(editedSubscription); AppLog.Register(profile); break;
             default: throw new UserError("Неизвестная команда.");
         }
+        return null;
     }
 }
