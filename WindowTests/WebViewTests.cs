@@ -145,6 +145,8 @@ static class WebViewTests
                       const t=tip.getBoundingClientRect(),b=side.getBoundingClientRect();
                       if(tip.textContent!=='Германия · Франкфурт'||getComputedStyle(tip).opacity!=='1'||
                          t.top<0||t.left<0||t.right>innerWidth||t.bottom>b.top)throw Error('hover tooltip');
+                      if(Math.abs((t.left+t.width/2)-(b.left+b.width/2))>0.1||t.width>b.width+0.1)
+                        throw Error('tooltip must stay centered within the button width');
                       if((side.querySelector('span').offsetWidth===0)!==light)throw Error('sidebar layout');
                       return 'ok';
                     })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))

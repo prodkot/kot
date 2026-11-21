@@ -231,21 +231,29 @@ def sidebar_power(page):
 
 
 def sidebar_tooltip(page):
-    name = 'Франкфурт · ' + 'Длинное название сервера ' * 8
-    page.evaluate('name=>fixtureSnapshot({nodes:[{id:"de",name,protocol:"vless"}],selected:"de"})', name)
+    long_name = 'Франкфурт · ' + 'Длинное название сервера ' * 8
     side, tip = page.locator('#sidebarPower'), page.locator('#sidebarServer')
     for width, height in [(960, 640), (800, 600), (640, 540)]:
         page.set_viewport_size({'width': width, 'height': height})
         side.hover()
         expect(tip).to_have_css('opacity', '1')
-        expect(tip).to_have_text(name.strip())
         assert side.locator('span').is_visible() == (width > 700)
-        assert tip.evaluate('''e=>{
-          const t=e.getBoundingClientRect(),b=e.previousElementSibling.getBoundingClientRect();
-          return t.bottom<b.top&&t.left===b.left&&t.top>=0&&t.right<=innerWidth
-            &&e.scrollWidth>e.clientWidth&&getComputedStyle(e).textOverflow==='ellipsis'
-            &&getComputedStyle(e).pointerEvents==='none';
-        }''')
+        # Change the selection while the tooltip stays open. It must shrink again
+        # after displaying a name that fills the entire button width.
+        for name in ['DE', long_name, 'I']:
+            page.evaluate('name=>fixtureSnapshot({nodes:[{id:"de",name,protocol:"vless"}],selected:"de"})', name)
+            expect(tip).to_have_text(name.strip())
+            bubble, button = tip.bounding_box(), side.bounding_box()
+            assert abs((bubble['x'] + bubble['width']/2) - (button['x'] + button['width']/2)) < 0.1
+            assert bubble['y'] >= 0 and bubble['y'] + bubble['height'] < button['y']
+            if name == long_name:
+                assert abs(bubble['width'] - button['width']) < 0.1
+                assert tip.evaluate('e=>e.scrollWidth>e.clientWidth')
+            else:
+                assert bubble['width'] < button['width']
+                assert tip.evaluate('e=>e.scrollWidth===e.clientWidth')
+        expect(tip).to_have_css('text-overflow', 'ellipsis')
+        expect(tip).to_have_css('pointer-events', 'none')
         page.mouse.move(width - 15, 20)
         expect(tip).to_be_hidden()
     page.keyboard.press('Tab')
