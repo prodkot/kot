@@ -170,12 +170,88 @@ def connection_chrome(page):
               expected.remove();return matches;
             }''', state == 'connected'), (theme, state)
     page.evaluate("fixtureSnapshot({state:'idle'})")
-    page.locator('.sidebar [data-open-add]').click()
-    expect(page.locator('#addDialog')).to_be_visible()
-    page.locator('#cancelAdd').click()
+    expect(page.locator('#sidebarPower')).to_have_accessible_name('Подключить')
     page.evaluate("fixtureNavigate('servers')")
     page.locator('#page-servers [data-open-add]').click()
     expect(page.locator('#addDialog')).to_be_visible()
+
+
+def sidebar_power(page):
+    side, main = page.locator('#sidebarPower'), page.locator('#powerButton')
+    tip = page.get_by_role('tooltip', include_hidden=True)
+    expect(side).to_be_disabled()
+    expect(side).to_have_accessible_description('Сервер не выбран')
+    page.evaluate('nodes=>fixtureSnapshot({nodes,selected:"a"})', NODES)
+    expect(side).to_have_accessible_description('Frankfurt')
+    page.evaluate('''() => {
+      const send=chrome.webview.postMessage;
+      window.toggleCount=0;
+      chrome.webview.postMessage=message=>{
+        if(message.action!=='toggle')return send(message);
+        toggleCount++;window.releaseToggle=()=>send(message);
+      };
+    }''')
+    side.click()
+    page.evaluate("fixtureSnapshot({});sidebarPower.click();powerButton.click()")
+    expect(side).to_be_disabled()
+    expect(main).to_be_disabled()
+    assert page.evaluate('toggleCount') == 1
+    page.evaluate('releaseToggle()')
+    expect(side).to_have_accessible_name('Подключение…')
+    expect(main).to_be_enabled()
+    expect(main).to_have_accessible_name('Отменить')
+    expect(side).to_be_disabled()
+    expect(side.locator('circle')).to_be_visible()
+    main.click()
+    page.evaluate('releaseToggle()')
+    expect(side).to_have_accessible_name('Подключить')
+    expect(side).to_be_enabled()
+    page.evaluate("fixtureSnapshot({state:'connected',selected:'b'})")
+    expect(side).to_have_accessible_name('Отключить')
+    expect(side).to_have_accessible_description('Amsterdam')
+    side.press('Enter')
+    page.evaluate("fixtureSnapshot({state:'disconnecting'});sidebarPower.click();powerButton.click()")
+    expect(side).to_have_accessible_name('Отключение…')
+    expect(side.locator('circle')).to_be_visible()
+    expect(main).to_be_disabled()
+    assert page.evaluate('toggleCount') == 3
+    page.evaluate("window.fixtureToggleError=true;releaseToggle()")
+    expect(page.locator('#toast')).to_have_text('Ошибка подключения')
+    expect(side).to_be_disabled()
+    page.evaluate("fixtureSnapshot({state:'connected'})")
+    expect(side).to_be_enabled()
+    expect(side).to_have_accessible_name('Отключить')
+    expect(main).to_be_enabled()
+    page.evaluate("fixtureSnapshot({selected:'auto',automaticNode:'b',state:'waiting'})")
+    expect(side).to_have_accessible_name('Отменить')
+    expect(side).to_have_accessible_description('Amsterdam')
+    page.evaluate("fixtureSnapshot({selected:'',state:'idle',nodes:[]})")
+    expect(side).to_be_disabled()
+    expect(tip).to_have_text('Сервер не выбран')
+
+
+def sidebar_tooltip(page):
+    name = 'Франкфурт · ' + 'Длинное название сервера ' * 8
+    page.evaluate('name=>fixtureSnapshot({nodes:[{id:"de",name,protocol:"vless"}],selected:"de"})', name)
+    side, tip = page.locator('#sidebarPower'), page.locator('#sidebarServer')
+    for width, height in [(960, 640), (800, 600), (640, 540)]:
+        page.set_viewport_size({'width': width, 'height': height})
+        side.hover()
+        expect(tip).to_have_css('opacity', '1')
+        expect(tip).to_have_text(name.strip())
+        assert side.locator('span').is_visible() == (width > 700)
+        assert tip.evaluate('''e=>{
+          const t=e.getBoundingClientRect(),b=e.previousElementSibling.getBoundingClientRect();
+          return t.bottom<b.top&&t.left===b.left&&t.top>=0&&t.right<=innerWidth
+            &&e.scrollWidth>e.clientWidth&&getComputedStyle(e).textOverflow==='ellipsis'
+            &&getComputedStyle(e).pointerEvents==='none';
+        }''')
+        page.mouse.move(width - 15, 20)
+        expect(tip).to_be_hidden()
+    page.keyboard.press('Tab')
+    side.focus()
+    expect(tip).to_have_css('opacity', '1')
+    expect(side).to_be_focused()
 
 
 def settings_navigation(page):
@@ -219,7 +295,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, journal_focus, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, settings_navigation, startup_loading]:
+        for test in [servers, journal_focus, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, settings_navigation, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))

@@ -26,6 +26,8 @@ Factories receive dependencies once from `app.js`: DOM lookup, `getModel`, `getP
 
 `app.js` still owns startup, navigation, subscriptions/server lists, connection projection and update presentation. These are explicitly deferred extraction candidates, not a second architecture hidden behind new wrappers. Existing `about.js`, `services.js`, `client-tools.js` and `dialog-ui.js` retain their responsibilities.
 
+Both VPN buttons render the same host connection snapshot and share the `toggle` request. The sidebar shows progress during connection and disconnection. The home button can still cancel a connection attempt. The sidebar tooltip follows the selected server, including the resolved server in Auto mode.
+
 ## Canonical styles
 
 1. `styles/tokens.css` holds repeated approved values and theme overrides.

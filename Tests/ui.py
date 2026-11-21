@@ -32,7 +32,7 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
   case 'pingNode':model.ping.busy=true;model.ping.done=0;model.ping.total=1;model.nodes.find(n=>n.id===msg.data.id).ping={status:'checking',mode:model.ping.settings.mode};break;
   case 'cancelPing':model.ping.busy=false;break;
   case 'select':model.selected=msg.data.id;break;
-  case 'toggle':model.state=model.state==='idle'?'connecting':'idle';break;
+  case 'toggle':if(window.fixtureToggleError){reply(false,'Ошибка подключения');return;}model.state=model.state==='idle'?'connecting':'idle';break;
   case 'settings':if(msg.data.key==='bypass'&&msg.data.value.includes('https://')){reply(false,'Введите домены без https://');return;}model.settings[msg.data.key]=msg.data.value;break;
   case 'remove':model.nodes=[];model.hasSubscription=false;model.selected='';model.state='idle';break;
  }
@@ -121,7 +121,7 @@ with sync_playwright() as p:
     assert page.evaluate('window.fixtureMeows')==2
     page.locator('#homeServer').click();page.locator('#profileLink').fill('http://example.com/sub');page.locator('#addForm [type=submit]').click();expect(page.locator('#addError')).to_have_text('Нужна HTTPS-ссылка на подписку.')
     page.locator('#profileName').fill('<b>Личная</b>');page.locator('#profileLink').fill('https://example.invalid/test');page.locator('#addForm [type=submit]').click();expect(page.locator('#addDialog')).not_to_be_visible()
-    expect(page.locator('#profileLink')).to_have_value('');expect(page.locator('#serverList .server-card')).to_have_count(2);assert not page.locator('#serverList img').count();assert not page.locator('#subscriptionName b').count()
+    expect(page.locator('#profileLink')).to_have_value('');expect(page.locator('#serverList .server-card')).to_have_count(2);assert not page.locator('#serverList img').count();expect(page.locator('#listName')).to_have_text('<b>Личная</b>');assert not page.locator('#listName b').count()
     page.evaluate('window.fixtureMutationDelay=350');page.locator('#refreshButton').click();page.evaluate('fixtureSnapshot({})');expect(page.locator('#refreshButton')).to_be_disabled();page.locator('#refreshButton').evaluate('(e)=>e.click()');page.wait_for_timeout(400);assert page.evaluate('window.refreshCount')==1;page.evaluate('window.fixtureMutationDelay=0')
     page.locator('#serverSearch').fill('второй');expect(page.locator('#serverList .server-card')).to_have_count(1);page.locator('#serverList .server-card').click();expect(page.locator('#selectedName')).to_have_text('Мой второй сервер')
     page.locator('#powerButton').click();expect(page.locator('#connection')).to_have_attribute('data-state','connecting');page.wait_for_timeout(1900);expect(page.locator('#connection')).to_have_attribute('data-state','connecting')

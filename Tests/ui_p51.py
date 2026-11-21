@@ -29,7 +29,7 @@ def dismiss(p):
 
 def forms(browser):
     p=boot(browser)
-    cases=[('home',['.sidebar [data-open-add]'],'addDialog','#profileLink','https://example.org/draft'),
+    cases=[('servers',['#page-servers [data-open-add]'],'addDialog','#profileLink','https://example.org/draft'),
       ('settings',['#advancedButton'],'advancedDialog','#bypassDomains','draft.example'),
       ('servers',['#pingSettings'],'pingDialog','#pingUrl','https://example.org/ping'),
       ('settings',['#automationButton'],'automationDialog','#refreshHours','12'),

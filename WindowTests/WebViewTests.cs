@@ -18,7 +18,7 @@ static class WebViewTests
     }
     static T Complete<T>(Task<T> task) { PumpUntil(() => task.IsCompleted, "WebView task timed out"); return task.GetAwaiter().GetResult(); }
     static void Complete(Task task) { PumpUntil(() => task.IsCompleted, "WebView task timed out"); task.GetAwaiter().GetResult(); }
-    public static void Run(Action<bool, string> check)
+    public static void Run(Action<bool, string> check, string screenshots)
     {
         string folder = Path.Combine(Path.GetTempPath(), "kot-webview-" + Guid.NewGuid().ToString("N"));
         using var form = new Form { ClientSize = new Size(960, 640), ShowInTaskbar = false };
@@ -112,11 +112,23 @@ static class WebViewTests
             PumpUntil(() => result != null, "native UI regression did not complete");
             check(result == "ok", "production page, modal popover, font and interrupted animation work in Windows WebView2: " + result);
             check(!loading.Visible, "first rendered profile snapshot dismisses the native loading screen");
+            Directory.CreateDirectory(screenshots);
             foreach (string theme in new[] { "dark", "light" })
+            {
+                // Use both sidebar layouts in the installed Windows renderer.
+                form.ClientSize = theme == "dark" ? new Size(960, 640) : new Size(640, 540);
+                Complete(core.ExecuteScriptAsync("document.querySelector('[data-page=home]').click()"));
+                string collapsed = theme == "light" ? "true" : "false";
+                PumpUntil(() => Complete(core.ExecuteScriptAsync("matchMedia('(max-width:700px)').matches")) == collapsed, "sidebar did not resize");
+                var point = Complete(core.ExecuteScriptAsync("""
+                    (()=>{const r=document.getElementById('sidebarPower').getBoundingClientRect();
+                    return {type:'mouseMoved',x:r.x+r.width/2,y:r.y+r.height/2};})()
+                    """));
+                Complete(core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", point));
                 foreach (string state in new[] { "idle", "waiting", "connecting", "connected", "disconnecting", "idle" })
                 {
                     result = null;
-                    core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "snapshot", data = new { nodes = Array.Empty<object>(), selected = "", state, hasSubscription = false, settings = new { theme, mode = "tun", tray = true }, version = "fixture" } }));
+                    core.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "snapshot", data = new { nodes = new[] { new { id = "de", name = "Германия · Франкфурт", protocol = "vless" } }, selected = "de", state, hasSubscription = true, settings = new { theme, mode = "tun", tray = true }, version = "fixture" } }));
                     Complete(core.ExecuteScriptAsync($$"""
                     (async()=>{
                       const state={{JsonSerializer.Serialize(state)}},light={{(theme == "light" ? "true" : "false")}},title=document.querySelector('.title-brand');
@@ -125,12 +137,24 @@ static class WebViewTests
                       const expected=document.createElement('span');expected.style.color=state==='connected'?'var(--accent)':'var(--muted)';document.body.append(expected);
                       const matches=getComputedStyle(title.querySelector('.brand-dot')).backgroundColor===getComputedStyle(expected).color;expected.remove();
                       if(!matches||document.querySelector('#page-home [data-open-add]'))throw Error('connection title or home add button');
+                      const side=document.getElementById('sidebarPower'),tip=document.getElementById('sidebarServer');
+                      const labels={idle:'Подключить',waiting:'Отменить',connecting:'Подключение…',connected:'Отключить',disconnecting:'Отключение…'};
+                      const busy=state==='connecting'||state==='disconnecting';
+                      if(side.ariaLabel!==labels[state]||side.ariaBusy!==String(busy)||side.ariaDisabled!==String(busy))throw Error('sidebar state');
+                      for(let i=0;i<50&&getComputedStyle(tip).opacity!=='1';i++)await new Promise(r=>setTimeout(r,20));
+                      const t=tip.getBoundingClientRect(),b=side.getBoundingClientRect();
+                      if(tip.textContent!=='Германия · Франкфурт'||getComputedStyle(tip).opacity!=='1'||
+                         t.top<0||t.left<0||t.right>innerWidth||t.bottom>b.top)throw Error('hover tooltip');
+                      if((side.querySelector('span').offsetWidth===0)!==light)throw Error('sidebar layout');
                       return 'ok';
                     })().catch(e=>'error: '+e.message).then(result=>chrome.webview.postMessage({fixtureResult:result}))
                     """));
                     PumpUntil(() => result != null, "native title state check did not complete");
-                    check(result == "ok", "title dot reflects VPN state without a home plus button in native WebView2: " + theme + " " + state + " " + result);
+                    check(result == "ok", "Windows WebView2 sidebar, tooltip and connection title: " + theme + " " + state + " " + result);
+                    using var image = File.Create(Path.Combine(screenshots, $"sidebar-{theme}-{state}.png"));
+                    Complete(core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image));
                 }
+            }
         }
         finally
         {
