@@ -41,6 +41,9 @@ public sealed partial class MainWindow : WindowChrome
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
         InitAutomation();
         services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token, proxyPort: () => RequestProxyPort, downloadsAvailable: () => DownloadsAvailable);
+        string profileFolder = Path.GetDirectoryName(persistence.PrimaryPath)!;
+        usagePath = Path.Combine(profileFolder, "traffic-history.json");
+        detailsPath = Path.Combine(profileFolder, "traffic-details.json");
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
         Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
