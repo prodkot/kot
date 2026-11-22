@@ -313,26 +313,34 @@ def sidebar_power(page):
 def sidebar_tooltip(page):
     long_name = 'Франкфурт · ' + 'Длинное название сервера ' * 8
     side, tip = page.locator('#sidebarPower'), page.locator('#sidebarServer')
-    for width, height in [(960, 640), (800, 600), (640, 540)]:
+    toggle = page.locator('#sidebarToggle')
+    for width, height, collapsed in [(960, 640, False), (840, 620, True), (800, 600, False), (640, 540, True)]:
         page.set_viewport_size({'width': width, 'height': height})
+        if toggle.get_attribute('aria-expanded') != str(not collapsed).lower():
+            toggle.click()
+        expect(page.locator('.sidebar')).to_have_css('width', '64px' if collapsed else '188px')
         side.hover()
         expect(tip).to_have_css('opacity', '1')
-        assert side.locator('span').is_visible() == (width > 700)
-        # Change the selection while the tooltip stays open. It must shrink again
-        # after displaying a name that fills the entire button width.
-        for name in ['DE', long_name, 'I']:
+        for name in ['DE', 'Германия · Франкфурт', long_name, 'خادم' * 20, 'I']:
             page.evaluate('name=>fixtureSnapshot({nodes:[{id:"de",name,protocol:"vless"}],selected:"de"})', name)
             expect(tip).to_have_text(name.strip())
             bubble, button = tip.bounding_box(), side.bounding_box()
-            assert abs((bubble['x'] + bubble['width']/2) - (button['x'] + button['width']/2)) < 0.1
             assert bubble['y'] >= 0 and bubble['y'] + bubble['height'] < button['y']
-            if name == long_name:
-                assert abs(bubble['width'] - button['width']) < 0.1
-                assert tip.evaluate('e=>e.scrollWidth>e.clientWidth')
+            assert 0 <= bubble['x'] and bubble['x'] + bubble['width'] <= width
+            if collapsed:
+                assert abs(bubble['x'] - button['x']) < 0.1
+                assert tip.evaluate('e=>e.scrollWidth===e.clientWidth && e.scrollHeight===e.clientHeight')
+                if len(name) > 2:
+                    assert button['width'] < bubble['width'] <= 160
+                else:
+                    assert bubble['width'] < button['width']
             else:
-                assert bubble['width'] < button['width']
-                assert tip.evaluate('e=>e.scrollWidth===e.clientWidth')
-        expect(tip).to_have_css('text-overflow', 'ellipsis')
+                assert abs((bubble['x'] + bubble['width']/2) - (button['x'] + button['width']/2)) < 0.1
+                if name == long_name:
+                    assert abs(bubble['width'] - button['width']) < 0.1
+                    assert tip.evaluate('e=>e.scrollWidth>e.clientWidth')
+                elif len(name) <= 2:
+                    assert bubble['width'] < button['width']
         expect(tip).to_have_css('pointer-events', 'none')
         page.mouse.move(width - 15, 20)
         expect(tip).to_be_hidden()

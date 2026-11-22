@@ -147,7 +147,9 @@ static class WebViewTests
                       const t=tip.getBoundingClientRect(),b=side.getBoundingClientRect();
                       if(tip.textContent!=='Германия · Франкфурт'||getComputedStyle(tip).opacity!=='1'||
                          t.top<0||t.left<0||t.right>innerWidth||t.bottom>b.top)throw Error('hover tooltip');
-                      if(Math.abs((t.left+t.width/2)-(b.left+b.width/2))>0.1||t.width>b.width+0.1)
+                      if(light&&(Math.abs(t.left-b.left)>0.1||t.width<=b.width||tip.scrollWidth>tip.clientWidth||tip.scrollHeight>tip.clientHeight))
+                        throw Error('collapsed sidebar must show the whole server name above the icon');
+                      if(!light&&(Math.abs((t.left+t.width/2)-(b.left+b.width/2))>0.1||t.width>b.width+0.1))
                         throw Error('tooltip must stay centered within the button width');
                       const label=getComputedStyle(document.getElementById('sidebarPowerLabel'));
                       if(label.visibility!==(light?'hidden':'visible')||label.opacity!==(light?'0':'1')||

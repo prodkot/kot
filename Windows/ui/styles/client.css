@@ -381,6 +381,16 @@ svg {
   transition-delay:0s
 }
 
+.app[data-sidebar=collapsed] .sidebar-tooltip {
+  left:0;
+  right:auto;
+  margin-inline:0;
+  max-width:min(156px,calc(100vw - 2 * var(--space-xs)));
+  max-height:calc(100vh - 100px);
+  white-space:normal;
+  overflow-wrap:anywhere
+}
+
 .main {
   min-width:0;
   overflow-y:auto;
