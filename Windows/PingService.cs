@@ -27,7 +27,8 @@ public sealed class PingService
         var context = SynchronizationContext.Current ?? throw new InvalidOperationException("Ping requires UI context.");
         attempt = new CancellationTokenSource();
         Busy = true; Done = 0; Total = nodes.Count; Error = "";
-        foreach (var n in nodes) results[n.Id] = new("queued", Mode: options.Mode);
+        string initialStatus = nodes.Count == 1 ? "checking" : "queued";
+        foreach (var n in nodes) results[n.Id] = new(initialStatus, Mode: options.Mode);
         Changed?.Invoke();
         running = Run(nodes.ToArray(), options, attempt, context);
     }
@@ -46,7 +47,8 @@ public sealed class PingService
         {
             await Latency.Batch(nodes, options.Parallelism, async (node, token) =>
             {
-                await Publish(() => results[node.Id] = new("checking", Mode: options.Mode));
+                if (nodes.Length > 1)
+                    await Publish(() => results[node.Id] = new("checking", Mode: options.Mode));
                 PingResult result;
                 try { result = await Measure(node, options, token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { result = new("cancelled", Error: "Отменено", Mode: options.Mode); }

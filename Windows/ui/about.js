@@ -2,11 +2,44 @@
 'use strict';
 window.KotAbout = ({getModel,openDialog,closeDialog}) => {
   const $=id=>document.getElementById(id),audio=$('aboutAudio');
+  const seek=$('musicSeek'),progress=$('musicProgress');
   const endpoint='https://api.github.com/repos/prodkot/kot/contents/music?ref=music';
   const root='https://raw.githubusercontent.com/prodkot/kot/music/music/';
   let tracks=[],current=null,loadedAt=0,loading=null,controller=null,wantsPlay=false,attempt=0;
-  audio.volume=.25;
   const demo=Object.hasOwn(document.body.dataset,'demoVersion');
+  const volumeControl=$('musicVolumeControl'),volumeButton=$('musicVolumeButton');
+  const volumePanel=$('musicVolumePanel'),volume=$('musicVolume');
+  volumeControl.hidden=demo;
+  audio.volume=volume.valueAsNumber/100;
+  function syncVolume(){
+    const percent=Math.round(audio.volume*100);
+    volume.value=percent;
+    volume.setAttribute('aria-valuetext',percent+'%');
+    $('musicVolumeValue').textContent=percent+'%';
+    $('musicVolumeSound').setAttribute('d',percent===0?'m15 10 4 4m0-4-4 4':'M15 9a5 5 0 0 1 0 6');
+  }
+  function showVolume(open){
+    volumePanel.hidden=!open;
+    volumeButton.setAttribute('aria-expanded',String(open));
+    if(open)volume.focus();
+  }
+  volumeButton.addEventListener('click',()=>showVolume(volumePanel.hidden));
+  volume.addEventListener('input',()=>{audio.volume=volume.valueAsNumber/100;});
+  audio.addEventListener('volumechange',syncVolume);
+  syncVolume();
+  volumeControl.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&!volumePanel.hidden){
+      event.preventDefault();
+      showVolume(false);
+      volumeButton.focus();
+    }
+  });
+  volumeControl.addEventListener('focusout',event=>{
+    if(!volumeControl.contains(event.relatedTarget))showVolume(false);
+  });
+  $('aboutDialog').addEventListener('pointerdown',event=>{
+    if(!volumePanel.hidden&&!volumeControl.contains(event.target))showVolume(false);
+  });
   function note(text=''){$('musicStatus').textContent=text;$('musicStatus').hidden=!text;}
   function render(){
     const playing=wantsPlay;
@@ -59,13 +92,33 @@ window.KotAbout = ({getModel,openDialog,closeDialog}) => {
   audio.addEventListener('ended',()=>{if(wantsPlay&&$('aboutDialog').open&&!$('aboutDialog').dataset.closing){wantsPlay=false;play(true);}});
   audio.addEventListener('playing',()=>{if(!wantsPlay){audio.pause();return;}note();render();});
   audio.addEventListener('error',()=>{if(!current)return;pause();note('Трек недоступен. Попробуй ещё раз или выбери другой.');});
-  audio.addEventListener('timeupdate',()=>{
-    const t=Number.isFinite(audio.currentTime)?audio.currentTime:0;
-    $('musicTime').textContent=Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
-    $('musicProgress').value=Number.isFinite(audio.duration)&&audio.duration>0?t/audio.duration:0;
+  function formatTime(seconds){
+    return Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');
+  }
+  function syncTimeline(){
+    const duration=!audio.error&&Number.isFinite(audio.duration)?audio.duration:0;
+    const position=audio.error?0:audio.currentTime;
+    const elapsed=formatTime(position),total=duration?formatTime(duration):'--:--';
+    $('musicTime').textContent=elapsed;
+    $('musicDuration').textContent=total;
+    progress.max=duration||1;
+    progress.value=duration?position:0;
+    seek.max=progress.max;
+    seek.value=progress.value;
+    const ranges=audio.seekable;
+    seek.disabled=!duration||!ranges.length||ranges.end(ranges.length-1)<=ranges.start(0);
+    seek.setAttribute('aria-valuetext',duration?elapsed+' из '+total:elapsed);
+  }
+  for(const event of ['loadedmetadata','durationchange','progress','canplay','timeupdate','seeking','seeked','emptied','error']){
+    audio.addEventListener(event,syncTimeline);
+  }
+  seek.addEventListener('input',()=>{
+    if(seek.disabled)return;
+    audio.currentTime=seek.valueAsNumber;
+    syncTimeline();
   });
   $('closeAbout').addEventListener('click',()=>closeDialog($('aboutDialog')));
-  $('aboutDialog').addEventListener('close',()=>{pause();controller?.abort();});
+  $('aboutDialog').addEventListener('close',()=>{showVolume(false);pause();controller?.abort();});
   $('astraCredit').addEventListener('click',()=>openDialog($('astraDialog')));
   $('closeAstra').addEventListener('click',()=>closeDialog($('astraDialog')));
   window.addEventListener('pagehide',()=>{pause();controller?.abort();});

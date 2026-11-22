@@ -2,14 +2,11 @@ param([Parameter(Mandatory)][string]$Key,[string]$Nsis=(Join-Path ${env:ProgramF
 $ErrorActionPreference='Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 if (!(Test-Path $Nsis)) { throw 'Install NSIS 3 or pass -Nsis path/to/makensis.exe.' }
-$version=[regex]::Match([IO.File]::ReadAllText('Core/ClientIdentity.cs'),'Version\s*=\s*"([0-9.]+)"').Groups[1].Value
-if (!$version -or [IO.File]::ReadAllText('Windows/Kot.Windows.csproj') -notmatch "<Version>$([regex]::Escape($version))</Version>") { throw 'Version constants disagree.' }
-if ([IO.File]::ReadAllText('Windows/app.manifest') -notmatch ('assemblyIdentity version="'+[regex]::Escape($version)+'.0"')) { throw 'Manifest version disagrees.' }
 $publish=Join-Path $PWD ('publish-' + [Guid]::NewGuid().ToString('N'))
 ./build.ps1 -PublishDirectory $publish
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $stamp=Get-Content (Join-Path $publish 'build-info.json') -Raw | ConvertFrom-Json
-$build=$stamp.build; $displayVersion=$stamp.displayVersion
+$version=$stamp.version; $displayVersion=$stamp.displayVersion
 if ((Get-Item (Join-Path $publish 'Kot.exe')).VersionInfo.ProductVersion -ne $displayVersion) { throw 'Client build identity differs.' }
 python Release/installer-files.py $publish Installer/uninstall-files.nsh
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller file list generation failed.' }
@@ -20,7 +17,7 @@ $extractor=Join-Path $extractorFolder 'Kot.Setup.Extract.exe'
 if (!(Test-Path $extractor) -or (Get-Item $extractor).Length -gt 16MB) { throw 'Missing or unexpectedly large native installer helper.' }
 $uiFolder=Join-Path $extractorFolder 'ui'
 ./Release/build-installer-ui.ps1 -Output $uiFolder
-$setup=Join-Path $PWD "artifacts/Kot-Setup-$version-build-$build-Windows-x64.exe"
+$setup=Join-Path $PWD "artifacts/Kot-Setup-$($stamp.publicVersion)-Windows-x64.exe"
 $payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
 $installerScript=Join-Path $PWD 'Installer/Kot.nsi'
 # Build the actual versioned uninstaller BEFORE signing the shared update payload.
@@ -29,7 +26,7 @@ $generator=Join-Path $extractorFolder 'make-uninstaller.exe'
 # This string is consumed by the NSIS runtime, whose filename sanitizer removes '/'.
 # Unlike compiler File/Icon paths, WriteUninstaller needs native Windows separators.
 $uninstaller=Join-Path $publish 'Uninstall.exe'
-& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DBUILD_ID=$build" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$generator" "/DGENERATE_UNINSTALLER=$uninstaller" $installerScript
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DDISPLAY_VERSION=$displayVersion" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$generator" "/DGENERATE_UNINSTALLER=$uninstaller" $installerScript
 if ($LASTEXITCODE -ne 0) { throw 'Uninstaller generator compilation failed.' }
 $generate=Start-Process $generator -PassThru
 try {
@@ -45,7 +42,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Update archive creation failed.' }
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $archive $version
 if ($LASTEXITCODE -ne 0) { throw 'The client rejected the generated update package.' }
 $payloadKB=[long][Math]::Ceiling((Get-ChildItem $publish -File -Recurse | Measure-Object -Property Length -Sum).Sum / 1KB)
-& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DBUILD_ID=$build" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" $installerScript
+& $Nsis "/WX" "/INPUTCHARSET" "UTF8" "/DVERSION=$version" "/DDISPLAY_VERSION=$displayVersion" "/DPAYLOAD=$publish" "/DPAYLOAD_KB=$payloadKB" "/DEXTRACTOR=$extractor" "/DUI_PLUGIN=$uiFolder" "/DOUTPUT=$setup" $installerScript
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 ./Release/setup.ps1 -Setup $setup -Archive $archive -Version $version -Key $Key
 dotnet run --project Release/VerifyPackage/Kot.Verify.csproj -c Release -- $setup $version

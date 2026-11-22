@@ -17,7 +17,7 @@ window.KotNativeBridge = host => {
     });
   }
 
-  function start({snapshot, navigate}) {
+  function start({snapshot, navigate, notice}) {
     host.addEventListener('message', ({data}) => {
       if (data.kind === 'heartbeat') {
         rpc('heartbeat').catch(() => {});
@@ -25,6 +25,8 @@ window.KotNativeBridge = host => {
       }
       if (data.kind === 'navigate' && ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'services', 'settings'].includes(data.page)) {
         navigate(data.page);
+      } else if (data.kind === 'notice') {
+        notice(data.text);
       } else if (data.kind === 'snapshot') {
         snapshot(data.data);
       } else if (data.kind === 'reply') {

@@ -1,4 +1,4 @@
-# Read-only, Windows PowerShell 5.1+. Writes a sanitized JSON report to stdout only.
+﻿# Read-only, Windows PowerShell 5.1+. Writes a sanitized JSON report to stdout only.
 # No profile decryption, raw paths, account names, SIDs, command lines or event messages.
 param([ValidateRange(1,14)][int]$Days=3)
 $ErrorActionPreference='Stop'
@@ -104,7 +104,7 @@ function SamePath($a,$b) {
 function VersionOf($path) {
   try {
     $value=[Diagnostics.FileVersionInfo]::GetVersionInfo($path).ProductVersion
-    if ($value -match '^\d+\.\d+\.\d+(\.\d+)?(?: \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?') { return $Matches[0] }
+    if ($value -match '^\d+\.\d+\.\d+(\.\d+)?(?:(?: (?:Dev|Beta|RC) [1-9][0-9]{0,8})| \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?') { return $Matches[0] }
   } catch { }
   return $null
 }
@@ -145,7 +145,7 @@ try {
   $registry=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry64)
   try {
     $key=$registry.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN',$false)
-    if ($key) { try { $install=$key.GetValue('InstallLocation'); $v=$key.GetValue('DisplayVersion'); if ($v -match '^\d+\.\d+\.\d+(?: \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?$') { $registeredVersion=$v } } finally { $key.Dispose() } }
+    if ($key) { try { $install=$key.GetValue('InstallLocation'); $v=$key.GetValue('DisplayVersion'); if ($v -match '^\d+\.\d+\.\d+(?:(?: (?:Dev|Beta|RC) [1-9][0-9]{0,8})| \((?:(?:dev|release)\.[0-9]{1,9}\.[0-9]{1,9}|local(?:\.[0-9]{14}\.[a-f0-9]{8})?)\))?$') { $registeredVersion=$v } } finally { $key.Dispose() } }
   } finally { $registry.Dispose() }
 } catch { Failure 'install-registration' $_ }
 $exe=if ($install) { Join-Path $install 'Kot.exe' } else { $null }

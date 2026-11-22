@@ -9,6 +9,35 @@
     if(mark.getAttribute('src')!==source)mark.src=source;
   }
   startupTheme(window.kotStartup?.theme);
+  const app=document.querySelector('.app'), sidebarToggle=$('sidebarToggle');
+  const narrowWindow=matchMedia('(max-width:700px)');
+  const sidebarChoices=new Map();
+  function sidebarKey(){return narrowWindow.matches?'kot.sidebar.narrow':'kot.sidebar.wide';}
+  function showSidebar(mode){
+    const collapsed=mode==='collapsed';
+    app.dataset.sidebar=mode;
+    sidebarToggle.setAttribute('aria-expanded',String(!collapsed));
+    sidebarToggle.title=collapsed?'Развернуть панель':'Свернуть панель';
+    sidebarToggle.setAttribute('aria-label',sidebarToggle.title);
+    for(const button of $('sidebarNav').querySelectorAll('.nav-button')){
+      if(collapsed)button.title=button.getAttribute('aria-label');
+      else button.removeAttribute('title');
+    }
+  }
+  function restoreSidebar(){
+    const key=sidebarKey();
+    let mode=sidebarChoices.get(key);
+    if(!mode){try{mode=localStorage.getItem(key);}catch{}}
+    showSidebar(mode==='expanded'||mode==='collapsed'?mode:(narrowWindow.matches?'collapsed':'expanded'));
+  }
+  sidebarToggle.addEventListener('click',()=>{
+    const key=sidebarKey(), mode=app.dataset.sidebar==='expanded'?'collapsed':'expanded';
+    showSidebar(mode);
+    sidebarChoices.set(key,mode);
+    try{localStorage.setItem(key,mode);}catch{}
+  });
+  narrowWindow.addEventListener('change',restoreSidebar);
+  restoreSidebar();
   // Bundled flag-icons 7.3.2. Never build asset paths from subscription text.
   const {label,serverPresentation,countryBadge,bytes}=window.KotPresentation;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)'), motions = new Map();
@@ -85,12 +114,31 @@
     const view=$('page-'+name);animate(view,[{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260});
     // A single page transition prevents nested delayed elements from flashing.
   }
+  let togglePending=false;
+  function updatePowerAvailability(){
+    const state=model.state;
+    const unavailable=togglePending||state==='disconnecting'||(state==='idle'&&!model.nodes.length);
+    $('powerButton').disabled=unavailable;
+    // Keep the compact control focusable so its server description is available even when idle and empty.
+    $('sidebarPower').setAttribute('aria-disabled',String(unavailable||state==='connecting'));
+  }
+  async function togglePower(event){
+    if(togglePending||event.currentTarget.getAttribute('aria-disabled')==='true')return;
+    togglePending=true;updatePowerAvailability();
+    try{await request('toggle');}
+    finally{togglePending=false;updatePowerAvailability();}
+  }
   function setState(state, previous){
     $('connection').dataset.state=state;
     document.querySelector('.title-brand').dataset.state=state;
     const texts={idle:['Не подключено','Подключить'],connecting:['Подключение','Отменить'],connected:['Подключено','Отключить'],disconnecting:['Отключение','Отключить'],waiting:['Ожидание сети · повтор подключения','Отменить']}[state]||['Не подключено','Подключить'];
     $('stateLabel').textContent=texts[0];$('powerLabel').textContent=texts[1];$('powerButton').setAttribute('aria-label',texts[1]);
-    $('powerButton').disabled=(!model.nodes.length && state==='idle')||state==='disconnecting';
+    const transitioning=state==='connecting'||state==='disconnecting';
+    const sideLabel=transitioning?texts[0]+'…':texts[1];
+    $('sidebarPowerLabel').textContent=sideLabel;
+    $('sidebarPower').setAttribute('aria-label',sideLabel);
+    $('sidebarPower').setAttribute('aria-busy',String(transitioning));
+    updatePowerAvailability();
     const blocked=model.settings?.killSwitchActive&&state==='idle';
     $('connectionError').textContent=model.error||(blocked?'Kill switch блокирует интернет. Подключитесь или отключите защиту в настройках.':'');$('connectionError').hidden=!model.error&&!blocked;$('copyErrorLog').hidden=!model.error;
     $('connectionError').title=$('connectionError').textContent;
@@ -110,10 +158,14 @@
     document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===data.settings.theme));document.querySelector('.theme-control').dataset.selected=data.settings.theme==='dark'?'0':'1';
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===data.settings.mode));document.querySelector('.mode').dataset.selected=data.settings.mode==='tun'?'0':'1';
     document.querySelectorAll('[data-setting]').forEach(b=>b.setAttribute('aria-checked',!!data.settings[b.dataset.setting]));
-    label($('subscriptionName'),data.hasSubscription?data.name:'Подписка');label($('listName'),data.hasSubscription?data.name:'Подписка');
+    label($('listName'),data.hasSubscription?data.name:'Подписка');
     const selected=data.nodes.find(n=>n.id===data.selected);
-    const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode);
-    label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);label($('selectedCity'),automatic?actual?serverPresentation(actual).name:'Быстрый доступный сервер':selected?.protocol.toUpperCase()||'');
+    const automatic=data.selected==='auto', actual=data.nodes.find(n=>n.id===data.automaticNode)||data.activeNode;
+    const tooltipNode=automatic?actual:selected;
+    $('sidebarServer').textContent=tooltipNode?serverPresentation(tooltipNode).name:'Сервер не выбран';
+    label($('selectedName'),automatic?'Авто':selected?serverPresentation(selected).name:'Добавить подписку');countryBadge($('selectedCountry'),selected,automatic);
+    const showingActive=data.state==='connected'&&!automatic&&data.activeNode&&data.activeNode.id!==data.selected;
+    label($('selectedCity'),showingActive?'Сейчас подключён: '+data.activeNode.name:automatic?(actual?serverPresentation(actual).name:'Быстрый доступный сервер'):selected?.protocol.toUpperCase()||'');
     const autoEligible=data.nodes.some(n=>!n.providerRouting&&n.protocol!=='xray'&&(!data.favorites?.length||data.favorites.includes(n.id)));
     $('autoServer').hidden=!data.nodes.length;$('autoServer').setAttribute('aria-pressed',automatic);$('autoDescription').textContent=!autoEligible?'Нет обычных серверов для Авто':data.favorites?.length?'Обычные серверы из избранного':'Обычные серверы, проверенные через VPN';
     renderSubscriptions();routing.render();
@@ -146,11 +198,11 @@
       const country=document.createElement('span');country.className='country';countryBadge(country,item);
       const copy=document.createElement('span');copy.className='server-copy';const title=document.createElement('strong');title.textContent=presentation.name;title.title=presentation.name;const city=document.createElement('small');city.textContent=item.protocol.toUpperCase();copy.append(title,city);button.append(country,copy);
       if(item.id===model.selected){const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('selected-mark');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#check');icon.append(use);button.append(icon);}
-      button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
+      button.addEventListener('click',async()=>{button.disabled=true;try{await rpc('select',{id:item.id,subscriptionId:model.activeSubscription});page('home');}catch(e){toast(e.message);}finally{button.disabled=false;}});
       const ping=document.createElement('button');ping.className='ping-node';ping.disabled=!!model.ping?.busy;ping.setAttribute('aria-label','Пинг '+presentation.name);
       const result=item.ping;ping.dataset.status=result?.status||'idle';
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','#signal');icon.append(use);
-      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'…':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'';
+      const value=document.createElement('span');value.textContent=result?.status==='ok'?result.ms+' мс':result?.status==='checking'?'Проверка':result?.status==='queued'?'В очереди':result?.status==='error'?'Ошибка':result?.status==='unsupported'?'UDP':result?.status==='cancelled'?'Отмена':'';
       ping.title=result?.status==='ok'?(result.mode||'http').toUpperCase()+': '+result.successes+'/'+result.attempts+' попыток'+(result.error?'; '+result.error:''):result?.error||'Проверить сервер';
       ping.setAttribute('aria-label','Пинг '+presentation.name+': '+(value.textContent||'не проверен')+'. '+ping.title);ping.append(value,icon);ping.addEventListener('click',()=>request('pingNode',{id:item.id}));row.append(button,favorite,ping);$('serverList').append(row);
       const qr=document.createElement('button');qr.type='button';qr.className='qr-node';qr.innerHTML='<svg aria-hidden="true"><use href="#ellipsis"/></svg>';qr.setAttribute('aria-label','Поделиться сервером '+presentation.name);qr.disabled=!!item.providerRouting;qr.title=item.providerRouting?'QR не сохраняет правила подписки. Используйте исходную подписку или резервную копию.':'Поделиться сервером';qr.addEventListener('click',()=>clientTools.share(item.id));row.append(qr);
@@ -169,7 +221,9 @@
     $('downloadUpdate').disabled=busy;
     $('updateBadge').hidden=!u.availableVersion;$('updateStatus').textContent=(u.status||'Проверка обновлений')+(u.bytes?' · '+bytes(u.bytes):'')+(u.checkedAt&&!u.busy?' · '+u.checkedAt:'');$('updateError').textContent=u.error||'';$('downloadUpdate').hidden=!u.availableVersion;$('retryUpdate').hidden=!!u.availableVersion||!u.error;$('retryUpdate').disabled=busy;$('downloadUpdate').textContent=updateDownloadBusy||u.busy&&u.availableVersion?'Обновление…':u.error?'Повторить':'Обновить до '+(u.availableVersion||'');$('downloadUpdate').title=(u.error?'Повторить обновление до ':'Обновить до ')+(u.availableVersion||'');$('cancelUpdate').hidden=!u.busy;$('onlineUpdateButton').disabled=busy;$('updateProgress').hidden=!busy;if(u.size>0){$('updateProgress').max=u.size;$('updateProgress').value=u.bytes||0;}else $('updateProgress').removeAttribute('value');
     const visual=$('smoothUpdateProgress'),bar=visual.firstElementChild;visual.hidden=!busy;
-    visual.dataset.indeterminate=!(u.size>0);const fraction=u.size>0?Math.max(0,Math.min(1,(u.bytes||0)/u.size)):0;
+    const fraction=$('updateProgress').position;
+    visual.dataset.indeterminate=fraction<0;
+    if(fraction<0){bar.style.removeProperty('transform');return;}
     if(fraction===0){bar.style.transition='none';bar.style.transform='scaleX(0)';void bar.offsetWidth;bar.style.transition='';}
     else bar.style.transform='scaleX('+fraction+')';
   }
@@ -293,10 +347,10 @@
   $('addSubscriptionOption').addEventListener('click',()=>{closeSubscriptions();openAdd();});
   addEventListener('resize',()=>{if(subscriptionMenu.matches(':popover-open'))positionSubscriptions();});
   document.querySelector('.main').addEventListener('scroll',closeSubscriptions,{passive:true});
-  $('autoServer').addEventListener('click',async()=>{if(await request('select',{id:'auto'}))page('home');});
+  $('autoServer').addEventListener('click',async()=>{if(await request('select',{id:'auto',subscriptionId:model.activeSubscription}))page('home');});
   document.querySelectorAll('[data-page]').forEach(el=>el.addEventListener('click',()=>page(el.dataset.page)));
   $('homeServer').addEventListener('click',()=>model.nodes.length?page('servers'):openAdd());$('serverSearch').addEventListener('input',renderServers);
-  $('powerButton').addEventListener('click',()=>request('toggle'));
+  for(const button of [$('powerButton'),$('sidebarPower')])button.addEventListener('click',togglePower);
   document.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:'mode',value:el.dataset.mode})));
   document.querySelectorAll('[data-theme]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:'theme',value:el.dataset.theme})));
   document.querySelectorAll('[data-setting]').forEach(el=>el.addEventListener('click',()=>request('settings',{key:el.dataset.setting,value:el.getAttribute('aria-checked')!=='true'})));
@@ -322,11 +376,11 @@
     if(/^http:\/\//i.test(url)){dialogUI.fieldError($('profileLink'),$('addError'),'Нужна HTTPS-ссылка на подписку.');return;}
     const remote=/^https:\/\//i.test(url);
     const submit=$('addForm').querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;importBusy=true;submit.textContent='Загрузка';$('addError').textContent='';
-    try{await rpc(remote?'import':'importText',remote?{url,name:$('profileName').value.trim()}:{text:url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(model.warnings?.length?'Серверы добавлены. Предупреждений: '+model.warnings.length:'Серверы добавлены');}
+    try{const result=await rpc(remote?'import':'importText',remote?{url,name:$('profileName').value.trim()}:{text:url,name:$('profileName').value.trim()});closeDialog($('addDialog'));page('servers');toast(result?.selectionNotice||(model.warnings?.length?'Серверы добавлены. Предупреждений: '+model.warnings.length:'Серверы добавлены'));}
     catch(e){$('addError').textContent=e.message;}
     finally{submit.disabled=false;importBusy=false;submit.textContent='Добавить';}
   });
-  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{await rpc('refresh');toast(model.warnings?.length?'Обновлено. Предупреждений: '+model.warnings.length:'Подписка обновлена');}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
+  $('refreshButton').addEventListener('click',async()=>{if(refreshBusy)return;refreshBusy=true;const b=$('refreshButton');b.disabled=true;try{const result=await rpc('refresh',{subscriptionId:model.activeSubscription});toast(result?.selectionNotice||(model.warnings?.length?'Обновлено. Предупреждений: '+model.warnings.length:'Подписка обновлена'));}catch(e){toast(e.message);}finally{refreshBusy=false;b.disabled=!model.hasSubscription||!!model.localSubscription;}});
   let deviceAttempt=0;
   function clearHwid(){deviceAttempt++;$('hwidValue').value='';$('deviceName').value='';$('copyHwid').disabled=true;}
   function closeDevice(){clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';$('advancedDialog').scrollTop=0;$('hwidButton').focus({preventScroll:true});}
@@ -399,14 +453,32 @@
   $('backupButton').addEventListener('click',()=>{if(!dialogUI.isDirty($('advancedDialog')))closeDialog($('advancedDialog'));$('backupPassword').value='';$('backupError').textContent='';openDialog($('backupDialog'));});
   $('closeBackup').addEventListener('click',()=>requestClose($('backupDialog')));$('backupDialog').addEventListener('close',()=>{$('backupPassword').value='';});
   for(const [id,action] of [['exportBackup','backupExport'],['restoreBackup','backupImport']])$(id).addEventListener('click',async()=>{const password=$('backupPassword').value;if(password.length<8){dialogUI.fieldError($('backupPassword'),$('backupError'),'Пароль от 8 символов.');return;}for(const id of ['exportBackup','restoreBackup'])$(id).disabled=true;try{await rpc(action,{password});closeDialog($('backupDialog'));}catch(e){$('backupError').textContent=e.message;}finally{for(const id of ['exportBackup','restoreBackup'])$(id).disabled=false;}});
+  function dismissDialog(dialog){
+    if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();
+    else requestClose(dialog);
+  }
+  function onBackdrop(event,dialog){
+    if(event.target!==dialog)return false;
+    const rect=dialog.getBoundingClientRect();
+    return event.clientX<rect.left||event.clientX>=rect.right||event.clientY<rect.top||event.clientY>=rect.bottom;
+  }
   // Handle Escape before the browser's close watcher so repeated Escape preserves
   // nested navigation, dirty confirmation and the animated close path consistently.
   document.addEventListener('keydown',event=>{
     if(event.key!=='Escape'||event.defaultPrevented)return;
     const dialog=openDialogs.findLast(item=>item.open);if(!dialog)return;
-    event.preventDefault();if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();else requestClose(dialog);
+    event.preventDefault();dismissDialog(dialog);
   });
-  document.querySelectorAll('dialog').forEach(dialog=>{dialog.addEventListener('cancel',event=>{event.preventDefault();if(dialog===$('advancedDialog')&&!$('deviceDialog').hidden)closeDevice();else requestClose(dialog);});dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const r=dialog.getBoundingClientRect();if(!dialog.hasAttribute('data-dirty-form')&&dialog.id!=='discardDialog'&&(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom))requestClose(dialog);});});
+  for(const dialog of document.querySelectorAll('dialog')){
+    dialog.addEventListener('cancel',event=>{event.preventDefault();dismissDialog(dialog);});
+    if(dialog.id==='discardDialog'||dialog.matches('[data-dirty-form]:not([data-backdrop-close])'))continue;
+    let pressedBackdrop=false;
+    dialog.addEventListener('pointerdown',event=>{pressedBackdrop=event.button===0&&onBackdrop(event,dialog);});
+    dialog.addEventListener('click',event=>{
+      if(pressedBackdrop&&onBackdrop(event,dialog))dismissDialog(dialog);
+      pressedBackdrop=false;
+    });
+  }
   document.querySelectorAll('[data-window]').forEach(b=>b.addEventListener('click',()=>request(b.dataset.window)));
   document.querySelector('.titlebar').addEventListener('mousedown',e=>{if(e.button===0&&!e.target.closest('button'))request('drag',{double:e.detail===2});});
   document.querySelectorAll('[data-edge]').forEach(b=>b.addEventListener('mousedown',e=>{if(e.button===0)request('resize',{edge:b.dataset.edge});}));
@@ -419,5 +491,5 @@
   const journal=window.KotJournal({getModel:()=>model,getPage:()=>current,request,toast});
   const routing=window.KotRouting({getModel:()=>model,rpc,toast,dialogUI,openDialog,closeDialog,requestClose});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){bridge.start({snapshot:apply,navigate:page});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
+  if(host){bridge.start({snapshot:apply,navigate:page,notice:toast});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
 })();

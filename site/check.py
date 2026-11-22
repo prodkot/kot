@@ -95,8 +95,8 @@ class SiteTests(unittest.TestCase):
             self.assertIn("frame-src 'none'", demo)
             self.assertIn("font-src data:", demo)
             from xml.etree import ElementTree
-            project = ElementTree.parse(ROOT.parent / 'Windows/Kot.Windows.csproj')
-            self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/Version")}"', demo)
+            project = ElementTree.parse(ROOT.parent / 'Directory.Build.props')
+            self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/VersionPrefix")}"', demo)
             self.assertEqual((dest / "demo/fonts/Manrope.ttf").read_bytes(), (ROOT.parent / "Windows/ui/fonts/Manrope.ttf").read_bytes())
             self.assertIn("data:font/ttf;base64,", (dest / "demo/styles/client.css").read_text())
             self.assertEqual((dest / "demo/styles/tokens.css").read_bytes(), (ROOT.parent / "Windows/ui/styles/tokens.css").read_bytes())

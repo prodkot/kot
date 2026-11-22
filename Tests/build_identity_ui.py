@@ -17,9 +17,8 @@ with sync_playwright() as p:
         for theme in ('dark', 'light'):
             for size in ((800, 600), (960, 640)):
                 page.set_viewport_size(dict(zip(('width', 'height'), size)))
-                for build in ('dev.123.1', 'dev.123.2', 'release.123.1', 'local.20261109140000.1234abcd'):
-                    display = f'0.8.3 ({build})'
-                    page.evaluate('(m)=>fixtureStatistics(m)', {'version':'0.8.3', 'displayVersion':display, 'buildNumber':build, 'settings':{'theme':theme}})
+                for display, build in [('0.8.4 Beta 1','dev.123.1'), ('0.8.4 RC 2','dev.123.2'), ('0.8.4','release.123.1')]:
+                    page.evaluate('(m)=>fixtureStatistics(m)', {'version':'0.8.4', 'displayVersion':display, 'buildNumber':build, 'settings':{'theme':theme}})
                     expect(page.locator('#titleVersion')).to_have_text(display)
                     expect(page.locator('#version')).to_contain_text(display)
                     box = page.locator('#titleVersion').bounding_box()

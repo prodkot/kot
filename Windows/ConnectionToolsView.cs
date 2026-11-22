@@ -29,7 +29,7 @@ public sealed partial class MainWindow
         diagnosticSteps.Clear(); qualitySamples.Clear(); qualitySummary = null; checkAddress = "";
         toolsKind = kind; toolsStatus = "Подготовка проверки"; toolsError = "";
         int activePort = kind == "diagnostics" && tunnel.State == "connected" ? tunnel.ProxyPort : 0;
-        if (activePort > 0) node = ToolNode();
+        if (activePort > 0 && tunnel.SessionNode is { } active) node = active;
         toolsServer = activePort > 0 ? "Текущее VPN-соединение" : node.Name;
         var owner = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); toolsAttempt = owner;
         toolsRunning = RunTools(kind, node, website, activePort, owner);

@@ -22,16 +22,10 @@ def check():
     def read(name):
         return (ROOT / name).read_text(encoding="utf-8-sig")
 
-    version = re.search(r'Version\s*=\s*"(\d+\.\d+\.\d+)"', read("Core/ClientIdentity.cs")).group(1)
+    sys.path.insert(0, str(ROOT / 'Release'))
+    from product_version import read as product_version
+    version, _, _ = product_version(ROOT)
     project = ET.fromstring(read("Windows/Kot.Windows.csproj"))
-    require(project.findtext("PropertyGroup/Version") == version, "Windows project version differs")
-    manifest = ET.fromstring(read("Windows/app.manifest"))
-    require(manifest.find("{urn:schemas-microsoft-com:asm.v1}assemblyIdentity").get("version") == version + ".0",
-            "Windows manifest version differs")
-    require(re.search(r'!define VERSION "([^"]+)"', read("Installer/Kot.nsi")).group(1) == version,
-            "Installer version differs")
-    require(re.search(r'id="titleVersion"[^>]*>([^<]+)', read("Windows/ui/index.html")).group(1) == version,
-            "UI fallback version differs")
     history = re.split(r"(?m)^## ", read("CHANGELOG.md"))[1]
     require(history.splitlines()[0] == version, "Changelog must start with the current version")
     require(history.split("\n", 1)[1].strip() == read("Release/NOTES.md").strip(),

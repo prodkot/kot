@@ -35,6 +35,11 @@ static class BrowserRecoveryChecks
         {
             app.Show(); Pump(() => app.InterfaceReady, "initial UI did not become ready");
             owned.Add(Process.GetProcessById(checked((int)app.BrowserProcessId)));
+            Pump(() => Script(app, "document.getElementById('startupScreen').hidden") == "true", "initial profile was not presented");
+            check(Script(app, """
+                sidebarPower.ariaLabel==='Подключить' && sidebarPower.ariaDisabled==='true' &&
+                sidebarServer.textContent==='Сервер не выбран' && powerButton.disabled
+                """) == "true", "an empty native profile disables both VPN controls and describes the missing server");
             for (int i = 0; i < 4; i++)
             {
                 Script(app, "document.querySelector('[data-page=settings]').click()");

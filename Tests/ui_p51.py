@@ -29,7 +29,7 @@ def dismiss(p):
 
 def forms(browser):
     p=boot(browser)
-    cases=[('home',['.sidebar [data-open-add]'],'addDialog','#profileLink','https://example.org/draft'),
+    cases=[('servers',['#page-servers [data-open-add]'],'addDialog','#profileLink','https://example.org/draft'),
       ('settings',['#advancedButton'],'advancedDialog','#bypassDomains','draft.example'),
       ('servers',['#pingSettings'],'pingDialog','#pingUrl','https://example.org/ping'),
       ('settings',['#automationButton'],'automationDialog','#refreshHours','12'),
@@ -89,7 +89,7 @@ def ping_geometry(browser):
     p=boot(browser)
     p.evaluate("fixtureNavigate('servers')")
     selectors=['.ping-node','.ping-node svg','.qr-node']
-    states=[('idle',None,''),('queued',None,'В очереди'),('checking',None,'…'),
+    states=[('idle',None,''),('queued',None,'В очереди'),('checking',None,'Проверка'),
             ('ok',42,'42 мс'),('ok',194,'194 мс'),('ok',9999,'9999 мс'),
             ('error',None,'Ошибка'),('unsupported',None,'UDP'),('cancelled',None,'Отмена'),('idle',None,'')]
     for theme in ['dark','light']:
@@ -109,6 +109,8 @@ def ping_geometry(browser):
                     ping:{busy:['queued','checking'].includes(ping.status),done:0,total:1}
                 })''',{'status':status,'ms':ms,'mode':'http','successes':2,'attempts':2})
                 expect(p.locator('.ping-node')).to_have_text(label)
+                if status=='checking':
+                    assert p.locator('.ping-node span').evaluate('e=>e.scrollWidth<=e.clientWidth'),(theme,width,label)
                 for selector in selectors:
                     box=p.locator(selector).bounding_box()
                     assert all(abs(box[k]-baseline[selector][k])<.02 for k in box), (theme,width,status,selector,baseline[selector],box)
@@ -180,6 +182,13 @@ def update_quality(browser):
         now=p.locator('#downloadUpdate').bounding_box();assert now==before,(now,before)
     p.evaluate('fixtureSnapshot({updates:{busy:true,availableVersion:"9.9.9",size:0,bytes:100,status:"Загрузка"}})')
     assert p.locator('#updateProgress').get_attribute('value') is None
+    # With reduced motion the unknown-size indicator remains visible inside its track.
+    track=p.locator('#smoothUpdateProgress')
+    segment=track.locator('span')
+    expect(segment).to_have_css('animation-name','none')
+    box,fill=track.bounding_box(),segment.bounding_box()
+    assert box['x']<=fill['x'] and 0<fill['width']<box['width']
+    assert fill['x']+fill['width']<=box['x']+box['width']
     p.locator('#closeOnlineUpdate').click();expect(p.locator('#onlineUpdateDialog')).not_to_be_visible()
     assert not p.evaluate("fixtureRequests.some(r=>r.action==='cancelUpdate')")
     p.evaluate("fixtureNavigate('servers')");p.locator('#qualityButton').click();before=p.locator('#testQuality').bounding_box()

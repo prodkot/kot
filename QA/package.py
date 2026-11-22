@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+import xml.etree.ElementTree as ET
 import subprocess
 import zipfile
 
@@ -19,7 +20,7 @@ def build(publish, setup, output):
         (folder / name).write_text(text, encoding='utf-8-sig' if name.endswith('.ps1') else 'utf-8', newline='\r\n')
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     pin = json.loads((root / 'upstream/xray-experiment.json').read_text())
-    version = re.search(r'Version\s*=\s*"(\d+\.\d+\.\d+)"', (root / 'Core/ClientIdentity.cs').read_text()).group(1)
+    version = ET.parse(root / "Directory.Build.props").findtext("PropertyGroup/VersionPrefix")
     stamp = json.loads((publish / 'build-info.json').read_text(encoding='utf-8-sig'))
     assert stamp['version'] == version and stamp['commit'] == commit
     manifest = {'schema': 1, 'commit': commit, 'version': version, 'build': stamp['build'], 'displayVersion': stamp['displayVersion'], 'coreCommit': pin['commit'],

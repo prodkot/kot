@@ -5,6 +5,7 @@ import html
 import json
 import re
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -42,7 +43,7 @@ def build(destination, release):
     for folder in ("assets", "styles", "scripts"):
         shutil.copytree(source / folder, destination / folder, dirs_exist_ok=True)
     client = repository / "Windows" / "ui"
-    demo_version = re.search(r'<Version>([^<]+)</Version>', (repository / 'Windows/Kot.Windows.csproj').read_text()).group(1)
+    demo_version = ET.parse(repository / 'Directory.Build.props').findtext('PropertyGroup/VersionPrefix')
     # Both buttons work without JavaScript and always use the validated stable Setup.
     landing = destination / "index.html"
     markup = landing.read_text(encoding="utf-8")

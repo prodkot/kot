@@ -2,12 +2,14 @@ namespace Kot.Core;
 
 public static class ClientIdentity
 {
-    public const string Version = "0.8.3";
+    public static string Version => typeof(ClientIdentity).Assembly.GetName().Version!.ToString(3);
     static string? Metadata(string key) => typeof(ClientIdentity).Assembly
         .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
         .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value;
     public static string BuildNumber => Metadata("KotBuildId") ?? "local";
-    public static string DisplayVersion => $"{Version} ({BuildNumber})";
+    public static string DisplayVersion => typeof(ClientIdentity).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion;
     public static string Build
     {
         get

@@ -14,7 +14,9 @@ public sealed partial class MainWindow : WindowChrome
     readonly StartupScreen loading;
     readonly bool startupSpin = Random.Shared.Next(100) == 0;
     string? pendingTrayPage;
-    readonly Tunnel tunnel = new();
+    readonly Tunnel tunnel;
+    readonly ProfilePersistence persistence;
+    readonly Func<HttpMessageHandler>? subscriptionTransport;
     readonly PingService ping = new();
     readonly SemaphoreSlim operations = new(1);
     Profile profile;
@@ -24,17 +26,27 @@ public sealed partial class MainWindow : WindowChrome
     List<string> warnings = [];
     CancellationTokenSource? importAttempt;
     public MainWindow(bool startup, bool resumeConnection = false, Profile? initialProfile = null)
+        : this(startup, resumeConnection, initialProfile, new Tunnel(), Store.Persistence(), null) { }
+
+    internal MainWindow(bool startup, bool resumeConnection, Profile? initialProfile, Tunnel tunnel,
+        ProfilePersistence persistence, Func<HttpMessageHandler>? subscriptionTransport)
     {
-        this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? Store.Load();
+        this.tunnel = tunnel;
+        this.persistence = persistence;
+        this.subscriptionTransport = subscriptionTransport;
+        this.startup = startup; this.resumeConnection = resumeConnection; profile = initialProfile ?? persistence.Load();
         if (!profile.KillSwitch) KillSwitch.Release(); else KillSwitch.Detect();
         AppLog.Register(profile); AppLog.Write("app", "kot. " + ClientIdentity.DisplayVersion + " starting; OS=" + Environment.OSVersion + "; core=" + XrayRuntime.Description);
         try { profile.Ping.Validate(); } catch { profile.Ping = new(); }
         try { profile.Automation.Validate(); } catch { profile.Automation = new(); }
         InitAutomation();
         services = new ManagedServices(() => profile.Services, () => tunnel.State != "idle" || reconnect.Desired || KillSwitch.Active, () => { if (!IsDisposed && !exiting && IsHandleCreated) BeginInvoke(() => { if (!exiting) Snapshot(); }); }, lifetime.Token, proxyPort: () => RequestProxyPort, downloadsAvailable: () => DownloadsAvailable);
+        string profileFolder = Path.GetDirectoryName(persistence.PrimaryPath)!;
+        usagePath = Path.Combine(profileFolder, "traffic-history.json");
+        detailsPath = Path.Combine(profileFolder, "traffic-details.json");
         InitTelemetry();
         foreach (string orphan in Directory.GetFiles(Store.Folder, "ping-*.json")) { try { File.Delete(orphan); } catch (Exception ex) { AppLog.Error("orphan ping cleanup", ex); } }
-        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(960, 640); StartPosition = FormStartPosition.CenterScreen;
+        Text = AppRuntime.DisplayName; FormBorderStyle = FormBorderStyle.None; MinimumSize = new Size(800, 600); ClientSize = new Size(840, 620); StartPosition = FormStartPosition.CenterScreen;
         BackColor = ColorTranslator.FromHtml(profile.Theme == "light" ? "#f6f6f2" : "#151718");
         web.DefaultBackgroundColor = BackColor;
         Icon = icons.Window(profile.Theme);
@@ -88,7 +100,7 @@ public sealed partial class MainWindow : WindowChrome
         icons.Apply(this, tray, profile.Theme);
         string state = reconnect.Desired && tunnel.State == "idle" ? "waiting" : tunnel.State;
         string name = profile.Selected == "auto" ? "Авто" : profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected)?.Name ?? "";
-        trayMenu.Update(profile.Theme, state, name, profile.Nodes.Count > 0);
+        trayMenu.Update(profile.Theme, state, tunnel.SessionNode?.Name ?? name, profile.Nodes.Count > 0);
         tray.Text = AppRuntime.DisplayName + (state switch { "connected" => " · Подключено", "connecting" => " · Подключение", "waiting" => " · Ожидание сети", _ => " · Не подключено" });
     }
     async Task Initialize()
