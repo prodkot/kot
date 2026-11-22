@@ -273,8 +273,25 @@ GB" rows="4" spellcheck="false"></textarea></div><div class="routing-block"><lab
 <p class="about-copy">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
 <div aria-label="Музыка" class="micro-player"><audio id="aboutAudio" preload="none"></audio><div class="micro-controls">
 <button aria-label="Воспроизвести" class="icon-button music-play" id="musicPlay" title="Воспроизвести" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z" id="musicPlayIcon"></path></svg></button>
-<span class="micro-title" id="musicTitle">Немного музыки</span><button aria-label="Другой трек" class="icon-button" disabled="" id="musicNext" title="Другой трек" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 5 10 7-10 7ZM19 5v14"></path></svg></button></div>
-<div class="micro-progress"><span id="musicTime">0:00</span><progress aria-label="Воспроизведение" id="musicProgress" max="1" value="0"></progress></div><p class="micro-status" hidden="" id="musicStatus" role="status"></p></div>
+<span class="micro-title" id="musicTitle">Немного музыки</span>
+<div class="music-volume" id="musicVolumeControl">
+  <button aria-controls="musicVolumePanel" aria-expanded="false" aria-label="Громкость" class="icon-button music-volume-button" id="musicVolumeButton" title="Громкость" type="button">
+    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 9h4l5-4v14l-5-4H3Z"></path><path id="musicVolumeSound" d="M15 9a5 5 0 0 1 0 6"></path></svg>
+  </button>
+  <div class="music-volume-panel" id="musicVolumePanel" hidden>
+    <input aria-label="Громкость музыки" id="musicVolume" type="range" min="0" max="100" step="1" value="25">
+    <span aria-hidden="true" id="musicVolumeValue">25%</span>
+  </div>
+</div>
+<button aria-label="Другой трек" class="icon-button" disabled="" id="musicNext" title="Другой трек" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 5 10 7-10 7ZM19 5v14"></path></svg></button></div>
+<div class="micro-progress">
+  <span id="musicTime">0:00</span>
+  <div class="music-timeline">
+    <input aria-label="Позиция воспроизведения" id="musicSeek" type="range" min="0" max="1" step="any" value="0" disabled>
+    <progress aria-hidden="true" class="progress-track" id="musicProgress" max="1" value="0"></progress>
+  </div>
+  <span id="musicDuration">--:--</span>
+</div><p class="micro-status" hidden="" id="musicStatus" role="status"></p></div>
 <button class="about-credit" id="astraCredit" type="button">Весь код был сделан GPT 6 Astra</button>
 </div></dialog>
 <dialog aria-label="GPT 6 Astra" class="dialog astra-dialog" id="astraDialog"><button aria-label="Закрыть" class="cross" id="closeAstra" title="Закрыть" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button><img alt="Зелёноволосый персонаж в очках" src="astra.jpg"/></dialog>
