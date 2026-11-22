@@ -32,7 +32,9 @@ Partial classes are organizational boundaries, not independent services. Do not 
 
 ## UI and RPC changes
 
-- Consult [UI architecture](docs/UI-ARCHITECTURE.md). Use `styles/tokens.css` and existing selectors/components first. Preserve approved visual behavior in both themes; do not silently redesign while refactoring.
+Before any change to UI, UX or motion, including copy, navigation, focus, state presentation and reduced motion, read the [kot-ui-system skill](.agents/skills/kot-ui-system/SKILL.md) and the reference sections it selects. This applies to the client, demo, website and native surfaces. Consult [UI architecture](docs/UI-ARCHITECTURE.md), the affected feature documentation and [the validation matrix](docs/VALIDATION.md).
+
+- Use `styles/tokens.css` and existing selectors/components first. Preserve approved visual behavior in both themes; do not silently redesign while refactoring.
 - Preserve DOM IDs, action names, payloads, reply IDs, snapshot fields and error semantics unless an explicit coordinated migration is part of the task. Update native dispatch, demo and fixtures together for a new action.
 - Native C# validates untrusted input. JS validation improves UX but is not authorization. Render subscription/server text with text nodes, never HTML interpolation. Use the flag allowlist; do not turn labels into asset paths.
 - Use `dialog-ui.js` for modal lifecycle, dirty confirmation, focus return and validation. Keep pending controls, cancellation, error messages, keyboard access, ARIA and reduced motion. Reserve geometry when labels change.

@@ -1,0 +1,33 @@
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--text); font:var(--weight-body) var(--font-body)/var(--line-body) var(--font-ui) }
+h1,h2,p { margin:0 }
+h1,h2,b,strong { font-weight:var(--weight-emphasis) }
+h1 { font-size:var(--font-body) }
+h2,b { font-size:var(--font-detail) }
+header,.transport,.track-heading,.actions { display:flex; align-items:center; justify-content:space-between; gap:var(--space-xs) }
+header { background:var(--side); padding:var(--space-sm) var(--space-lg); border-bottom:1px solid var(--line) }
+button { font:var(--weight-emphasis) var(--font-control)/var(--line-control) var(--font-ui); color:var(--text); background:var(--surface); min-height:var(--control-height); padding:0 var(--space-md); border:1px solid var(--line); border-radius:var(--radius-compact); cursor:pointer; transition:background-color var(--motion-control),transform var(--motion-normal) var(--ease) }
+button:hover:enabled { background:var(--raised) }
+button.primary { color:var(--ink); background:var(--accent); border-color:transparent }
+button.primary:hover:enabled { background:var(--accent); filter:brightness(1.06) }
+button:focus-visible { outline:var(--focus-ring); outline-offset:3px }
+button:active:enabled { transform:scale(var(--scale-press)) }
+button:disabled { cursor:default; opacity:var(--opacity-disabled) }
+main { display:grid; gap:var(--section-gap); padding:var(--space-lg); max-width:1200px; margin:auto }
+.monitor { display:grid; min-height:170px; height:clamp(170px,38vh,420px); place-items:center; background:var(--back); border-radius:var(--radius-panel); border:1px solid var(--line) }
+.title-card { background:var(--accent); color:var(--ink); padding:var(--space-md); height:72%; aspect-ratio:16/9; max-width:90%; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden }
+.title-card span { font-size:var(--font-caption); font-variant-numeric:tabular-nums }
+.title-card strong { font-size:clamp(22px,4.2vw,42px); line-height:1.1 }
+.transport { padding-top:var(--space-xs); font-variant-numeric:tabular-nums }
+small,.track-heading span { font-size:var(--font-caption) }
+.timeline { padding:var(--space-md); border-radius:var(--radius-panel); background:var(--surface) }
+.track-heading { margin-bottom:var(--space-sm) }
+#clips { display:flex; gap:var(--space-xs) }
+.clip { flex:var(--editor-seconds); min-width:0; text-align:left; background:var(--bg); padding:var(--space-xs); display:grid; }
+.clip[aria-pressed=true] { border-color:var(--detail) }
+.clip time { font-size:var(--font-caption); font-weight:var(--weight-body) }
+dialog { max-width:min(32rem,95vw); padding:var(--dialog-pad); border:1px solid var(--line); border-radius:var(--radius-dialog); color:var(--text); background:var(--surface); font:inherit }
+dialog p { margin:var(--space-sm) 0 var(--section-gap) }
+dialog .actions { justify-content:flex-end }
+dialog::backdrop { background:var(--back); opacity:.75 }
+@media(prefers-reduced-motion:reduce) { button { transition:none } button:active:enabled { transform:none } }

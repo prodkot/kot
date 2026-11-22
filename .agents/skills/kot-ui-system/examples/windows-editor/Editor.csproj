@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35"/>
+    <Content Include="KotTheme/wpf/fonts/*.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <Resource Include="KotTheme/wpf/fonts/*.ttf"/>
+    <Content Include="index.html;editor.css;editor.js;KotTheme/web/**/*" TargetPath="ui/%(Identity)" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+</Project>
