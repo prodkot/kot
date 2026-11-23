@@ -15,6 +15,13 @@ public sealed partial class MainWindow
         try { web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(value, Json)); }
         catch (Exception ex) when (ex is COMException or InvalidOperationException) { RecoverBrowser("Связь с интерфейсом потеряна."); }
     }
+    string ConnectionError()
+    {
+        if (tunnel.Error.Length > 0 && tunnel.Error != SavedSubscription.ConfirmConnection) return tunnel.Error;
+        if (connectionNotice.Length > 0) return connectionNotice;
+        return tunnel.State == "idle" && profile.CurrentSubscription?.RequiresConnectionConfirmation == true
+            ? SavedSubscription.ConfirmConnection : "";
+    }
     object Model() => new
     {
         name = profile.Name, hasSubscription = profile.Subscriptions.Count > 0, localSubscription = profile.Local, subscriptionUsage = SubscriptionUsageModel(), tools = ToolsModel(),
@@ -22,14 +29,22 @@ public sealed partial class MainWindow
         subscriptions = profile.Subscriptions.Select(s => new { s.Id, s.Name, count = s.Nodes.Count }), activeSubscription = profile.ActiveSubscription,
         services = services.Model(visiblePage == "services"), telemetry = TelemetryModel(), statistics = StatisticsModel(), journal = visiblePage == "logs" ? AppLog.Tail() : null, updates = UpdateModel(),
         activeNode = tunnel.SessionNode is { } active ? new { active.Id, active.Name } : null,
+        nextNode = profile.ManualConnectionNode?.Id,
+        needsSelection = profile.CurrentSubscription?.RequiresConnectionConfirmation == true,
         favorites = profile.Favorites, automaticNode = tunnel.AutomaticNode, automation = profile.Automation,
         routing = RoutingModel(), geoIp = GeoIpModel(), backgroundError = string.Join('\n', new[] { backgroundError, routingErrors.Values.FirstOrDefault(), geoIpError }.Where(s => !string.IsNullOrEmpty(s))),
-        selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = tunnel.Error.Length > 0 ? tunnel.Error : connectionNotice,
+        selected = profile.Selected, state = tunnel.State == "idle" && reconnect.Desired ? "waiting" : tunnel.State, error = ConnectionError(),
         settings = new { profile.Theme, mode = profile.ConnectionMode, profile.Startup, profile.AutoConnect, profile.Tray, profile.SendHwid, profile.KillSwitch, killSwitchActive = KillSwitch.Active, bypass = string.Join('\n', profile.Bypass) },
         ping = new { busy = ping.Busy, done = ping.Done, total = ping.Total, error = ping.Error, settings = profile.Ping },
         updated = profile.Updated?.ToLocalTime().ToString("dd.MM HH:mm"), warnings, version = ClientIdentity.Version, buildNumber = ClientIdentity.BuildNumber, displayVersion = ClientIdentity.DisplayVersion
     };
-    void Snapshot() { UpdateTray(); Send(new { kind = "snapshot", data = Model() }); }
+    void Snapshot()
+    {
+        UpdateTray();
+        var data = Model();
+        if (browserLoaded) Send(new { kind = "snapshot", data });
+        else Send(new { kind = "snapshot", data, startupOriginMs = loading.AnimationOriginMs });
+    }
     async Task Message(CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (exiting || e.Source != "https://kot.local/index.html") return;
@@ -84,6 +99,33 @@ public sealed partial class MainWindow
                 case "readQrFile": case "readQrClipboard":
                     string? qrText = await ReadQr(action == "readQrClipboard");
                     Reply(new { kind = "reply", id, ok = true, data = new { text = qrText } }); return;
+                case "readNodeJson": case "copyNodeJson":
+                    // Keep exception details, values and clipboard contents outside the log/diagnostic path.
+                    try
+                    {
+                        var nodeId = data.GetProperty("id").GetString();
+                        if (data.GetProperty("subscriptionId").GetString() != profile.ActiveSubscription ||
+                            profile.Nodes.FirstOrDefault(n => n.Id == nodeId) is not { } jsonNode)
+                        {
+                            Reply(new { kind = "reply", id, ok = false, error = "Сервер уже недоступен." }); return;
+                        }
+                        bool full = data.GetProperty("full").GetBoolean();
+                        var view = NodeJsonView.Read(jsonNode, data.GetProperty("view").GetString() ?? "", full);
+                        if (action == "copyNodeJson")
+                        {
+                            if (!view.TryCopy(data.GetProperty("revision").GetString(), Clipboard.SetText))
+                            {
+                                Reply(new { kind = "reply", id, ok = false, error = "Конфигурация изменилась. Откройте её заново." }); return;
+                            }
+                            Reply(new { kind = "reply", id, ok = true }); return;
+                        }
+                        Reply(new { kind = "reply", id, ok = true, data = view }); return;
+                    }
+                    catch (Exception)
+                    {
+                        Reply(new { kind = "reply", id, ok = false, error = action == "copyNodeJson"
+                            ? "Не удалось скопировать JSON." : "Не удалось прочитать outbound из сохранённых данных." }); return;
+                    }
                 case "readNodeQr":
                     Reply(new { kind = "reply", id, ok = true, data = ReadShareQr(data) }); return;
                 case "copyNodeLink": case "copyNodeQr": case "saveNodeQr": ExportShareQr(data, action); break;
@@ -93,7 +135,7 @@ public sealed partial class MainWindow
                 case "pingAll": lastPing = DateTimeOffset.UtcNow; ping.Start(profile.Nodes.ToList(), profile.Ping); break;
                 case "pingNode":
                     var node = profile.Nodes.FirstOrDefault(n => n.Id == data.GetProperty("id").GetString()) ?? throw new UserError("Сервер уже удалён.");
-                    ping.Start([node], profile.Ping); break;
+                    ping.StartNode(node, profile.Ping); break;
                 case "cancelPing": lastPing = DateTimeOffset.UtcNow; ping.Cancel(); break;
                 case "readHwid":
                     var device = DeviceIdentity.Get();

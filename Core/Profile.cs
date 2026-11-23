@@ -28,6 +28,20 @@ public sealed class Profile
     public List<string> Favorites { get; set; } = [];
     public AutomationOptions Automation { get; set; } = new();
     public ServiceOptions Services { get; set; } = new();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SavedSubscription? CurrentSubscription => Subscriptions.FirstOrDefault(s => s.Id == ActiveSubscription);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Node? ManualConnectionNode
+    {
+        get
+        {
+            if (Selected == "auto") return null;
+            string id = CurrentSubscription?.ResumeNodeId ?? Selected;
+            return Nodes.FirstOrDefault(n => n.Id == id);
+        }
+    }
+
     public void Normalize()
     {
         ConnectionMode ??= "tun"; DeferredUpdateVersion ??= "";
@@ -56,7 +70,7 @@ public sealed class Profile
             var active = Subscriptions.FirstOrDefault(s => s.Id == ActiveSubscription) ?? Subscriptions[0];
             Activate(active.Id);
         }
-        if (Selected != "auto" && Nodes.All(n => n.Id != Selected)) Selected = Nodes.FirstOrDefault()?.Id ?? "";
+        else if (Selected != "auto" && Nodes.All(n => n.Id != Selected)) Selected = Nodes.FirstOrDefault()?.Id ?? "";
     }
     public void CaptureActive()
     {
@@ -70,7 +84,7 @@ public sealed class Profile
     {
         var saved = Subscriptions.FirstOrDefault(s => s.Id == id) ?? throw new UserError("Подписка уже удалена.");
         ActiveSubscription = id; Name = saved.Name; Address = saved.Address; Local = saved.Local; SubscriptionUsage = saved.Usage; Nodes = saved.Nodes.ToList(); Selected = saved.Selected; Updated = saved.Updated; Favorites = saved.Favorites.ToList();
-        if (Selected != "auto" && Nodes.All(n => n.Id != Selected)) Selected = Nodes.FirstOrDefault()?.Id ?? "";
+        if (Selected != "auto" && saved.ResumeNodeId == null && Nodes.All(n => n.Id != Selected)) Selected = Nodes.FirstOrDefault()?.Id ?? "";
         Favorites = Favorites.Where(id => Nodes.Any(n => n.Id == id)).Distinct().ToList();
     }
     public void Validate()
@@ -82,11 +96,15 @@ public sealed class Profile
         foreach (var s in Subscriptions)
         {
             bool addressValid = s.Local ? s.Address.Length == 0 : Uri.TryCreate(s.Address, UriKind.Absolute, out var url) && url.Scheme == "https" && url.UserInfo.Length == 0;
+            if (new[] { s.MissingEndpointFingerprint, s.MissingTechnicalFingerprint, s.MissingRealityFingerprint }.Any(fingerprint =>
+                fingerprint != null && (s.ResumeNodeId == null || fingerprint.Length != 64 || !fingerprint.All(Uri.IsHexDigit))))
+                throw new UserError("Некорректные данные сохранённого сервера подключения.");
             if (!addressValid || s.Usage != null && !s.Usage.Valid() || s.Name.Length > 60 || s.Nodes.Count > 2000 || string.IsNullOrEmpty(s.Id))
                 throw new UserError("Некорректная резервная копия подписок.");
             foreach (var node in s.Nodes)
             {
-                if (node.Outbound == null || node.Name == null || node.Name.Length > 512 || node.Id == null || node.Id.Length != 64 || node.Id.Any(c => !Uri.IsHexDigit(c)) || node.Protocol is not ("vless" or "vmess" or "trojan" or "shadowsocks" or "hysteria2" or "xray") || node.Outbound["type"]?.ToString() != node.Protocol)
+                if (node.Outbound == null || node.Name == null || node.Name.Length > 512 || node.Id == null || node.Id.Length != 64 || node.Id.Any(c => !Uri.IsHexDigit(c)) ||
+                    node.SourceId is { } source && (source.Length != 64 || !source.All(Uri.IsHexDigit)) || node.Protocol is not ("vless" or "vmess" or "trojan" or "shadowsocks" or "hysteria2" or "xray") || node.Outbound["type"]?.ToString() != node.Protocol)
                     throw new UserError("Неподдерживаемый сервер в резервной копии.");
                 RejectFiles(node.Outbound);
                 NodeSecurity.Validate(node);
@@ -137,23 +155,66 @@ public sealed class SavedSubscription
     public List<string> Favorites { get; set; } = [];
     public DateTimeOffset? Updated { get; set; }
 
-    // Returns a notice only when an existing explicit choice disappeared.
-    public string? Refresh(SubscriptionResult result, DateTimeOffset now)
+    // The running endpoint can differ from the UI choice or disappear from the catalog.
+    // Keep its identity across retries until the user chooses a new connection.
+    public string? ResumeNodeId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MissingEndpointFingerprint { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MissingTechnicalFingerprint { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MissingRealityFingerprint { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RequiresConnectionConfirmation => ResumeNodeId != null && Nodes.All(n => n.Id != ResumeNodeId);
+    public const string ConfirmConnection = "Для следующего подключения выберите сервер.";
+    public string? Refresh(SubscriptionResult result, DateTimeOffset now, Node? connectionNode = null,
+        Action<string>? diagnostics = null)
     {
         if (result.Nodes.Count == 0) throw new UserError("В подписке нет доступных серверов.");
-        var nodes = SubscriptionNodes.Match(Nodes, result.Nodes);
+        string? resumeId = connectionNode?.Id ?? ResumeNodeId;
+        if (resumeId == null && Selected != "auto" && Selected.Length > 0) resumeId = Selected;
+        var catalogNode = Nodes.FirstOrDefault(n => n.Id == resumeId);
+        var endpoint = catalogNode ?? connectionNode;
+        bool absent = resumeId != null && catalogNode == null;
+        string? fingerprint = resumeId == ResumeNodeId ? MissingEndpointFingerprint : null;
+        string? technical = resumeId == ResumeNodeId ? MissingTechnicalFingerprint : null;
+        string? reality = resumeId == ResumeNodeId ? MissingRealityFingerprint : null;
+        if (absent && fingerprint == null && endpoint != null)
+            fingerprint = SubscriptionNodes.EndpointFingerprint(endpoint);
+        var nodes = SubscriptionNodes.Match(Nodes, result.Nodes, absent ? resumeId : null,
+            fingerprint, technical, reality, out int rotations, out int realityMatches);
+        bool alreadyMissing = RequiresConnectionConfirmation;
         var ids = nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        bool present = resumeId != null && ids.Contains(resumeId);
         string? notice = null;
-        if (Selected != "auto" && !ids.Contains(Selected))
+        if (present && Selected != "auto" && !ids.Contains(Selected)) Selected = resumeId!;
+        else if (Selected.Length == 0) Selected = nodes[0].Id;
+        if (resumeId != null)
         {
-            var previous = Nodes.FirstOrDefault(n => n.Id == Selected);
-            // First import uses provider order. On removal prefer a surviving server in
-            // the previous list's order, independent of how the new feed was sorted.
-            string fallback = Nodes.FirstOrDefault(n => ids.Contains(n.Id))?.Id
-                ?? (Nodes.Count == 0 ? nodes[0] : nodes.MinBy(n => n.Id, StringComparer.Ordinal)!).Id;
-            Selected = fallback;
-            if (previous != null)
-                notice = $"В подписке «{Name}» сервер «{previous.Name}» больше недоступен. Выбран «{nodes.First(n => n.Id == fallback).Name}».";
+            ResumeNodeId = present && (Selected == "auto" || Selected == resumeId) ? null : resumeId;
+            MissingEndpointFingerprint = present ? null : fingerprint ??
+                (endpoint == null ? null : SubscriptionNodes.EndpointFingerprint(endpoint));
+            // Store a credential-independent fingerprint only if the last catalog
+            // had one owner. Later refreshes must not turn an ambiguity into proof.
+            if (!present && catalogNode != null)
+            {
+                technical = SubscriptionNodes.TechnicalFingerprint(catalogNode);
+                if (technical != null && Nodes.Count(n => SubscriptionNodes.TechnicalFingerprint(n) == technical) != 1)
+                    technical = null;
+                reality = SubscriptionNodes.UniqueRealityFingerprint(catalogNode, Nodes);
+            }
+            MissingTechnicalFingerprint = present ? null : technical;
+            MissingRealityFingerprint = present ? null : reality;
+            if (!present && !alreadyMissing)
+                notice = $"В подписке «{Name}» не удалось распознать сервер «{endpoint?.Name ?? "ранее выбранный"}». " + ConfirmConnection;
+        }
+        if (diagnostics != null)
+        {
+            var reason = resumeId == null || present ? "available" : technical != null &&
+                nodes.Count(n => SubscriptionNodes.TechnicalFingerprint(n) == technical) > 1 ? "ambiguous" : "no-safe-match";
+            if (!present && reality != null && result.Nodes.Count(n => SubscriptionNodes.RealityFingerprint(n) == reality) > 1)
+                reason = "ambiguous";
+            diagnostics($"credential-rotations={rotations}, reality-matches={realityMatches}, target={reason}");
         }
         Nodes = nodes;
         Favorites.RemoveAll(id => !ids.Contains(id));

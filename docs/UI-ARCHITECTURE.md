@@ -12,6 +12,7 @@ flowchart TD
   App --> Routing[routing.js drafts and routing UI]
   App --> Journal[journal.js filters and follow state]
   App --> Statistics[statistics.js period and display clock]
+  App --> Json[node-json.js server menu and outbound inspector]
   App --> Tools[client-tools.js diagnostics, QR, charts]
   App --> Services[services.js package and strategy UI]
   App --> About[about.js notices and acknowledgments]
@@ -26,7 +27,17 @@ Factories receive dependencies once from `app.js`: DOM lookup, `getModel`, `getP
 
 `app.js` still owns startup, navigation, subscriptions/server lists, connection projection and update presentation. These are explicitly deferred extraction candidates, not a second architecture hidden behind new wrappers. Existing `about.js`, `services.js`, `client-tools.js` and `dialog-ui.js` retain their responsibilities.
 
+Ping-only snapshots update the existing row's ping label and attributes in place. They must not detach the row, its menu anchor or its controls: rebuilding those elements resets Chromium hover colours and running transitions. Only the requested node's pending/queued/checking button is disabled; the card, menu and other nodes remain interactive. A transient request set covers the gap before native acceptance without inventing a completed result. `PingService` retains the single owner and queues distinct individual requests behind the active batch, suppressing duplicates per node; cancellation and profile/settings cleanup drain that same queue.
+
 Both VPN buttons render the same host connection snapshot and share the `toggle` request. The sidebar shows progress during connection and disconnection. The home button can still cancel a connection attempt. The sidebar tooltip follows the selected server, including the resolved server in Auto mode.
+
+The server JSON inspector requests full outbound data only when explicitly opened. It keeps the response in its own code region, never in the common snapshot, storage or diagnostics; closing clears it. Copy sends only the node/view and revision to the host, which checks that the entire displayed JSON still matches before writing the clipboard. Stale replies are ignored after switching or closing. Both representations use the same disclosure behavior.
+
+The inspector keeps a 620px maximum width and height with 32px viewport clearance. This local geometry belongs to the reading task, not a global dialog token. Its fixed panel has a shrinking scroll region and a separate bottom row inside the border for the standard copy button and status. Loading, unavailable data and errors stay inside that region. Both themes use existing tokens; Chromium checks bounds, per-frame stability, two-axis scrolling, theme/scale changes and focus.
+
+The server action popup remains owned by `node-json.js`. It receives the shared `animate` and `cancelMotion` callbacks from `app.js`; actions still call the existing JSON and QR handlers. Like the subscription picker, this is a compact nonmodal popup anchored to its trigger. It uses that family's 200ms `--motion-exit` for both directions, `--ease`, 4px translation and `.985` scale, rather than the larger dialog's 280ms entry. These local offsets are not new global tokens. The trigger is the fixed visual reference; the whole popup moves as one surface. Upward placement reverses the translation and transform origin.
+
+On reversal it captures the rendered pose before cancellation. A generation check prevents an old completion from hiding a reopened popup. Closing immediately disables hit testing and focus within the layer; Escape returns focus, Tab continues from the trigger, and outside clicks preserve their destination. Reduced motion, external hiding, navigation, scrolling and resizing finish cleanup without waiting for animation. Intrinsic width and fractional zoom-aware coordinates keep the right anchor stable. Borderless full-width rows share one `1px solid var(--line)` separator, `--raised` interaction feedback and the existing inset focus-ring pattern. No server data is requested merely by opening the menu.
 
 ## Canonical styles
 
@@ -50,6 +61,8 @@ The extraction preserves selector specificity and cascade order. Late P5.1 overr
 The compact button radius is 8px; input/control radius is 9px. Keeping separate tokens preserves the actual design instead of forcing unrelated components to match. Change `--control-height` for standard button height, `--field-height` for fields, and the appropriate radius token for that component family. `Tests/architecture_ui.py` overrides these values and verifies multiple real component selectors in both themes.
 
 JS animation duration tokens (`--motion-enter`, `--motion-exit`, `--motion-backdrop`, `--motion-help`) use **milliseconds** because Web Animations accepts numeric milliseconds. Keep their `ms` unit when editing. CSS transition tokens can use CSS time units. Startup artwork and unique page transitions retain local choreography; not every animation is a shared control token.
+
+While the native startup cover is visible, the host includes its animation origin in the snapshot. After decoding the image and font, the renderer maps that origin to its own animation timeline before acknowledging the first paint. The 72px mark owns scale and vertical travel. Its child owns rotation through the exit. Hosts without a native cover use the document timeline.
 
 Responsive media queries remain in `client.css`; CSS variables cannot directly replace media-query conditions. Local illustration geometry, graphs, layout breakpoints and component-specific offsets are not global parameters. Do not tokenize every number or alter a breakpoint during a styling cleanup.
 

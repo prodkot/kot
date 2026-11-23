@@ -5,7 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Kot.Core;
-public sealed record Node(string Id, string Name, string Protocol, JsonObject Outbound, JsonObject? FullConfig = null, string GeoIpUrl = "", string GeoSiteUrl = "", long GeoRevision = 0);
+public sealed record Node(string Id, string Name, string Protocol, JsonObject Outbound, JsonObject? FullConfig = null, string GeoIpUrl = "", string GeoSiteUrl = "", long GeoRevision = 0)
+{
+    // The latest feed ID can differ from the stable row ID after reconciliation.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceId { get; init; }
+}
 public sealed record SubscriptionResult(List<Node> Nodes, List<string> Warnings, SubscriptionUsage? Usage = null, string? Routing = null, string? Autorouting = null);
 
 public static class Subscriptions

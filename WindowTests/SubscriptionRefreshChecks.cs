@@ -34,10 +34,10 @@ static class SubscriptionRefreshChecks
         return task.GetAwaiter().GetResult();
     }
 
-    public static void CheckRestart(string folder, string subscription, string selected, Action<bool, string> check)
+    public static void CheckRestart(string folder, string subscription, string selected, string healthUrl, Action<bool, string> check)
     {
         var disk = Store.Persistence(folder);
-        var tunnel = new Tunnel();
+        var tunnel = new Tunnel([healthUrl], TimeSpan.FromSeconds(10));
         using var window = new MainWindow(false, false, null, tunnel, disk, null);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         try
@@ -52,6 +52,12 @@ static class SubscriptionRefreshChecks
                 "application restarted in a new process: persisted choice and UI");
             check(!tunnel.HasCore && tunnel.SessionNode == null && tunnel.State == "idle",
                 "application restarted in a new process: idle connection");
+            Evaluate(window, "document.getElementById('powerButton').click()", timeout.Token);
+            WaitFor(() => tunnel.State == "connected", "reconnect after application restart", timeout.Token);
+            var probe = tunnel.Probe(timeout.Token);
+            WaitFor(() => probe.IsCompleted, "HTTP through restarted Windows TUN", timeout.Token);
+            check(tunnel.SessionNode?.Id == selected && probe.GetAwaiter().GetResult(),
+                "new application process connects the restored target through Xray");
         }
         finally
         {
@@ -119,7 +125,7 @@ static class SubscriptionRefreshChecks
         {
             app = Open(); app.Show();
             Until(() => app.InterfaceReady, "Windows UI startup");
-            Script("window.qaReplies={};chrome.webview.addEventListener('message',e=>{if(e.data.kind==='reply')qaReplies[e.data.id]=e.data})");
+            Script("window.qaReplies={};chrome.webview.addEventListener('message',e=>{if(e.data.kind==='reply')qaReplies[e.data.id]=e.data;else if(e.data.kind==='snapshot')window.qaModel=e.data.data})");
         }
         void Close()
         {
@@ -147,10 +153,13 @@ static class SubscriptionRefreshChecks
         int Update(string subscriptionId) => Post("refresh", new { subscriptionId });
         void State(string scenario, string selected, string live, int session)
         {
-            Until(() => Script(SelectedRow) == JsonSerializer.Serialize(selected), scenario + ": selected row");
             var saved = disk.Load();
+            string? row = saved.Nodes.Any(n => n.Id == selected) ? selected : null;
+            Until(() => Script(SelectedRow + " ?? null") == JsonSerializer.Serialize(row), scenario + ": selected row");
             check(saved.ActiveSubscription == first.Id && saved.Selected == selected &&
                 saved.Subscriptions.Single(s => s.Id == first.Id).Selected == selected, scenario + ": persisted choice and UI");
+            string? expectedNext = saved.Nodes.Any(n => n.Id == live) ? live : null;
+            check(Xhttp.ConnectionNodes(saved).SingleOrDefault()?.Id == expectedNext, scenario + ": next connection from disk");
             Until(() => tunnel.State == "connected", scenario + ": connection ready");
             var probe = tunnel.Probe(ct); Until(() => probe.IsCompleted, "HTTP probe");
             check(tunnel.HasCore && tunnel.Session == session && tunnel.SessionNode?.Id == live && probe.GetAwaiter().GetResult(),
@@ -158,7 +167,48 @@ static class SubscriptionRefreshChecks
         }
         try
         {
+            first.ResumeNodeId = de.Id;
             disk.Save(initial); Show();
+            Script("document.querySelector('[data-page=servers]').click()");
+            Reply(Post("toggle", new { }));
+            Until(() => tunnel.State == "connected", "resume Germany with France highlighted");
+            State("power on with a saved resume target", fr.Id, de.Id, tunnel.Session);
+            int previousSession = tunnel.Session;
+            // Inspect the inactive row while the other connection is carrying traffic.
+            var storedBeforeInspection = JsonSerializer.Serialize(disk.Load());
+            var expected = NodeJsonView.Read(fr, "xray", true);
+            Script($"document.querySelector('[data-node=\"{fr.Id}\"] .qr-node').click(); nodeMenuJson.click()");
+            Script("document.querySelector('[data-json-view=xray]').click()");
+            Until(() => JsonSerializer.Deserialize<string>(Script("nodeJsonCode.textContent")) == expected.Text, "full Xray outbound rendered immediately");
+            try
+            {
+                Clipboard.SetText("fixture");
+                Script("copyNodeJson.click()");
+                Until(() => Clipboard.GetText() == expected.Text, "full Windows clipboard without another prompt");
+                Script("document.querySelector('[data-json-view=parsed]').click()");
+                var parsed = NodeJsonView.Read(fr, "parsed", true);
+                Until(() => JsonSerializer.Deserialize<string>(Script("nodeJsonCode.textContent")) == parsed.Text, "full parsed outbound after switching");
+                Script("copyNodeJson.click()");
+                Until(() => Clipboard.GetText() == parsed.Text, "full parsed Windows clipboard");
+            }
+            finally { Clipboard.Clear(); Script("closeNodeJson.click()"); }
+            check(storedBeforeInspection == JsonSerializer.Serialize(disk.Load()), "JSON inspection does not save or change the profile");
+            string sharedSnapshot = Script("JSON.stringify(qaModel)");
+            string journal = AppLog.Snapshot();
+            var credential = fr.FullConfig!["outbounds"]![0]!["settings"]!["vnext"]![0]!["users"]![0]!["id"]!.GetValue<string>();
+            check(!sharedSnapshot.Contains(credential, StringComparison.OrdinalIgnoreCase) &&
+                !journal.Contains(credential, StringComparison.OrdinalIgnoreCase) &&
+                !sharedSnapshot.Contains("streamSettings") && !sharedSnapshot.Contains("outbounds"),
+                "JSON inspection leaves credentials outside common snapshots and logs");
+            State("inspecting another server leaves routing and selected row intact", fr.Id, de.Id, previousSession);
+            Reply(Post("toggle", new { }));
+            Until(() => tunnel.State == "idle", "manual stop");
+            Reply(Post("toggle", new { }));
+            Until(() => tunnel.State == "connected", "manual reconnect");
+            check(tunnel.Session != previousSession, "manual reconnect created a new session");
+            State("manual reconnect with France highlighted", fr.Id, de.Id, tunnel.Session);
+            Reply(Post("toggle", new { }));
+
             // Use the server card for the initial choice, including its actual event handler.
             Script("document.querySelector('[data-page=servers]').click()");
             Script($"document.querySelector('[data-node=\"{de.Id}\"] .server-card').click()");
@@ -196,14 +246,19 @@ static class SubscriptionRefreshChecks
             fail = true; Reply(Update(first.Id), ok: false); fail = false;
             State("failed download", de.Id, de.Id, session);
 
-            body = Payload(france, extra);
+            body = Payload(france, extra.Replace("#Austria", "#Berlin"));
             Script("document.querySelector('[data-page=servers]').click();document.getElementById('refreshButton').click()");
-            Until(() => Script("document.getElementById('toast').textContent.includes('Berlin') && document.getElementById('toast').textContent.includes('France')") == "true",
-                "removal notice names the old and replacement servers");
-            State("selected server removed", fr.Id, de.Id, session);
+            Until(() => Script("document.getElementById('toast').textContent.includes('Berlin') && document.getElementById('toast').textContent.includes('выберите сервер')") == "true",
+                "removal notice requests a choice");
+            State("active server replaced under the same name", de.Id, de.Id, session);
             check(Script("document.getElementById('selectedCity').textContent.includes('Germany')") == "true", "home identifies the retained live endpoint");
+            body = Payload(france, berlin);
+            Reply(Update(first.Id));
+            State("renamed endpoint returns to the same live tunnel", de.Id, de.Id, session);
+            body = Payload(france);
+            Reply(Update(first.Id));
             Reply(Post("select", new { id = fr.Id, subscriptionId = first.Id }));
-            Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == fr.Id, "manual switch to highlighted fallback");
+            Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == fr.Id, "manual switch to an available server");
             check(tunnel.Session != session, "explicit selection changed the live session");
             session = tunnel.Session;
             body = Payload(france, germany);
@@ -218,11 +273,70 @@ static class SubscriptionRefreshChecks
             release.SetResult(); Reply(refresh);
             Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == de.Id, "manual switch during refresh");
             check(tunnel.Session != session, "manual command won the refresh race");
-            State("overlapping manual selection", de.Id, de.Id, tunnel.Session);
+            session = tunnel.Session;
+            State("overlapping manual selection", de.Id, de.Id, session);
+            // Losing the working tunnel after a refresh must not dial the
+            // replacement, even via an immediate settings restart.
+            body = Payload(france);
+            Reply(Update(first.Id));
+            State("removed live node until reconnect", de.Id, de.Id, session);
+            check(disk.Load().CurrentSubscription!.RequiresConnectionConfirmation, "removal guard is on disk");
+            int beforeRestart = tunnel.Session;
+            Reply(Post("settings", new { key = "mode", value = "proxy" }));
+            Until(() => tunnel.State == "idle" && Script("qaModel.state === 'idle' && qaModel.error === " +
+                JsonSerializer.Serialize(SavedSubscription.ConfirmConnection)) == "true", "automatic reconnect paused for confirmation");
+            check(!tunnel.HasCore && tunnel.Session == beforeRestart + 1, "reconnect did not start the fallback");
+            // Check the actual tunnel entry as well, including a newly loaded profile.
+            var denied = tunnel.Connect(disk.Load(), ct);
+            Until(() => denied.IsCompleted, "unconfirmed connection rejected");
+            denied.GetAwaiter().GetResult();
+            check(!tunnel.HasCore && tunnel.State == "idle" && tunnel.Error == SavedSubscription.ConfirmConnection,
+                "an unavailable saved selection cannot open an Xray session");
+            Reply(Post("toggle", new { }));
+            check(!tunnel.HasCore && tunnel.State == "idle" && disk.Load().Selected == de.Id &&
+                disk.Load().CurrentSubscription!.RequiresConnectionConfirmation, "power button preserves the missing selection until a row is chosen");
+            Reply(Post("select", new { id = fr.Id, subscriptionId = first.Id }));
+            check(!disk.Load().CurrentSubscription!.RequiresConnectionConfirmation, "click on an available row confirms it");
+            Until(() => Script("qaModel.state === 'idle' && qaModel.error === '' && document.getElementById('connectionError').hidden && qaModel.selected === "
+                + JsonSerializer.Serialize(fr.Id)) == "true", "confirmed selection clears the prompt before connecting");
+            Reply(Post("settings", new { key = "mode", value = "tun" }));
+            Reply(Post("toggle", new { }));
+            Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == fr.Id, "explicit reconnect uses the confirmed endpoint");
+            body = Payload(france, germany);
+            Reply(Update(first.Id));
+            Reply(Post("select", new { id = de.Id, subscriptionId = first.Id }));
+            Until(() => tunnel.State == "connected" && tunnel.SessionNode?.Id == de.Id, "restore selection before restart");
+            body = Payload(france);
+            Reply(Update(first.Id));
+            Reply(Post("toggle", new { }));
+            Reply(Post("toggle", new { }));
+            Until(() => Script("qaModel.error === " + JsonSerializer.Serialize(SavedSubscription.ConfirmConnection)) == "true",
+                "manual connect explains the missing endpoint");
+            int stoppedSession = tunnel.Session;
+            body = Payload(france, berlin);
+            Reply(Update(first.Id));
+            Until(() => Script("qaModel.state === 'idle' && qaModel.error === '' && document.getElementById('connectionError').hidden") == "true",
+                "returning endpoint clears the prompt without clicking a row");
+            check(!tunnel.HasCore && tunnel.Session == stoppedSession && disk.Load().ManualConnectionNode?.Id == de.Id,
+                "refresh after manual stop only restores the next target");
+            // This fixture shares one server socket across accounts. Drop the other
+            // account before rotating the login, so both catalogs identify one peer.
+            body = Payload(berlin);
+            Reply(Update(first.Id));
+            Reply(Post("toggle", new { }));
+            Until(() => tunnel.State == "connected", "Germany connected before login rotation");
+            int rotationSession = tunnel.Session;
+            string rotatedBerlin = berlin.Replace(new Uri(berlin).UserInfo, new Uri(france).UserInfo);
+            body = Payload(rotatedBerlin);
+            Reply(Update(first.Id));
+            State("unique login rotation", de.Id, de.Id, rotationSession);
+            check(disk.Load().ManualConnectionNode?.SourceId == Subscriptions.Parse(Payload(rotatedBerlin)).Nodes.Single().Id,
+                "next connection uses the incoming configuration under Germany's saved ID");
+            Reply(Post("toggle", new { }));
             Close();
             var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Kot.WindowTests.exe"))
             {
-                UseShellExecute = false, ArgumentList = { "--selection-restart", folder, first.Id, de.Id }
+                UseShellExecute = false, ArgumentList = { "--selection-restart", folder, first.Id, de.Id, healthUrl }
             };
             using var restarted = Process.Start(start) ?? throw new Exception("Could not start the restart check");
             try

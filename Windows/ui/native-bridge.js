@@ -28,7 +28,7 @@ window.KotNativeBridge = host => {
       } else if (data.kind === 'notice') {
         notice(data.text);
       } else if (data.kind === 'snapshot') {
-        snapshot(data.data);
+        snapshot(data.data, data.startupOriginMs);
       } else if (data.kind === 'reply') {
         const request = pending.get(data.id);
         if (request) {

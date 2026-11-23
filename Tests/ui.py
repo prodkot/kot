@@ -9,7 +9,7 @@ window.fixtureMeows=0;
 HTMLMediaElement.prototype.play=function(){window.fixtureMeows++;window.fixtureMeowSource=this.src;return Promise.resolve();};
 const model={name:'Подписка',hasSubscription:false,nodes:[],selected:'',state:'idle',error:'',settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},updated:null,warnings:[],ping:{busy:false,done:0,total:0,error:'',settings:{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'}},version:'0.5.8',updates:{busy:false,status:'',error:'',availableVersion:null},favorites:[],subscriptions:[],activeSubscription:'',automation:{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50}};
 window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg=>setTimeout(()=>{
- const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model)}});
+ const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model),startupOriginMs:window.fixtureStartupOrigin}});
  const reply=(ok=true,error='',data)=>callback({data:{kind:'reply',id:msg.id,ok,error,data}});
  switch(msg.action){
   case 'ready':break;
@@ -30,7 +30,7 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
   case 'pingSettings':model.ping.settings=msg.data;break;
   case 'pingAll':model.ping.busy=true;model.ping.done=0;model.ping.total=model.nodes.length;for(const n of model.nodes)n.ping={status:'checking',mode:model.ping.settings.mode};break;
   case 'pingNode':model.ping.busy=true;model.ping.done=0;model.ping.total=1;model.nodes.find(n=>n.id===msg.data.id).ping={status:'checking',mode:model.ping.settings.mode};break;
-  case 'cancelPing':model.ping.busy=false;break;
+  case 'cancelPing':model.ping.busy=false;for(const n of model.nodes)if(['queued','checking'].includes(n.ping?.status))n.ping={...n.ping,status:'cancelled'};break;
   case 'select':model.selected=msg.data.id;break;
   case 'toggle':if(window.fixtureToggleError){reply(false,'Ошибка подключения');return;}model.state=model.state==='idle'?'connecting':'idle';break;
   case 'settings':if(msg.data.key==='bypass'&&msg.data.value.includes('https://')){reply(false,'Введите домены без https://');return;}model.settings[msg.data.key]=msg.data.value;break;
@@ -53,10 +53,15 @@ def check_startup(browser):
         page.on('pageerror',lambda e:errors.append(str(e)))
         page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'spin':spin})+''';(()=>{
           const send=chrome.webview.postMessage;
+          // Native artwork already ran for a while before this document existed.
+          window.fixtureStartupOrigin=Date.now()-2750;
           window.startupReadyCount=0;
           chrome.webview.postMessage=message=>{
             if(message.action==='uiReady'){
               window.startupReadyCount++;
+              const scene=document.getElementById('startupScreen');
+              const pulse=scene.getAnimations({subtree:true}).find(a=>a.animationName==='startup-mark-breathe');
+              if(pulse)window.handoffError=pulse.startTime+performance.timeOrigin-window.fixtureStartupOrigin;
               window.startupHandoff={visible:!document.getElementById('startupScreen').hidden,
                 inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
                 image:document.querySelector('#startupScreen img').complete};
@@ -80,8 +85,21 @@ def check_startup(browser):
         page.wait_for_function('()=>window.startupHandoff')
         assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
         if not reduced:
+            assert abs(page.evaluate('window.handoffError'))<4
             page.wait_for_function('()=>document.body.classList.contains("revealing")')
             assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')!='none'
+            if spin:
+                sampling=page.evaluate('''async()=>{
+                  const mark=document.querySelector('#startupScreen img');
+                  const motion=mark.getAnimations().find(a=>a.animationName==='startup-mark-spin');
+                  const phaseError=motion.startTime+performance.timeOrigin-window.fixtureStartupOrigin;
+                  const firstTime=motion.currentTime, firstAngle=parseFloat(getComputedStyle(mark).rotate);
+                  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+                  const dt=motion.currentTime-firstTime, nextAngle=parseFloat(getComputedStyle(mark).rotate);
+                  return [phaseError,dt,(nextAngle-firstAngle+360)%360];
+                }''')
+                error,dt,angle=sampling
+                assert abs(error)<4 and dt>0 and abs(angle-dt*360/1600)<.05,sampling
             page.evaluate('fixtureSnapshot({});fixtureSnapshot({});')
         expect(page.locator('#startupScreen')).to_be_hidden()
         assert page.evaluate('window.startupReadyCount')==1
@@ -130,6 +148,7 @@ with sync_playwright() as p:
     page.locator('#copyErrorLog').click();expect(page.locator('#toast')).to_have_text('Полный лог скопирован');assert page.evaluate('window.copiedFullLog')
     page.locator('[data-page=servers]').click();page.locator('#serverSearch').fill('');page.locator('#pingAll').click();expect(page.locator('#pingProgress')).to_have_text('0 / 2');expect(page.locator('#pingAll')).to_be_disabled();expect(page.locator('.ping-node').first).to_be_disabled()
     page.locator('#cancelPing').click();expect(page.locator('#pingAll')).to_be_enabled();expect(page.locator('#pingProgress')).not_to_be_visible()
+    expect(page.locator('.ping-node').first).to_be_enabled();expect(page.locator('.ping-node[data-status=cancelled]')).to_have_count(2)
     page.locator('#pingSettings').click();expect(page.locator('#pingUrlRow')).to_be_visible();page.locator('#pingMode').select_option('tcp');expect(page.locator('#pingUrlRow')).not_to_be_visible();page.locator('#pingTimeout').fill('2500');page.locator('#pingAttempts').fill('3');page.locator('#pingParallel').fill('2');page.locator('#pingSort').select_option('ping');page.locator('#pingForm [type=submit]').click();expect(page.locator('#pingDialog')).not_to_be_visible()
     page.locator('#pingSettings').click();expect(page.locator('#pingTimeout')).to_have_value('2500');expect(page.locator('#pingMode')).to_have_value('tcp');page.locator('#closePing').click();expect(page.locator('#pingDialog')).not_to_be_visible()
     page.locator('.ping-node').first.click();expect(page.locator('#pingProgress')).to_have_text('0 / 1');page.locator('#cancelPing').click()

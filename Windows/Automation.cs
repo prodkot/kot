@@ -19,7 +19,8 @@ public sealed partial class MainWindow
     {
         if (applicationStarted || exiting) return;
         applicationStarted = true;
-        bool autoConnect = (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0;
+        bool autoConnect = (profile.AutoConnect || resumeConnection) && profile.Nodes.Count > 0
+            && profile.CurrentSubscription?.RequiresConnectionConfirmation != true;
         if (autoConnect) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); }
         _ = StartServices(autoConnect);
     }
@@ -67,7 +68,14 @@ public sealed partial class MainWindow
         {
             reconnect.Stop(); importAttempt?.Cancel(); await StopTools(); await tunnel.Stop(); KillSwitch.Release(); Snapshot();
         }
-        else if (profile.Nodes.Count > 0) { reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); Snapshot(); }
+        else if (profile.Nodes.Count > 0)
+        {
+            if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true)
+            {
+                Snapshot(); return;
+            }
+            reconnect.Start(DateTimeOffset.UtcNow); StartConnection(); Snapshot();
+        }
         }
         finally { toggling = false; }
     }
@@ -92,6 +100,11 @@ public sealed partial class MainWindow
                 throw;
             }
             if (exiting || !reconnect.Desired) return;
+            if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true)
+            {
+                reconnect.Stop();
+                return;
+            }
             await tunnel.Connect(profile, lifetime.Token);
             if (exiting || !reconnect.Desired) return;
             if (tunnel.State == "connected") { reconnect.Healthy(); connectionNotice = ""; failedHealth = 0; lastHealth = DateTimeOffset.UtcNow; }
@@ -180,10 +193,15 @@ public sealed partial class MainWindow
         }
         ct.ThrowIfCancellationRequested();
         if (switchProfile) await tunnel.Stop();
+        // Auto can still be probing candidates. Reconcile the endpoint actually
+        // chosen for that attempt, never the first entry in the probe list.
+        else if (targetId == profile.ActiveSubscription && profile.Selected == "auto" && connecting)
+            await connectionAttempt.WaitAsync(ct);
         try
         {
             ct.ThrowIfCancellationRequested();
             string? notice = null;
+            string reconciliation = "";
             SaveProfile(p =>
             {
                 SavedSubscription saved;
@@ -198,12 +216,20 @@ public sealed partial class MainWindow
                         ?? throw new UserError("Подписка изменилась. Повторите обновление.");
                 }
                 if (importing) saved.Name = name.Length > 0 ? name : "Подписка";
-                notice = saved.Refresh(result, DateTimeOffset.UtcNow);
+                Node? connectionNode = null;
+                if (!switchProfile && saved.Id == p.ActiveSubscription)
+                {
+                    connectionNode = tunnel.SessionNode;
+                    if (connectionNode == null && reconnect.Desired)
+                        connectionNode = p.Selected == "auto" ? tunnel.LastConnectionNode(saved.Id)
+                            : p.ManualConnectionNode;
+                }
+                notice = saved.Refresh(result, DateTimeOffset.UtcNow, connectionNode, summary => reconciliation = summary);
                 if (importing || saved.Id == p.ActiveSubscription) p.Activate(saved.Id);
             });
             if (importing || targetId == profile.ActiveSubscription) warnings = result.Warnings;
             AppLog.Register(profile);
-            AppLog.Write("subscription", "saved: " + result.Nodes.Count + " nodes; skipped=" + result.Warnings.Count);
+            AppLog.Write("subscription", "saved: " + result.Nodes.Count + " nodes; skipped=" + result.Warnings.Count + "; " + reconciliation);
             return notice;
         }
         finally { if (switchProfile) ResumeDesired(); }

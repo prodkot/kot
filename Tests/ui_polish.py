@@ -9,6 +9,7 @@ MOCK = next(ast.literal_eval(node.value) for node in tree.body
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'mock' for t in node.targets))
 MOCK = MOCK.replace("case 'readHwid':", "case 'readNodeQr':reply(true,'',{name:'Frankfurt',link:'vless://fixture@example.com:443',image:''});return;case 'readHwid':")
 MOCK = MOCK.replace("msg.action==='downloadUpdate'?", "msg.action==='ready'?(window.fixtureReadyDelay||10):msg.action==='downloadUpdate'?")
+MOCK = MOCK.replace('window.fixtureNavigate=', "window.fixtureNotice=text=>callback({data:{kind:'notice',text}});window.fixtureNavigate=")
 NODES = [{'id': 'a', 'name': 'Frankfurt', 'protocol': 'vless', 'code': 'VL'},
          {'id': 'b', 'name': 'Amsterdam', 'protocol': 'trojan', 'code': 'TR'}]
 
@@ -24,6 +25,7 @@ def servers(page):
     page.evaluate('nodes=>fixtureSnapshot({nodes})', changed)
     expect(button).to_be_focused()
     button.click()
+    page.locator('#nodeMenuQr').click()
     expect(page.locator('#shareQrLink')).to_have_value('vless://fixture@example.com:443')
     changed[1]['ping']['ms'] = 18
     page.evaluate('nodes=>fixtureSnapshot({nodes})', changed)
@@ -170,6 +172,54 @@ def interrupted_dialog(page):
     expect(page.locator('#advancedDialog')).not_to_be_visible()
 
 
+def motion_reversals(page):
+    # Trigger replacement in the same frame. Read the surface and the independently timed backdrop.
+    for fraction in (.12, .44, .83):
+        errors = page.evaluate("""fraction => {
+          const errors = [];
+          const click = id => () => document.getElementById(id).click();
+          function seek(el, t) {
+            const effects = el.getAnimations({subtree:true}).filter(a => a.effect.target === el);
+            if (!effects.length) throw Error('missing animation on ' + el.id);
+            for (const a of effects) { a.pause(); a.currentTime = t * a.effect.getTiming().duration; }
+            const style = getComputedStyle(el), m = new DOMMatrixReadOnly(style.transform);
+            const frame = [m.d, m.f, +style.opacity];
+            if (el.tagName === 'DIALOG') frame.push(+getComputedStyle(el, '::backdrop').opacity);
+            return frame;
+          }
+          function turn(el, action) {
+            const before = seek(el, fraction);
+            action();
+            const after = seek(el, 0);
+            if (before.some((x,i) => Math.abs(x-after[i]) > .002))
+              errors.push([el.id, before, after]);
+          }
+          fixtureNavigate('settings');
+          const open = click('advancedButton'), close = click('closeAdvanced');
+          open(); turn(advancedDialog,close); turn(advancedDialog,open);
+          advancedDialog.close();
+          const help = () => document.querySelector('[data-help=killSwitchHelp]').click();
+          help(); turn(killSwitchHelp,help); turn(killSwitchHelp,help);
+          help();
+          fixtureNavigate('servers');
+          const menu = click('subscriptionSelect');
+          menu(); turn(subscriptionMenu,menu); turn(subscriptionMenu,menu);
+          fixtureNavigate('home');
+          fixtureNotice('test'); turn(document.getElementById('toast'),() => fixtureNotice('a much longer message'));
+          const toastRect = document.getElementById('toast').getBoundingClientRect();
+          if (Math.abs(toastRect.left + toastRect.width / 2 - innerWidth / 2) > .02) errors.push('toast centre');
+          fixtureSnapshot({state:'connecting'});
+          turn(stateLabel,() => fixtureSnapshot({state:'connected'}));
+          turn(powerIcon,() => fixtureSnapshot({state:'idle'}));
+          turn(powerIcon,() => fixtureSnapshot({state:'connected'}));
+          for (const a of document.getAnimations()) if (a.playState === 'paused') a.play();
+          return errors;
+        }""", fraction)
+        assert not errors, (fraction, errors)
+        # Let the exits settle and native close events run before starting another session.
+        page.wait_for_timeout(550)
+
+
 def hidden_motion(page):
     page.evaluate('nodes=>fixtureSnapshot({nodes,state:"connected"})', NODES)
     page.evaluate("fixtureNavigate('servers');fixtureNavigate('settings');fixtureNavigate('diagnostics');")
@@ -314,10 +364,16 @@ def sidebar_tooltip(page):
     long_name = 'Франкфурт · ' + 'Длинное название сервера ' * 8
     side, tip = page.locator('#sidebarPower'), page.locator('#sidebarServer')
     toggle = page.locator('#sidebarToggle')
-    for width, height, collapsed in [(960, 640, False), (840, 620, True), (800, 600, False), (640, 540, True)]:
+    for width, height, collapsed, click_toggle in [
+        (960, 640, False, False),
+        (840, 620, True, True),
+        (800, 600, False, True),
+        (640, 540, True, False),  # The narrow breakpoint collapses the panel itself.
+    ]:
         page.set_viewport_size({'width': width, 'height': height})
-        if toggle.get_attribute('aria-expanded') != str(not collapsed).lower():
+        if click_toggle:
             toggle.click()
+        expect(toggle).to_have_attribute('aria-expanded', str(not collapsed).lower())
         expect(page.locator('.sidebar')).to_have_css('width', '64px' if collapsed else '188px')
         side.hover()
         expect(tip).to_have_css('opacity', '1')
@@ -391,6 +447,7 @@ def sidebar_motion(page):
       const dot = logo.querySelector('span');
       const sidebar = logo.closest('.sidebar');
       const controls = [...sidebar.querySelectorAll('.nav-button, .sidebar-power')];
+      const power = sidebar.querySelector('#sidebarPower');
       const arrow = sidebar.querySelector('#sidebarToggle svg');
       function glyph(node, index) {
         const range = document.createRange();
@@ -404,9 +461,14 @@ def sidebar_motion(page):
         const angle = Math.abs(Math.atan2(rotation.b, rotation.a) * 180 / Math.PI);
         const positions = controls.flatMap(control => {
           const {left, right} = control.getBoundingClientRect();
-          return [left, right, control.querySelector('svg').getBoundingClientRect().left];
+          return [left, right, control.querySelector('svg').getBoundingClientRect().left,
+                  control.querySelector('span').getBoundingClientRect().left];
         });
-        return {angle, positions, letters: [glyph(logo.firstChild, 0), glyph(tail.firstChild, 0), glyph(tail.firstChild, 1)],
+        const button = power.getBoundingClientRect(), icon = power.querySelector('svg').getBoundingClientRect();
+        return {angle, positions, powerWidth: button.width, powerHeight: button.height, powerTop: button.top,
+                iconOffset: [(icon.left + icon.right - button.left - button.right) / 2,
+                             (icon.top + icon.bottom - button.top - button.bottom) / 2],
+                letters: [glyph(logo.firstChild, 0), glyph(tail.firstChild, 0), glyph(tail.firstChild, 1)],
                 dot: dot.getBoundingClientRect().x, rail: sidebar.getBoundingClientRect().width};
       }
       const samples = [frame()];
@@ -426,6 +488,8 @@ def sidebar_motion(page):
     }""")
     wide, narrow = frames[0], min(frames, key=lambda f: f['rail'])
     assert narrow['dot'] < wide['dot']
+    assert narrow['powerWidth'] == wide['powerHeight'] == 43
+    assert narrow['iconOffset'] == [0, 0]
     assert narrow['angle'] == 0 and wide['angle'] == 180
     assert all(a < b for a, b in zip(narrow['positions'], wide['positions']))
     assert frames[-1] == wide
@@ -433,6 +497,7 @@ def sidebar_motion(page):
     for f in frames:
         assert f['letters'] == wide['letters']
         progress = (f['rail'] - narrow['rail']) / (wide['rail'] - narrow['rail'])
+        assert f['powerHeight'] == wide['powerHeight'] and f['powerTop'] == wide['powerTop']
         expected_dot = narrow['dot'] + (wide['dot'] - narrow['dot']) * progress
         assert abs(f['dot'] - expected_dot) < 0.03
         assert abs(f['angle'] - 180 * progress) < 0.05
@@ -443,6 +508,30 @@ def sidebar_motion(page):
         travel = abs(end['rail'] - start['rail'])
         assert 0 < abs(near_start['rail'] - start['rail']) < .05 * travel
         assert 0 < abs(end['rail'] - near_end['rail']) < .05 * travel
+
+
+def sidebar_icon_paint(page):
+    page.evaluate("nodes => fixtureSnapshot({state:'connected',nodes,selected:'a',hasSubscription:true})", NODES)
+    icon = page.locator('#sidebarPower svg').bounding_box()
+    # Fixed crop covers the icon's entire 3.5px travel, excluding border and fading label.
+    clip = dict(icon, x=icon['x'] - 5, width=icon['width'] + 6)
+    for _ in range(2):
+        duration = page.evaluate("""() => {
+          document.querySelector('#sidebarToggle').click();
+          window.railTransitions = document.getAnimations().filter(a => a instanceof CSSTransition);
+          for (const a of railTransitions) { a.pause(); a.currentTime = 0; }
+          return railTransitions.find(a => a.transitionProperty === 'grid-template-columns').effect.getTiming().duration;
+        }""")
+        paintings = set()
+        for i in range(17):
+            page.evaluate("t => { for (const a of railTransitions) a.currentTime = t; }", duration * i / 16)
+            paintings.add(page.screenshot(clip=clip, animations='allow'))
+        # Integer-snapped glyphs occupy at most five distinct positions in this crop.
+        assert len(paintings) > 8, f'Power glyph stepped through only {len(paintings)} painted frames'
+        page.evaluate("""async () => {
+          for (const a of railTransitions) a.finish();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }""")
 
 
 def settings_backdrop(page):
@@ -534,7 +623,7 @@ failures = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=['--no-sandbox'])
     try:
-        for test in [servers, journal_focus, quality_address, copy_log_selection, toast_layer, modal_handoff, interrupted_dialog, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, sidebar_collapse, sidebar_motion, settings_navigation, settings_backdrop, startup_loading]:
+        for test in [servers, journal_focus, quality_address, copy_log_selection, toast_layer, modal_handoff, interrupted_dialog, motion_reversals, hidden_motion, interrupted_power, layouts, home_stability, connection_chrome, sidebar_power, sidebar_tooltip, sidebar_collapse, sidebar_motion, sidebar_icon_paint, settings_navigation, settings_backdrop, startup_loading]:
             page = browser.new_page(viewport={'width': 960, 'height': 640})
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))

@@ -14,7 +14,8 @@ public sealed class StartupScreen : UserControl
     readonly Font regular, small;
     readonly Bitmap image;
     Control? failure;
-    Control artwork = null!;
+    readonly StartupArtwork artwork;
+    internal double AnimationOriginMs => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - artwork.ElapsedMilliseconds;
     readonly Control titleBar;
 
     public void ShowFailure(string message, Action retry)
@@ -117,8 +118,10 @@ public sealed class StartupScreen : UserControl
     {
         readonly Bitmap image;
         readonly bool spin;
-        readonly System.Windows.Forms.Timer timer = new() { Interval = 16 };
+        Bitmap? pulseSurface;
+        readonly System.Windows.Forms.Timer timer = new() { Interval = 15 };
         readonly Stopwatch clock = new();
+        public double ElapsedMilliseconds => clock.Elapsed.TotalMilliseconds;
         bool reduced;
 
         [DllImport("user32.dll", ExactSpelling = true)]
@@ -134,7 +137,12 @@ public sealed class StartupScreen : UserControl
             VisibleChanged += (_, _) => UpdateAnimation();
             timer.Tick += (_, _) =>
             {
-                if (FindForm()?.WindowState != FormWindowState.Minimized) Invalidate();
+                if (FindForm()?.WindowState == FormWindowState.Minimized) return;
+                // One region contains every pose of the rotating mark and the animated caption.
+                var dpi = DeviceDpi / 96f;
+                int radius = (int)Math.Ceiling(76 * dpi);
+                Invalidate(new Rectangle(ClientSize.Width / 2 - radius, ClientSize.Height / 2 - radius,
+                    2 * radius + 2, 2 * radius + 2));
             };
         }
 
@@ -163,34 +171,111 @@ public sealed class StartupScreen : UserControl
             if (message.Msg == 0x001A) UpdateAnimation(); // WM_SETTINGCHANGE
         }
 
+        // Match startup-mark-in's cubic-bezier(.22,1,.36,1), including early handoffs.
+        static float EntranceEase(float elapsed)
+        {
+            if (elapsed <= 0) return 0;
+            if (elapsed >= 1) return 1;
+            float t = elapsed;
+            for (int i = 0; i < 4; i++)
+            {
+                float x = t * (.66f + t * (-.24f + .58f * t));
+                float slope = .66f + t * (-.48f + 1.74f * t);
+                t -= (x - elapsed) / slope;
+            }
+            return 1 - MathF.Pow(1 - t, 3);
+        }
+
+        void DrawMark(Graphics target, float x, float y, float size, float angle, ImageAttributes attributes)
+        {
+            var state = target.Save();
+            target.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            target.PixelOffsetMode = PixelOffsetMode.Half;
+            target.TranslateTransform(x, y);
+            if (angle != 0) target.RotateTransform(angle);
+            target.ScaleTransform(size / image.Width, size / image.Height);
+            var bounds = new Rectangle(-image.Width / 2, -image.Height / 2, image.Width, image.Height);
+            target.DrawImage(image, bounds, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            target.Restore(state);
+        }
+
+        void DrawPulse(Graphics target, float x, float y, float size, float dpi, ImageAttributes attributes)
+        {
+            // The edges travel less than one device pixel at 96 DPI. Sample the mark on
+            // a finer grid, then reduce the same device-aligned tile for every pose.
+            int samples = (int)Math.Ceiling(4 / dpi);
+            if (samples <= 1)
+            {
+                DrawMark(target, x, y, size, 0, attributes);
+                return;
+            }
+            int radius = (int)Math.Ceiling(40 * dpi);
+            int left = ClientSize.Width / 2 - radius;
+            int top = (int)Math.Floor(ClientSize.Height / 2f - 20 * dpi) - radius;
+            var tile = new Rectangle(left, top, 2 * radius + 2, 2 * radius + 2);
+            int side = tile.Width * samples;
+            if (pulseSurface?.Width != side)
+            {
+                pulseSurface?.Dispose();
+                pulseSurface = new Bitmap(side, side, PixelFormat.Format32bppPArgb);
+            }
+            using (var buffer = Graphics.FromImage(pulseSurface))
+            {
+                buffer.Clear(BackColor);
+                DrawMark(buffer, (x - left) * samples, (y - top) * samples, size * samples, 0, attributes);
+            }
+            var state = target.Save();
+            target.PixelOffsetMode = PixelOffsetMode.Half;
+            target.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            target.DrawImage(pulseSurface, tile, 0, 0, side, side, GraphicsUnit.Pixel);
+            target.Restore(state);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             float dpi = DeviceDpi / 96f, seconds = (float)clock.Elapsed.TotalSeconds;
-            float progress = reduced ? 1 : Math.Clamp(seconds / .42f, 0, 1);
-            float entered = 1 - MathF.Pow(1 - progress, 3);
+            float entered = reduced ? 1 : EntranceEase(seconds / .42f);
             float breath = reduced ? 0 : .009f * (1 - MathF.Cos(Math.Max(0, seconds - .42f) * MathF.PI / 1.1f));
             float size = 72 * dpi * (.88f + .12f * entered + breath);
             float centerY = ClientSize.Height / 2f - 20 * dpi + 6 * dpi * (1 - entered);
-            var g = e.Graphics; g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            var g = e.Graphics;
             using var attributes = new ImageAttributes();
             attributes.SetColorMatrix(new ColorMatrix { Matrix33 = entered });
-            var saved = g.Save();
-            g.TranslateTransform(ClientSize.Width / 2f, centerY);
-            if (spin && !reduced) g.RotateTransform(Math.Max(0, seconds - .42f) * 225 % 360);
-            var bounds = Rectangle.Round(new RectangleF(-size / 2, -size / 2, size, size));
-            g.DrawImage(image, bounds, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
-            g.Restore(saved);
+            if (spin || reduced)
+                DrawMark(g, ClientSize.Width / 2f, centerY, size, spin && !reduced ? Math.Max(0, seconds - .42f) * 225 % 360 : 0, attributes);
+            else
+                DrawPulse(g, ClientSize.Width / 2f, centerY, size, dpi, attributes);
             float labelProgress = reduced ? 1 : Math.Clamp((seconds - .08f) / .36f, 0, 1);
             int Mix(int background, int foreground) => (int)Math.Round(background + (foreground - background) * labelProgress);
             Color textColor = Color.FromArgb(Mix(BackColor.R, ForeColor.R), Mix(BackColor.G, ForeColor.G), Mix(BackColor.B, ForeColor.B));
-            var textBounds = new Rectangle(0, (int)(ClientSize.Height / 2f + (36 + 4 * (1 - labelProgress)) * dpi), ClientSize.Width, (int)(24 * dpi));
-            TextRenderer.DrawText(g, "Загрузка…", Font, textBounds, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            var textBounds = new Rectangle(0, (int)(ClientSize.Height / 2f + 36 * dpi), ClientSize.Width, (int)(24 * dpi));
+            const TextFormatFlags flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix;
+            if (labelProgress >= 1)
+            {
+                TextRenderer.DrawText(g, "Загрузка…", Font, textBounds, textColor, flags);
+            }
+            else if (labelProgress > 0 && textBounds.Width > 0 && textBounds.Height > 0)
+            {
+                // GDI takes integer baselines. Translate the whole raster line during its short entrance.
+                using var line = new Bitmap(textBounds.Width, textBounds.Height);
+                line.SetResolution(g.DpiX, g.DpiY);
+                using (var raster = Graphics.FromImage(line))
+                {
+                    raster.Clear(BackColor);
+                    TextRenderer.DrawText(raster, "Загрузка…", Font, new Rectangle(Point.Empty, line.Size), textColor, flags);
+                }
+                float top = textBounds.Y + 4 * dpi * (1 - labelProgress);
+                g.InterpolationMode = InterpolationMode.Bilinear;
+                g.PixelOffsetMode = PixelOffsetMode.Half;
+                g.DrawImage(line, new RectangleF(0, top, line.Width, line.Height),
+                    new RectangleF(0, 0, line.Width, line.Height), GraphicsUnit.Pixel);
+            }
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { timer.Stop(); timer.Dispose(); clock.Stop(); }
+            if (disposing) { timer.Stop(); timer.Dispose(); clock.Stop(); pulseSurface?.Dispose(); }
             base.Dispose(disposing);
         }
     }

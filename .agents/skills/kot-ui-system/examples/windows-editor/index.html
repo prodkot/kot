@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Монтажная</title><link rel="stylesheet" href="KotTheme/web/kot.css"><link rel="stylesheet" href="editor.css">
+<script>document.documentElement.classList.toggle('theme-light',matchMedia('(prefers-color-scheme: light)').matches)</script>
+<script defer src="editor.js"></script></head><body>
+<header><h1>Монтажная</h1><div class="actions"><button id="theme">Светлая тема</button><button class="primary" id="export">Экспорт</button></div></header>
+<main>
+<section aria-label="Предпросмотр"><div class="monitor"><div class="title-card"><span id="card-number"></span><strong id="card-text"></strong></div></div>
+<div class="transport"><div><b id="time"></b><small> / 00:12</small></div><div class="actions"><button id="prev" aria-label="Предыдущая сцена">←</button><button id="next" aria-label="Следующая сцена">→</button></div></div></section>
+<section class="timeline" aria-labelledby="timeline-title"><div class="track-heading"><h2 id="timeline-title">Таймлайн</h2><span>Титры</span></div><div id="clips" aria-label="Выбор сцены"></div></section>
+</main>
+<dialog aria-labelledby="dialog-title"><form method="dialog"><h2 id="dialog-title">Экспорт монтажного листа</h2><p>Сцены, порядок и длительность в формате JSON.</p><div class="actions"><button value="cancel">Отмена</button><button id="save" class="primary" value="save">Сохранить JSON</button></div></form></dialog>
+</body></html>

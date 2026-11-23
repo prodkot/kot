@@ -155,7 +155,7 @@
     </section>
   </main>
 </div>
-<div class="startup-screen" id="startupScreen" role="status"><img src="brand-icon.svg" alt="" aria-hidden="true"><p>Загрузка…</p></div>
+<div class="startup-screen" id="startupScreen" role="status"><span class="startup-mark" aria-hidden="true"><img src="brand-icon.svg" alt=""></span><p>Загрузка…</p></div>
 <dialog aria-labelledby="addTitle" class="dialog" data-dirty-form="" id="addDialog"><div class="dialog-heading"><h2 id="addTitle">Добавить серверы</h2><button aria-controls="addDialogHelp" aria-expanded="false" aria-label="Справка: Добавить серверы" class="help-button" data-help="addDialogHelp" type="button">?</button><button aria-label="Закрыть" class="cross" id="cancelAdd" title="Закрыть" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></div><div class="dialog-body">
 
 <form id="addForm">
@@ -257,6 +257,24 @@ GB" rows="4" spellcheck="false"></textarea></div><div class="routing-block"><lab
 <label for="editSubscriptionName">Название</label><input autocomplete="off" id="editSubscriptionName" maxlength="60" required=""/>
 <div id="editSubscriptionSource"><label for="editSubscriptionAddress">Ссылка на подписку</label><input autocomplete="off" id="editSubscriptionAddress" maxlength="2048" spellcheck="false" type="url"/></div>
 </fieldset><p class="dialog-error" id="editSubscriptionError" role="alert"></p><div class="dialog-actions"><button class="primary" id="saveSubscription" type="submit">Сохранить</button></div></form></div><div aria-label="Справка" class="help-body" id="editSubscriptionDialogHelp" popover="manual" role="region"><p class="dialog-note">Новый адрес будет использован при следующем обновлении. Сохранённые серверы и избранное останутся.</p></div></dialog>
+<div id="nodeMenu" class="node-menu" popover="manual" role="menu" aria-label="Действия сервера">
+  <button class="node-menu-item" role="menuitem" id="nodeMenuJson" type="button">Посмотреть JSON</button>
+  <div class="node-menu-separator" role="separator"></div>
+  <button class="node-menu-item" role="menuitem" id="nodeMenuQr" type="button">Поделиться QR</button>
+</div>
+<dialog id="nodeJsonDialog" aria-labelledby="nodeJsonTitle" class="dialog node-json-dialog" data-backdrop-close>
+  <div class="dialog-heading"><h2 id="nodeJsonTitle">JSON сервера</h2><button class="cross" aria-label="Закрыть" id="closeNodeJson" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></div>
+  <div class="dialog-body">
+    <div class="node-json-views segmented" role="group" aria-label="Представление outbound" data-selected="0"><span class="segment-thumb" aria-hidden="true"></span><button type="button" data-json-view="parsed" aria-pressed="true">После разбора</button><button type="button" data-json-view="xray" aria-pressed="false">Для Xray</button></div>
+    <div class="node-json-panel">
+      <div id="nodeJsonScroll" tabindex="0" role="region" aria-label="Содержимое JSON" aria-busy="false">
+        <p class="dialog-note" id="nodeJsonNote" role="status"></p>
+        <pre><code id="nodeJsonCode"></code></pre>
+      </div>
+      <div class="node-json-tools"><span id="nodeJsonFeedback" role="status"></span><button class="quiet-button" id="copyNodeJson" type="button" disabled>Копировать JSON</button></div>
+    </div>
+  </div>
+</dialog>
 <dialog aria-labelledby="shareQrTitle" class="dialog tools-dialog" id="shareQrDialog"><div class="dialog-heading"><h2 id="shareQrTitle">QR сервера</h2><button aria-label="Закрыть" class="cross" id="closeShareQr" title="Закрыть" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></div><div class="dialog-body"><img alt="QR для подключения к выбранному серверу" class="qr-preview" hidden="" id="shareQrImage"/><textarea aria-label="Ссылка на сервер" class="qr-link" id="shareQrLink" readonly="" spellcheck="false"></textarea><p class="dialog-error" id="shareQrError" role="alert"></p><div class="dialog-actions"><button class="quiet-button" id="copyNodeLink" type="button">Копировать ссылку</button><button class="quiet-button" id="copyNodeQr" type="button">Копировать QR</button><button class="quiet-button" id="saveNodeQr" type="button">Сохранить PNG</button></div></div></dialog>
 
 <dialog aria-labelledby="serviceSettingsTitle" class="dialog service-settings-dialog" data-dirty-form="" id="serviceSettingsDialog"><div class="dialog-heading"><h2 id="serviceSettingsTitle">Настройки сервиса</h2><button aria-label="Закрыть" class="cross" id="serviceSettingsClose" title="Закрыть" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></div><div class="dialog-body"><form id="serviceSettingsForm">
@@ -305,6 +323,7 @@ GB" rows="4" spellcheck="false"></textarea></div><div class="routing-block"><lab
 <script src="statistics.js"></script>
 <script src="journal.js"></script>
 <script src="routing.js"></script>
+<script src="node-json.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

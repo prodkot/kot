@@ -2,18 +2,24 @@
 
 ## Choose the public version
 
-For a request such as “send me an installer so I can test the fix”, use **Beta** unless the requester explicitly specifies another channel. A branch name or a development workflow does not select a channel for the user.
+Use **Dev** for a requested local build to check a specific change. For a test installer, use **Beta** unless the requester explicitly specifies another channel. Select the channel in `Directory.Build.props` before building. The branch and workflow names do not set the public version. See the [build channel rules](../AGENTS.md#build-channels).
 
 | Intended use | Canonical version | In the app | Windows x64 installer |
 | --- | --- | --- | --- |
-| Intermediate development build | `0.8.3-dev.1` | `kot. 0.8.3 Dev 1` | `Kot-Setup-0.8.3-dev.1-Windows-x64.exe` |
-| User testing | `0.8.3-beta.1` | `kot. 0.8.3 Beta 1` | `Kot-Setup-0.8.3-beta.1-Windows-x64.exe` |
+| Local check of a specific change | `0.8.3-dev.1` | `kot. 0.8.3 Dev 1` | `Kot-Setup-0.8.3-dev.1-Windows-x64.exe` (if building Setup locally) |
+| Full test build in GitHub Actions | `0.8.3-beta.1` | `kot. 0.8.3 Beta 1` | `Kot-Setup-0.8.3-beta.1-Windows-x64.exe` |
 | Stable release candidate | `0.8.3-rc.1` | `kot. 0.8.3 RC 1` | `Kot-Setup-0.8.3-rc.1-Windows-x64.exe` |
 | Stable release | `0.8.3` | `kot. 0.8.3` | `Kot-Setup-0.8.3-Windows-x64.exe` |
 
 These are format examples. Use the intended base version. For each base version and prerelease channel, start at 1 and advance the number for each distinct build handed out. For example, after sending Beta 1, a build with a further fix is Beta 2. Stable uses the base version alone.
 
+RC is an optional version label. The requirement for a successfully tested Beta and explicit release approval still applies.
+
 Generate all representations automatically from one authoritative version record (base version, channel and prerelease number). Never maintain separate version strings by hand in the UI, project files or installer. The app header and About, textual product metadata, Setup name and UI, and the installed program's Windows `DisplayVersion` must identify the same version, including its channel and number. Derive numeric-only Windows fields from the same base version. Keep CI run IDs and attempts, temporary or local IDs, commit hashes and build time in provenance metadata. They must never stand in for the public version.
+
+## Local Dev handoff
+
+Build and check the requested revision locally. If handing over a ZIP, verify its contents and build identity, hash the final archive and give the tester its version, filename, commit, UTC build time and SHA-256. Include the local test results and any missing coverage, particularly Windows-only checks. Dev uses no Actions run or public upload. For a local Setup, the signature and verification steps below also apply.
 
 ## Before handing over a Setup
 

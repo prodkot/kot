@@ -31,12 +31,18 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
     const result=[dialog.animate(frames,options)];
     result.push(dialog.animate(backdrop,{...options,duration:motion('backdrop'),easing:opening?'ease-out':'ease-in',pseudoElement:'::backdrop'}));return result;
   }
+  function visibleFrame(element){
+    const style=getComputedStyle(element);
+    return {opacity:style.opacity,transform:style.transform};
+  }
   function open(dialog){
     let state=states.get(dialog);
     if(dialog.open&&!dialog.dataset.closing)return;
+    const from=dialog.open?visibleFrame(dialog):{opacity:0,transform:'translateY(12px) scale(.97)'};
+    const backdropOpacity=dialog.open?getComputedStyle(dialog,'::backdrop').opacity:0;
     if(dialog.open){state.generation++;cancelEffects(state);delete dialog.dataset.closing;state.finish=null;}
     else{finalize(dialog,state);dialog.querySelectorAll('input,textarea,select').forEach(clearFieldError);state={generation:0,effects:[],focus:rememberFocus(),finish:null,finalized:false};states.set(dialog,state);dialog.showModal();active.add(dialog);markClean(dialog);onStackChange(dialog,true);}
-    state.effects=effects(dialog,[{opacity:0,transform:'translateY(12px) scale(.97)'},{opacity:1,transform:'none'}],true,[{opacity:0},{opacity:1}]);
+    state.effects=effects(dialog,[from,{opacity:1,transform:'none'}],true,[{opacity:backdropOpacity},{opacity:1}]);
     const generation=state.generation;
     // A nested modal may cancel the browser's backdrop animation independently.
     // Always retire the remaining filled effect, including that cancellation path.
@@ -46,7 +52,7 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
     if(!dialog.open||dialog.dataset.closing)return;
     if(dialog===$('discardDialog'))pendingDiscard=null;
     if(help?.closest('dialog')===dialog)hideHelp(false,true);
-    const state=states.get(dialog),generation=++state.generation,style=getComputedStyle(dialog),from={opacity:style.opacity,transform:style.transform};
+    const state=states.get(dialog),generation=++state.generation,from=visibleFrame(dialog);
     const backdropOpacity=getComputedStyle(dialog,'::backdrop').opacity;
     cancelEffects(state);dialog.dataset.closing='true';
     const finish=()=>{
@@ -72,16 +78,22 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
     const height=help.getBoundingClientRect().height;help.style.top=Math.max(edge,Math.min(r.bottom+8,innerHeight-height-edge))+'px';
   }
   function hideHelp(focus=true,immediate=false){
-    if(!help)return;const panel=help,button=helpButton,generation=++helpGeneration;
+    if(!help||(!immediate&&helpButton.getAttribute('aria-expanded')==='false'))return;
+    const panel=help,button=helpButton,generation=++helpGeneration,from=visibleFrame(panel);
     helpMotion?.cancel();button.setAttribute('aria-expanded','false');
     const finish=()=>{if(generation!==helpGeneration)return;panel.hidePopover();helpMotion?.cancel();helpMotion=null;help=null;helpButton=null;if(focus)button.focus({preventScroll:true});};
     if(immediate||reduced.matches){finish();return;}
-    helpMotion=panel.animate([{opacity:getComputedStyle(panel).opacity,transform:getComputedStyle(panel).transform},{opacity:0,transform:'translateY(-4px)'}],{duration:motion('help'),fill:'both'});helpMotion.finished.then(finish).catch(()=>{});
+    helpMotion=panel.animate([from,{opacity:0,transform:'translateY(-4px)'}],{duration:motion('help'),fill:'both'});helpMotion.finished.then(finish).catch(()=>{});
   }
   for(const button of document.querySelectorAll('[data-help]'))button.addEventListener('click',()=>{
-    if(button===helpButton){hideHelp();return;}hideHelp(false,true);helpGeneration++;
-    helpButton=button;help=$(button.dataset.help);help.showPopover();button.setAttribute('aria-expanded','true');positionHelp();help.tabIndex=-1;help.focus({preventScroll:true});
-    if(!reduced.matches){helpMotion=help.animate([{opacity:0,transform:'translateY(-4px)'},{opacity:1,transform:'none'}],{duration:motion('help')});}
+    const same=button===helpButton;
+    if(same&&button.getAttribute('aria-expanded')==='true'){hideHelp();return;}
+    const from=same?visibleFrame(help):{opacity:0,transform:'translateY(-4px)'};
+    if(same)helpMotion?.cancel();else hideHelp(false,true);
+    helpGeneration++;helpButton=button;help=$(button.dataset.help);
+    if(!same){help.showPopover();positionHelp();}
+    button.setAttribute('aria-expanded','true');help.tabIndex=-1;help.focus({preventScroll:true});
+    if(!reduced.matches){helpMotion=help.animate([from,{opacity:1,transform:'none'}],{duration:motion('help')});}
   });
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&help){e.preventDefault();e.stopImmediatePropagation();hideHelp();}},true);
   document.addEventListener('pointerdown',e=>{if(help&&!help.contains(e.target)&&!helpButton.contains(e.target))hideHelp(false);});
