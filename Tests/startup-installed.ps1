@@ -25,7 +25,7 @@ function Run($path,$argument,[switch]$Failure) {
   $log=Join-Path $diagnostics "$tag-setup.log"
   $maintenance=Join-Path $profile 'maintenance-error.txt'
   Remove-Item $maintenance -ErrorAction SilentlyContinue
-  if ($path -eq $Setup) { $argument=$argument.Replace('/S ',"/S /LOG=$log ") }
+  if ($path -eq $Setup) { $argument=$argument.Replace('/S ',"/S /LOG=`"$log`" ") }
   Write-Host "RUN $tag $([IO.Path]::GetFileName($path)) $argument"
   $watch=[Diagnostics.Stopwatch]::StartNew()
   $p=Start-Process $path -ArgumentList $argument -PassThru
@@ -33,6 +33,14 @@ function Run($path,$argument,[switch]$Failure) {
     if (!$p.WaitForExit(120000)) { $p.Kill($true); $p.WaitForExit(10000) | Out-Null; throw 'Fixture process timed out.' }
     Write-Host "EXIT $tag code=$($p.ExitCode) elapsedMs=$($watch.ElapsedMilliseconds)"
     if (Test-Path $log) { Get-Content $log -Encoding Unicode | Write-Host }
+    if ($path -eq $Setup -and $p.ExitCode -eq 0) {
+      $stages=@(Get-Content $log -Encoding Unicode | ForEach-Object { $_ -replace '^\d+ ','' -replace ' nsisError=\d+$','' })
+      $expected=@('install.begin')
+      if ($stages -contains 'shutdown.begin') { $expected+=@('shutdown.begin','shutdown.end exit=0') }
+      $expected+=@('extract.begin','extract.end exit=0','shortcuts.begin','shortcuts.end exit=0','startup-repair.begin','startup-repair.end exit=0','install.success')
+      if (($stages -join '|') -cne ($expected -join '|')) { throw 'Setup trace lost, reordered or duplicated stages.' }
+      Write-Host "PASS complete Setup trace ($($stages.Count) stages)"
+    }
     if ($p.ExitCode -ne 0) {
       if (Test-Path "$log.extract.txt") { Get-Content "$log.extract.txt" | Write-Host }
       if (Test-Path $maintenance) { Get-Content $maintenance | Write-Host }
@@ -115,6 +123,29 @@ try {
     Write-Host "PASS cycle exact payload hashes ($($expectedFiles.Count) files)"
     Assert (@(Get-ChildItem $target -Directory -Filter '.kot-update-*').Count -eq 0) 'cycle leaves no pending transaction'
     Write-Host "REINSTALL CYCLE $cycle/12 passed"
+  }
+  # Controlled failures validate the diagnostic paths; they are NOT evidence of
+  # the original intermittent cause. Keep each lock until Setup has exited.
+  foreach ($fault in @('payload','shortcut')) {
+    $locked=if ($fault -eq 'payload') { Join-Path $target 'ui/app.js' } else { Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'kot..lnk' }
+    $sharing=if ($fault -eq 'payload') { [IO.FileShare]::None } else { [IO.FileShare]::Read }
+    $hold=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::Read,$sharing)
+    try {
+      Write-Host "CONTROLLED LOCK $fault begin"
+      Assert ((Run $Setup "/S /D=$target" -Failure) -eq 1) 'locked file causes a real Setup failure, never silent success'
+      $tag='{0:D3}' -f $script:commandNumber
+      $log=Join-Path $diagnostics "$tag-setup.log"
+      $trace=[IO.File]::ReadAllText($log,[Text.Encoding]::Unicode)
+      $stage=if ($fault -eq 'payload') { 'extract.end exit=1' } else { 'shortcuts.end exit=1' }
+      Assert ($trace.Contains('install.begin') -and $trace.Contains($stage) -and $trace.Contains('failed:') -and !$trace.Contains('install.success')) 'failure trace preserves start, exact failing stage and failure message'
+      $detail=if ($fault -eq 'payload') { "$log.extract.txt" } else { Join-Path $profile 'maintenance-error.txt' }
+      Assert ((Test-Path $detail) -and (Get-Item $detail).Length -gt 0) 'failure detail survives Setup temporary-directory cleanup'
+      if ($fault -eq 'payload') { Assert ([IO.File]::ReadAllText($detail).Contains('HRESULT=0x80070020')) 'extractor reports the injected Windows sharing violation' }
+    } finally { $hold.Dispose() }
+    foreach ($file in $expectedFiles) { if (!(Test-Path $file.Path) -or (Get-FileHash $file.Path).Hash -ne $file.Hash) { throw "Controlled $fault failure changed payload: $($file.Path)" } }
+    Assert (@(Get-ChildItem $target -Directory -Filter '.kot-update-*').Count -eq 0) 'controlled failure leaves no pending transaction'
+    Assert (!(Get-ScheduledTask -TaskName $name).Settings.Enabled) 'controlled failure preserves external startup disable'
+    Write-Host "CONTROLLED LOCK $fault passed"
   }
   Run $exe '--enable-startup' | Out-Null
   Copy-Item $target $copy -Recurse

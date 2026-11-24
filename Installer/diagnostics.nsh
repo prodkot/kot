@@ -12,8 +12,10 @@ Var SetupLog
     ClearErrors
     FileOpen $7 "$SetupLog" a
     ${IfNot} ${Errors}
+      ; NSIS 'a' preserves content but still positions the handle at byte zero.
+      FileSeek $7 0 END
       System::Call 'kernel32::GetTickCount() i.r8'
-      FileWriteUTF16LE $7 "$8 ${message}$\r$\n"
+      FileWriteUTF16LE $7 "$8 ${message} nsisError=$9$\r$\n"
       FileClose $7
     ${EndIf}
   ${EndIf}
