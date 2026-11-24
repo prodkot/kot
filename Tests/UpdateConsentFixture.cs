@@ -72,6 +72,7 @@ internal static class Store
 }
 internal static class AppLog
 {
+    internal static string Clean(string text) => text;
     internal static void Write(string category, string text) { }
     internal static void Error(string category, Exception ex) { }
 }

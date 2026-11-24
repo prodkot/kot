@@ -49,7 +49,26 @@ public sealed partial class MainWindow
                 if (data.TryGetProperty("subscriptionId", out var scope) && scope.GetString() != profile.ActiveSubscription)
                     throw new UserError("Подписка изменилась. Выберите сервер в текущей подписке.");
                 if (id != "auto" && !profile.Nodes.Any(n => n.Id == id)) throw new UserError("Сервер уже удалён. Обновите подписку.");
-                if (id != profile.Selected || id != "auto" && tunnel.SessionNode is { } active && active.Id != id) { await StopTools(); await tunnel.Stop(); try { SaveProfile(p => p.Selected = id); } finally { ResumeDesired(); } }
+                if (id != profile.Selected || profile.CurrentSubscription?.ResumeNodeId != null ||
+                    id != "auto" && tunnel.SessionNode is { } active && active.Id != id)
+                {
+                    await StopTools(); await tunnel.Stop();
+                    try
+                    {
+                        SaveProfile(p =>
+                        {
+                            p.Selected = id;
+                            if (p.CurrentSubscription is { } saved)
+                            {
+                                saved.ResumeNodeId = null;
+                                saved.MissingEndpointFingerprint = null;
+                                saved.MissingTechnicalFingerprint = null;
+                                saved.MissingRealityFingerprint = null;
+                            }
+                        });
+                    }
+                    finally { ResumeDesired(); }
+                }
                 break;
             case "settings": await ChangeSetting(data); break;
             case "switchSubscription":

@@ -295,7 +295,7 @@ def review_controls(browser):
             source=p.locator('#'+kind+'Source')
             assert source.evaluate('e=>getComputedStyle(e).borderTopWidth')=='0px'
             source.click()
-        p.evaluate("fixtureNavigate('servers')");p.locator('.qr-node').click()
+        p.evaluate("fixtureNavigate('servers')");p.locator('.qr-node').click();p.locator('#nodeMenuQr').click()
         actions=p.locator('#shareQrDialog .dialog-actions');assert actions.count()==1
         expect(p.locator('#shareQrLink')).to_have_value('vless://fixture@example.org:443')
         p.locator('#copyNodeLink').click()

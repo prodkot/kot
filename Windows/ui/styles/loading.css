@@ -1,0 +1,6 @@
+/* Fixed layout slot. Only the original Manrope 800 contours move inside it. */
+.kot-loader {display:inline-block;width:1em;height:1em;font-size:72px;flex:none;line-height:0;color:var(--text);vertical-align:middle}
+.kot-loader svg {display:block;width:100%;height:100%;overflow:visible;fill:currentColor}
+.kot-loader .loader-point {fill:var(--detail)}
+.kot-loader[data-size=compact] {font-size:24px}
+.brand-egg-point {display:inline-block;will-change:auto}

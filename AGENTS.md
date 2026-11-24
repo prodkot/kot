@@ -5,12 +5,22 @@ This is a Windows VPN client with privileged networking and a local WebView2 UI.
 ## Start and finish
 
 1. Inspect `git status`, the intended base branch, open PRs and existing worktrees. Use a separate branch/worktree. Preserve uncommitted work; do not reset, force-push or replace another change.
-2. Read [architecture](docs/ARCHITECTURE.md), the relevant feature document and nearby tests. Identify the owner of state, cancellation, error presentation and cleanup. Record available baseline checks before refactoring.
+2. Read the mandatory [version lifecycle policy](Release/LIFECYCLE.md), [architecture](docs/ARCHITECTURE.md), the relevant feature document and nearby tests. Identify the owner of state, cancellation, error presentation and cleanup. Record available baseline checks before refactoring.
 3. Make the smallest cohesive change. Reuse current mechanisms, avoid unrelated rewrites, new global stores, duplicated business rules and wrappers without independent responsibility. Keep commits independently reviewable.
-4. Run the checks in [the validation matrix](docs/VALIDATION.md). Fix regressions. State which checks passed, failed, were blocked or were not run, with commit and environment. Never label mocks as Windows, WebView2, Xray or TUN verification.
+4. Run the checks in [the validation matrix](docs/VALIDATION.md). Fix regressions. State which checks passed, failed, were unavailable or were not run, with commit and environment. Never label mocks as Windows, WebView2, Xray or TUN verification.
 5. Review the final diff for changed contracts, secrets, generated artifacts and lost tests. Update the ownership map and feature docs if behavior or ownership changes. Provide the result and concrete limitations.
 
-Do not merge PRs, publish releases or force-push without explicit authorization. A `dev/**` push runs the existing development installer and native QA workflows; it does not publish a release. Do not invoke the release workflow as a substitute for development validation.
+Do not merge PRs, merge changes into main, publish releases, replace published installers or force-push without explicit authorization. Build/test authorization does not imply merge, publication or replacement authorization.
+
+## Build channels
+
+[Release/LIFECYCLE.md](Release/LIFECYCLE.md) is the authoritative lifecycle policy for every future version and agent. Read it before choosing a channel, preparing or handing off a build, claiming readiness, merging or publishing. Reconcile conflicting summaries with it; historical reports do not override it.
+
+- **Dev** is active development: new features, experiments, architecture changes and UI rework within the authorized task. Intermediate solutions are allowed with their limitations documented. Run applicable automated checks. Builds are internal, not full releases. A local Dev handoff needs no Actions run; do not push to a CI-triggering branch just to obtain it. Ordinary authorized PR checks do not promote the build's channel or readiness.
+- **Beta** is stabilization: fixes, polish, compatibility and regression checks. Major new features require the owner's direct permission. Full Beta acceptance requires both **Windows checks** and **Windows development build** on the exact candidate revision, real Windows WebView2, tray, DPI, TUN, startup, shutdown, installation, update and uninstall checks, and a verified signed Setup from Actions. Without these gates a local build is only a **local Beta candidate**, regardless of its version string. Public Beta publication is only a **GitHub Pre-release** with explicit owner approval.
+- **Stable** is an accepted, reliable and predictable release without known critical regressions. After Beta, changes to client code, dependencies or packaging must be validated in Beta again. Publish only from **main**, as a normal **GitHub Release**, after acceptance and explicit owner approval. The stable updater must not offer experimental or prerelease builds. The compiler's `Release` configuration is not this lifecycle status.
+
+Separate channel, verified readiness and publication permission. Never promote readiness without evidence. Report passed, failed, unavailable and not-run checks separately; compilation, portable tests and Chromium are not real Windows verification. Preserve update, build identity and distribution-channel compatibility. Follow [Windows acceptance](Release/DEVELOPMENT.md), [artifact identity](Release/BUILD-IDENTITY.md) and [publication](Release/GITHUB.md) details without treating them as permission to publish.
 
 ## Ownership and dependency direction
 
@@ -32,7 +42,9 @@ Partial classes are organizational boundaries, not independent services. Do not 
 
 ## UI and RPC changes
 
-- Consult [UI architecture](docs/UI-ARCHITECTURE.md). Use `styles/tokens.css` and existing selectors/components first. Preserve approved visual behavior in both themes; do not silently redesign while refactoring.
+Before any change to UI, UX or motion, including copy, navigation, focus, state presentation and reduced motion, read the [kot-ui-system skill](.agents/skills/kot-ui-system/SKILL.md) and the reference sections it selects. This applies to the client, demo, website and native surfaces. Consult [UI architecture](docs/UI-ARCHITECTURE.md), the affected feature documentation and [the validation matrix](docs/VALIDATION.md).
+
+- Use `styles/tokens.css` and existing selectors/components first. Preserve approved visual behavior in both themes; do not silently redesign while refactoring.
 - Preserve DOM IDs, action names, payloads, reply IDs, snapshot fields and error semantics unless an explicit coordinated migration is part of the task. Update native dispatch, demo and fixtures together for a new action.
 - Native C# validates untrusted input. JS validation improves UX but is not authorization. Render subscription/server text with text nodes, never HTML interpolation. Use the flag allowlist; do not turn labels into asset paths.
 - Use `dialog-ui.js` for modal lifecycle, dirty confirmation, focus return and validation. Keep pending controls, cancellation, error messages, keyboard access, ARIA and reduced motion. Reserve geometry when labels change.
@@ -55,12 +67,12 @@ Partial classes are organizational boundaries, not independent services. Do not 
 - Preserve Setup and package signature verification, pinned public key, version checks, exact-byte validation, archive/path/reparse defenses and rollback evidence. Do not add unsigned fallback updates or replace trusted sources silently.
 - Installer cleanup removes only owned files and preserves user data. Read [release development](Release/DEVELOPMENT.md) before changing installation/recovery.
 - Pin dependencies/actions/toolchains, update notices and corresponding source, and justify new dependencies. A refactor is not an implicit dependency upgrade.
-- Before preparing, naming or handing off any installer, follow the [version and installer handoff policy](Release/BUILD-IDENTITY.md). Use Beta for a user's manual test unless another channel was explicitly requested. Keep the public version distinct from build metadata. Do not fabricate a new release tag for an architecture change.
+- Before preparing, naming or handing off a build, follow the [version and handoff policy](Release/BUILD-IDENTITY.md). Choose the intended channel by the lifecycle policy and the authorized task; a Beta label or test installer does not confer Beta acceptance. Keep the public version distinct from build metadata. Do not fabricate a new release tag for an architecture change.
 
 ## Validation and reporting
 
-Run `python Tests/repository.py` for every PR, including documentation. Core changes also need `dotnet run --project Tests/Kot.Tests.csproj -c Release`; UI changes need the affected browser suites and `python Tests/architecture_ui.py`, site checks and both-theme screenshots. Native window/bridge/package/lifecycle changes require `NativeTests` and `WindowTests` on Windows. Networking and installer changes additionally require the development workflow's real TUN, installation and recovery checks. Exact commands and the complete matrix are in [VALIDATION.md](docs/VALIDATION.md).
+Run `python Tests/repository.py` for every PR, including documentation. Core changes also need `dotnet run --project Tests/Kot.Tests.csproj -c Release`; UI changes need the affected browser suites and `python Tests/architecture_ui.py`, site checks and both-theme screenshots. Native window/bridge/package/lifecycle changes require `NativeTests` and `WindowTests` on Windows. Networking and installer changes additionally require real TUN, installation and recovery evidence. Use the [validation matrix](docs/VALIDATION.md) to select local checks for Dev. Accepted Beta must pass both required Windows workflows on the same candidate revision and the full acceptance gates in Release/LIFECYCLE.md.
 
 Check small windows, 100/125/150% scale, long strings, focus and reduced motion when relevant. Keep baseline and candidate screenshots with synthetic data. Investigate differences rather than accepting a changed baseline automatically.
 
-If the environment cannot run a check, report the concrete limitation and use the existing authorized CI when available. Do not weaken a test, hide its failure or claim a hosted runner proves the user's machine is fixed. Record remaining debt separately from completed changes.
+If the environment cannot run a check, report the concrete limitation. An unavailable Windows check remains open on Dev and blocks Beta acceptance when required by the lifecycle policy; a local Beta build must remain labelled a local Beta candidate. Do not weaken a test, hide its failure or claim a hosted runner proves the user's machine is fixed. Record remaining debt separately from completed changes.

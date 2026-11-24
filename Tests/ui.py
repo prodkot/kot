@@ -9,7 +9,7 @@ window.fixtureMeows=0;
 HTMLMediaElement.prototype.play=function(){window.fixtureMeows++;window.fixtureMeowSource=this.src;return Promise.resolve();};
 const model={name:'Подписка',hasSubscription:false,nodes:[],selected:'',state:'idle',error:'',settings:{theme:'dark',accent:'lime',mode:'tun',startup:false,autoConnect:false,tray:true,sendHwid:true,killSwitch:false,killSwitchActive:false,bypass:''},updated:null,warnings:[],ping:{busy:false,done:0,total:0,error:'',settings:{mode:'http',url:'https://www.gstatic.com/generate_204',timeoutMs:5000,attempts:2,parallelism:3,sort:'none'}},version:'0.5.8',updates:{busy:false,status:'',error:'',availableVersion:null},favorites:[],subscriptions:[],activeSubscription:'',automation:{reconnect:true,refreshHours:6,pingMinutes:0,autoMinutes:3,autoToleranceMs:50}};
 window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg=>setTimeout(()=>{
- const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model)}});
+ const snapshot=()=>callback({data:{kind:'snapshot',data:structuredClone(model),startupOriginMs:window.fixtureStartupOrigin}});
  const reply=(ok=true,error='',data)=>callback({data:{kind:'reply',id:msg.id,ok,error,data}});
  switch(msg.action){
   case 'ready':break;
@@ -30,7 +30,7 @@ window.chrome={webview:{addEventListener:(event,cb)=>callback=cb,postMessage:msg
   case 'pingSettings':model.ping.settings=msg.data;break;
   case 'pingAll':model.ping.busy=true;model.ping.done=0;model.ping.total=model.nodes.length;for(const n of model.nodes)n.ping={status:'checking',mode:model.ping.settings.mode};break;
   case 'pingNode':model.ping.busy=true;model.ping.done=0;model.ping.total=1;model.nodes.find(n=>n.id===msg.data.id).ping={status:'checking',mode:model.ping.settings.mode};break;
-  case 'cancelPing':model.ping.busy=false;break;
+  case 'cancelPing':model.ping.busy=false;for(const n of model.nodes)if(['queued','checking'].includes(n.ping?.status))n.ping={...n.ping,status:'cancelled'};break;
   case 'select':model.selected=msg.data.id;break;
   case 'toggle':if(window.fixtureToggleError){reply(false,'Ошибка подключения');return;}model.state=model.state==='idle'?'connecting':'idle';break;
   case 'settings':if(msg.data.key==='bypass'&&msg.data.value.includes('https://')){reply(false,'Введите домены без https://');return;}model.settings[msg.data.key]=msg.data.value;break;
@@ -48,18 +48,23 @@ def open_hwid(page):
     page.locator('#hwidButton').click()
 
 def check_startup(browser):
-    for theme, spin, reduced in [('dark',False,False),('light',False,False),('dark',True,False),('light',True,False),('light',True,True)]:
+    for theme, variant, reduced in [('dark','quiet',False),('light','quiet',False),('dark','hop',False),('light','roll',False),('light','hop',True)]:
         page=browser.new_page(viewport={'width':800,'height':600},reduced_motion='reduce' if reduced else 'no-preference')
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'spin':spin})+''';(()=>{
+        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'sequence':[variant]*8})+''' ;(()=>{
+          Object.defineProperty(window,'KotLoading',{configurable:true,set(value){
+            const create=value.create;value.create=(host,options)=>{const owner=create(host,options);window.fixtureLoader??=owner;return owner;};
+            Object.defineProperty(window,'KotLoading',{value,configurable:true});
+          }});
           const send=chrome.webview.postMessage;
-          window.startupReadyCount=0;
+          window.fixtureStartupOrigin=Date.now()-2750;window.startupReadyCount=0;
           chrome.webview.postMessage=message=>{
             if(message.action==='uiReady'){
               window.startupReadyCount++;
-              window.startupHandoff={visible:!document.getElementById('startupScreen').hidden,
+              window.handoffError=fixtureLoader.state.elapsed-(Date.now()-fixtureStartupOrigin);
+              window.startupHandoff={visible:!startupScreen.hidden,
                 inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
-                image:document.querySelector('#startupScreen img').complete};
+                artwork:!!startupScreen.querySelector('svg .loader-point')};
             }
             setTimeout(()=>send(message),message.action==='ready'?1000:message.action==='uiReady'?180:0);
           };
@@ -67,28 +72,35 @@ def check_startup(browser):
         page.goto((root/'Windows/ui/index.html').as_uri())
         page.wait_for_function('()=>typeof fixtureSnapshot==="function"')
         expect(page.locator('#startupScreen')).to_be_visible()
-        # Before any profile snapshot, the saved theme already covers the first paint.
         assert page.evaluate('document.documentElement.classList.contains("theme-light")')==(theme=='light')
-        assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen")).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
-        assert page.locator('#startupScreen img').get_attribute('src')==('brand-icon-light.svg' if theme=='light' else 'brand-icon.svg')
-        page.wait_for_timeout(520)
-        animations=page.evaluate('document.querySelector("#startupScreen img").getAnimations().map(a=>a.animationName)')
-        assert ('startup-mark-spin' in animations)==(spin and not reduced)
-        if spin and not reduced:
-            assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen img")).rotate') not in ['none','0deg']
+        assert page.evaluate('getComputedStyle(startupScreen).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
+        assert page.locator('#startupScreen .loader-point').evaluate('(e)=>getComputedStyle(e).fill')==('rgb(85, 117, 42)' if theme=='light' else 'rgb(212, 245, 138)')
+        samples=[]
+        for _ in range(12):
+            samples.append(page.locator('#startupScreen .loader-point').get_attribute('transform'))
+            page.wait_for_timeout(45)
+        assert page.evaluate('fixtureLoader.state.scheduled')== (not reduced)
+        if not reduced:
+            assert len(set(samples))>2,samples
         assert page.evaluate('document.querySelector(".main").inert&&document.querySelector(".sidebar").inert')
         page.wait_for_function('()=>window.startupHandoff')
-        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
+        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'artwork':True}
         if not reduced:
+            assert abs(page.evaluate('window.handoffError'))<40
             page.wait_for_function('()=>document.body.classList.contains("revealing")')
             assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')!='none'
+            sampling=page.evaluate('''async()=>{
+              const t=fixtureLoader.state.elapsed,now=performance.now();
+              await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+              return [fixtureLoader.state.elapsed-t,performance.now()-now,fixtureLoader.state.scheduled];
+            }''')
+            dt,wall,running=sampling;assert dt>0 and abs(dt-wall)<30 and running,sampling
             page.evaluate('fixtureSnapshot({});fixtureSnapshot({});')
         expect(page.locator('#startupScreen')).to_be_hidden()
         assert page.evaluate('window.startupReadyCount')==1
         assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert||document.body.classList.contains("revealing")')
         assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')=='none'
-        assert not page.evaluate('document.querySelector("#startupScreen").getAnimations({subtree:true}).length')
-        assert not page.evaluate('document.documentElement.classList.contains("startup-spin")')
+        assert not page.evaluate('startupScreen.getAnimations({subtree:true}).length||fixtureLoader.state.scheduled||fixtureLoader.state.active')
         page.locator('[data-page=settings]').click();expect(page.locator('#page-settings')).to_be_visible()
         page.close()
     # Turning off motion during the reveal must not strand the app behind an inert overlay.
@@ -130,6 +142,7 @@ with sync_playwright() as p:
     page.locator('#copyErrorLog').click();expect(page.locator('#toast')).to_have_text('Полный лог скопирован');assert page.evaluate('window.copiedFullLog')
     page.locator('[data-page=servers]').click();page.locator('#serverSearch').fill('');page.locator('#pingAll').click();expect(page.locator('#pingProgress')).to_have_text('0 / 2');expect(page.locator('#pingAll')).to_be_disabled();expect(page.locator('.ping-node').first).to_be_disabled()
     page.locator('#cancelPing').click();expect(page.locator('#pingAll')).to_be_enabled();expect(page.locator('#pingProgress')).not_to_be_visible()
+    expect(page.locator('.ping-node').first).to_be_enabled();expect(page.locator('.ping-node[data-status=cancelled]')).to_have_count(2)
     page.locator('#pingSettings').click();expect(page.locator('#pingUrlRow')).to_be_visible();page.locator('#pingMode').select_option('tcp');expect(page.locator('#pingUrlRow')).not_to_be_visible();page.locator('#pingTimeout').fill('2500');page.locator('#pingAttempts').fill('3');page.locator('#pingParallel').fill('2');page.locator('#pingSort').select_option('ping');page.locator('#pingForm [type=submit]').click();expect(page.locator('#pingDialog')).not_to_be_visible()
     page.locator('#pingSettings').click();expect(page.locator('#pingTimeout')).to_have_value('2500');expect(page.locator('#pingMode')).to_have_value('tcp');page.locator('#closePing').click();expect(page.locator('#pingDialog')).not_to_be_visible()
     page.locator('.ping-node').first.click();expect(page.locator('#pingProgress')).to_have_text('0 / 1');page.locator('#cancelPing').click()
@@ -263,3 +276,11 @@ with sync_playwright() as p:
     assert not errors,errors
     browser.close()
 print(json.dumps({'ui':'passed','themes':2,'legacy_accents':'ignored','meow':'each 443rd activation','unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))
+
+# The existing CI entry point must also cover the Beta 2 motion and modal fixes.
+# Run each suite as an isolated process; any failure fails this command and CI.
+import subprocess
+import sys
+for command in (('Tools/loading_motion.py','--check'),('Tools/loading_demo.py',),
+                ('Tests/loading_ui.py',),('Tests/dialog_lifecycle_ui.py',)):
+    subprocess.run([sys.executable, *command], cwd=root, check=True, timeout=480)

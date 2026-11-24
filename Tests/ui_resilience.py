@@ -21,7 +21,7 @@ window.chrome=''')
 MOCK = MOCK.replace("window.statisticsRequests.push(msg);setTimeout(()=>{window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:true}});},10);", '''
 window.fixtureRequests.push(msg);
 setTimeout(()=>{
-const data=msg.action==='readSubscription'?{id:'s',name:model.name,address:'https://example.org/subscription',local:false}:msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
+const data=msg.action==='readNodeJson'?{text:'{}',note:'После разбора',revision:'fixture'}:msg.action==='readSubscription'?{id:'s',name:model.name,address:'https://example.org/subscription',local:false}:msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
 window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:msg.action!==window.fixtureReject,error:'Не удалось сохранить настройки.',data}});
 },window.fixtureDelay||10);
 ''')
@@ -52,7 +52,8 @@ DIALOGS = [
  ('routingRemoveDialog', 'settings', ['#routingButton', '#routingRemove']),
  ('geoIpDialog', 'settings', ['#routingButton', '#geoIpButton']),
  ('qualityDialog', 'servers', ['#qualityButton']),
- ('shareQrDialog', 'servers', ['[data-node=node0] .qr-node']),
+ ('shareQrDialog', 'servers', ['[data-node=node0] .qr-node', '#nodeMenuQr']),
+ ('nodeJsonDialog', 'servers', ['[data-node=node0] .qr-node', '#nodeMenuJson']),
  ('serviceSettingsDialog-zapret', 'services', ['[data-service-tab=zapret]', '#zapretSettings']),
  ('serviceSettingsDialog-telegram', 'services', ['[data-service-tab=telegram]', '#telegramSettings']),
  ('zapretTestDialog', 'services', ['[data-service-tab=zapret]', '#zapretTest']),

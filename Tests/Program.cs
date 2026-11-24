@@ -8,6 +8,8 @@ if (args.Length == 4 && args[0] == "--identity")
         || args[2] != "-" && ClientIdentity.Build != args[2]) throw new Exception("Compiled build identity differs from requested stamp");
     Console.WriteLine("PASS compiled identity " + ClientIdentity.DisplayVersion); return;
 }
+if (args.Length == 7 && args[0] == "subscription-cycle") { Kot.Tests.SubscriptionCycleFixture.Run(args); return; }
+if (args.Length == 2 && args[0] == "reality-cycle") { Kot.Tests.RealityCycleFixture.Run(args[1]); return; }
 if (args.Contains("--xray")) { Kot.Tests.XrayRuntimeTests.Run((ok, name) => { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }); return; }
 if (args.Length == 5 && args[0] == "--crash-update") { Kot.Tests.UpdateCrashTests.Child(args); return; }
 if (args.Length >= 2 && args[0] == "geoip-core")
@@ -17,9 +19,13 @@ if (args.Length >= 2 && args[0] == "geoip-core")
 string uuid = "c9a83ccf-d2e9-4ef2-a8b4-b1b8cb5f52a1";
 string vless = $"vless://{uuid}@example.com:443?security=reality&pbk=jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0&sid=0123456789abcdef&sni=example.com&flow=xtls-rprx-vision&type=tcp#%D0%9C%D0%BE%D0%B9%20%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80";
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); Console.WriteLine("PASS " + name); }
+Kot.Tests.PingServiceTests.Run(Check);
+if (args.Contains("--ping-service")) return;
+Kot.Tests.NodeJsonTests.Run(Check);
 Kot.Tests.XrayRuntimeTests.Run(Check);
 Kot.Tests.SubscriptionEditingTests.Run(Check);
 Kot.Tests.SubscriptionNodesTests.Run(Check);
+Kot.Tests.RealityReconcileTests.Run(Check);
 await Kot.Tests.SubscriptionValidationTests.Run(Check);
 await Kot.Tests.NetworkRequestTests.Authentication(Check);
 Kot.Tests.UpdateTests.Channel(Check);

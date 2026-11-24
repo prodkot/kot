@@ -32,8 +32,9 @@ public sealed class Tunnel
     string apiSecret = "";
     IDisposable? proxyAuthentication;
     public Node? SessionNode => State is "connected" or "connecting" ? activeNode : null;
+    string sessionSubscription = "";
+    public Node? LastConnectionNode(string subscriptionId) => sessionSubscription == subscriptionId ? activeNode : null;
     long lastAutomatic;
-    string preferredNode = "";
     public string AutomaticNode { get; private set; } = "";
     public async Task<bool> Probe(CancellationToken ct)
     {
@@ -53,7 +54,7 @@ public sealed class Tunnel
     public async Task<bool> ReadAutomaticNode(Func<Profile> currentProfile, CancellationToken ct)
     {
         var profile = currentProfile();
-        if (profile.Selected != "auto" || AutomaticNode.Length == 0 || State != "connected") return false;
+        if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true || profile.Selected != "auto" || AutomaticNode.Length == 0 || State != "connected") return false;
         if (MonotonicMilliseconds - lastAutomatic < profile.Automation.AutoMinutes * 60000L) return true;
         int generation = stopGeneration;
         int session = Session; lastAutomatic = MonotonicMilliseconds;
@@ -67,10 +68,11 @@ public sealed class Tunnel
         if (Session != session || State != "connected" || profile != currentProfile()) return false;
         if (selected != AutomaticNode)
         {
-            preferredNode = selected;
             await Stop();
             var latest = currentProfile();
-            if (!ct.IsCancellationRequested && stopGeneration == generation + 1 && latest.Selected == "auto" && latest.ActiveSubscription == profile.ActiveSubscription) await Connect(latest, ct);
+            if (!ct.IsCancellationRequested && stopGeneration == generation + 1 && latest.ActiveSubscription == profile.ActiveSubscription &&
+                latest.Selected == "auto" && latest.CurrentSubscription?.RequiresConnectionConfirmation != true)
+                await Connect(latest, ct, selected);
         }
         return State == "connected";
     }
@@ -122,21 +124,32 @@ public sealed class Tunnel
         if (State != "idle") { await Stop(); return; }
         await Connect(profile);
     }
-    public async Task Connect(Profile profile, CancellationToken cancellationToken = default)
+    public Task Connect(Profile profile, CancellationToken cancellationToken = default) => Connect(profile, cancellationToken, null);
+    async Task Connect(Profile profile, CancellationToken cancellationToken, string? preferredNode)
     {
         int generation = Volatile.Read(ref stopGeneration);
         await gate.WaitAsync(cancellationToken);
         try
         {
             if (cancellationToken.IsCancellationRequested || generation != Volatile.Read(ref stopGeneration) || core != null || State != "idle") return;
-            Node? node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
+            if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true)
+            {
+                Set("idle", SavedSubscription.ConfirmConnection);
+                return;
+            }
+            Node? node = profile.ManualConnectionNode;
             bool automatic = profile.Selected == "auto";
-            if (automatic) node = AutomaticSelection.Candidates(profile).FirstOrDefault() ?? throw new UserError(AutomaticSelection.NoCandidates);
+            if (automatic)
+            {
+                var candidates = AutomaticSelection.Candidates(profile);
+                node = (preferredNode == null ? candidates.FirstOrDefault() : candidates.FirstOrDefault(n => n.Id == preferredNode))
+                    ?? throw new UserError(AutomaticSelection.NoCandidates);
+            }
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             PhysicalNetwork.Capture();
-            Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
+            Session++; sessionSubscription = profile.ActiveSubscription; activeNode = automatic && preferredNode == null ? null : node; CoreDetails = ""; CoreExitCode = null;
             cancelled = false;
             attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             attempt.CancelAfter(TimeSpan.FromSeconds(60));
@@ -157,8 +170,7 @@ public sealed class Tunnel
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
             if (automatic)
             {
-                string selected = preferredNode.Length > 0 ? preferredNode : await SelectAutomatic(profile, ct);
-                preferredNode = "";
+                string selected = preferredNode ?? await SelectAutomatic(profile, ct);
                 node = AutomaticSelection.Candidates(profile).FirstOrDefault(n => n.Id == selected)
                     ?? throw new UserError(AutomaticSelection.NoCandidates);
             }

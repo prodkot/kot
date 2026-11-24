@@ -128,6 +128,27 @@ with sync_playwright() as p:
         assert row.locator('.server-card').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgba(0, 0, 0, 0)'
         page.screenshot(path=str(ROOT/f'Tests/ui-server-hover-{theme}.png'),animations='disabled')
         row.locator('.ping-node').hover();assert row.evaluate('(e)=>e.matches(":hover")')
+    page.evaluate("""fixtureSnapshot({state:'connected',selected:'old-de',activeNode:{id:'old-de',name:'Германия'},
+      nodes:[{id:'se',name:'Швеция',protocol:'vless'},{id:'new-de',name:'Германия',protocol:'vless'}]})""")
+    expect(page.locator('.server-card[aria-pressed=true]')).to_have_count(0)
+    expect(page.locator('#selectedName')).to_have_text('Выбрать сервер')
+    expect(page.locator('#selectedCity')).to_have_text('Сейчас подключён: Германия')
+    for theme in ('light','dark'):
+        page.evaluate("""theme=>fixtureSnapshot({state:'connected',selected:'se',nextNode:'de',needsSelection:false,
+          activeNode:{id:'de',name:'Германия'},nodes:[{id:'se',name:'Швеция',protocol:'vless'},
+          {id:'de',name:'Берлин',protocol:'vless'}],settings:{theme,accent:'lime',mode:'all'}})""",theme)
+        expect(page.locator('[data-node=se] .server-card')).to_have_attribute('aria-pressed','true')
+        expect(page.locator('[data-node=de] small')).to_have_text('VLESS · Подключён')
+        expect(page.locator('#selectedName')).to_have_text('Швеция')
+        expect(page.locator('#selectedCity')).to_have_text('Сейчас и при следующем подключении: Берлин')
+        expect(page.locator('#sidebarServer')).to_have_text('Берлин')
+        page.evaluate("fixtureSnapshot({state:'idle',activeNode:null})")
+        expect(page.locator('[data-node=de] small')).to_have_text('VLESS · Следующее подключение')
+        expect(page.locator('#selectedCity')).to_have_text('При следующем подключении: Берлин')
+        expect(page.locator('#sidebarServer')).to_have_text('Берлин')
+        page.evaluate("fixtureSnapshot({nextNode:null,needsSelection:true})")
+        expect(page.locator('#selectedCity')).to_have_text('Для подключения выберите сервер')
+        expect(page.locator('#sidebarServer')).to_have_text('Сервер не выбран')
     many=[{'id':f's{i}','name':f'Подписка {i}','count':i} for i in range(40)]
     page.evaluate('(subscriptions)=>fixtureSnapshot({subscriptions,activeSubscription:"s0"})',many)
     trigger.click();page.keyboard.press('End');expect(options.locator('[data-subscription=s39]')).to_be_focused()

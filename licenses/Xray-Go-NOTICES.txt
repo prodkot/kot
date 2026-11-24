@@ -282,8 +282,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ========================================================================
-github.com/gorilla/websocket v1.5.3
-Source archive: https://proxy.golang.org/github.com/gorilla/websocket/@v/v1.5.3.zip
+github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
+Source archive: https://proxy.golang.org/github.com/gorilla/websocket/@v/v1.5.4-0.20240701034025-d67f41855da4.zip
 
 
 Notice file: AUTHORS

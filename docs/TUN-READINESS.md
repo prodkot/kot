@@ -43,9 +43,11 @@ cannot lose readiness. Windows integration covers real proxy plus TUN HTTP,
 loopback-only health that must never emit `connected`, repeated production TUN
 connections with Kill Switch off/on, cleanup after failure/cancellation, and
 post-stop probes without direct fallback. Existing real-core crash and WFP leak
-checks remain part of the development workflow.
+checks run in the Windows workflow used for Beta.
 
-Real Windows CI execution is required before distributing the candidate.
+Beta requires these checks to pass in Windows CI. For a local Dev check of
+readiness, run the relevant tests available on the local machine and identify
+any untested Windows TUN or WFP behavior in the handoff.
 
 ## Build dependency follow-up
 

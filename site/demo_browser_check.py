@@ -174,6 +174,12 @@ def check():
                     expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
                     frame.locator('#closeQuality').click()
                     frame.locator('.qr-node').first.click()
+                    frame.locator('#nodeMenuJson').click()
+                    expect(frame.locator('#nodeJsonNote')).to_have_text('В демоверсии нет конфигураций подключения.')
+                    expect(frame.locator('#copyNodeJson')).to_be_disabled()
+                    frame.locator('#closeNodeJson').click()
+                    frame.locator('.qr-node').first.click()
+                    frame.locator('#nodeMenuQr').click()
                     expect(frame.locator('#shareQrError')).to_have_text('Это действие доступно в установленной программе.')
                     frame.locator('#closeShareQr').click()
                     frame.locator('[data-page=settings]').click()
@@ -225,6 +231,21 @@ def check():
                     page.wait_for_timeout(1000)
                     expect(frame.locator('#stateLabel')).to_have_text('Не подключено')
                     frame.locator('[data-page=servers]').click()
+                    # Independent row requests retain DOM, deduplicate and queue in the demo too.
+                    state=frame.locator('#serverList').evaluate('''async list=>{
+                      const rows=[...list.children],pings=rows.map(r=>r.querySelector('.ping-node'));
+                      pings[0].click();pings[0].click();await Promise.resolve();
+                      const secondEnabled=!pings[1].disabled;
+                      pings[1].click();pings[1].click();await Promise.resolve();
+                      return {secondEnabled,same:rows.every((r,i)=>r===list.children[i]),
+                        statuses:pings.map(p=>p.dataset.status),progress:document.getElementById('pingProgress').textContent};
+                    }''')
+                    assert state['secondEnabled'] and state['same'] and state['statuses'][:2]==['checking','queued'],state
+                    assert state['progress']=='0 / 2',state
+                    expect(frame.locator('#pingAll')).to_be_enabled(timeout=5000)
+                    for index in range(2):
+                        expect(frame.locator('.ping-node').nth(index)).to_have_attribute('data-status','ok')
+                    assert frame.locator('.ping-node').evaluate_all('(pings)=>pings.slice(2).map(p=>p.dataset.status)') == state['statuses'][2:]
                     frame.locator('#pingAll').click()
                     expect(frame.locator('#cancelPing')).to_be_visible()
                     frame.locator('#cancelPing').click()

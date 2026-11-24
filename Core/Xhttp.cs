@@ -12,7 +12,8 @@ public static class Xhttp
     public static bool Uses(Node node) => node.FullConfig != null || UsesTransport(node);
     public static IReadOnlyList<Node> ConnectionNodes(Profile profile)
     {
-        if (profile.Selected != "auto") return profile.Nodes.Where(n => n.Id == profile.Selected).ToArray();
+        if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true) return [];
+        if (profile.Selected != "auto") return profile.ManualConnectionNode is { } node ? [node] : [];
         return AutomaticSelection.Candidates(profile);
     }
     public static JsonObject Transport(string host, string path, string mode = "", string extra = "")

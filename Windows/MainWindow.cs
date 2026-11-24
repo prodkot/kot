@@ -12,7 +12,7 @@ public sealed partial class MainWindow : WindowChrome
     readonly ThemeIcons icons = new();
     readonly TrayMenu trayMenu;
     readonly StartupScreen loading;
-    readonly bool startupSpin = Random.Shared.Next(100) == 0;
+    readonly string[] startupSequence = LoadingMotion.Sequence();
     string? pendingTrayPage;
     readonly Tunnel tunnel;
     readonly ProfilePersistence persistence;
@@ -51,9 +51,11 @@ public sealed partial class MainWindow : WindowChrome
         web.DefaultBackgroundColor = BackColor;
         Icon = icons.Window(profile.Theme);
         Controls.Add(web);
-        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSpin);
+        loading = new StartupScreen(profile.Theme, Icon, MinimizeWindow, ToggleMaximize, Close, () => { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }, startupSequence);
         Controls.Add(loading); loading.BringToFront();
         InitBrowserWatch();
+        VisibleChanged += (_, _) => LoadingVisibility();
+        Resize += (_, _) => LoadingVisibility();
         trayMenu = new TrayMenu(Restore, OpenTrayPage, ToggleConnection, ExitApp);
         trayMenu.Opening += (_, _) => UpdateTray();
         tray = new NotifyIcon { Text = AppRuntime.DisplayName + " · Не подключено", ContextMenuStrip = trayMenu };
@@ -87,6 +89,18 @@ public sealed partial class MainWindow : WindowChrome
             int hit = top && left ? 13 : top && right ? 14 : bottom && left ? 16 : bottom && right ? 17 : left ? 10 : right ? 11 : top ? 12 : bottom ? 15 : 0;
             if (hit != 0) m.Result = (IntPtr)hit;
         }
+    }
+    void LoadingVisibility()
+    {
+        if (web.IsDisposed || web.CoreWebView2 == null) return;
+        bool visible = Visible && WindowState != FormWindowState.Minimized;
+        _ = SetLoadingVisibility(visible);
+    }
+    async Task SetLoadingVisibility(bool visible)
+    {
+        try { await web.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('kot-window-visibility',{detail:" + (visible ? "true" : "false") + "}));"); }
+        catch (InvalidOperationException) { }
+        catch (COMException) { }
     }
     void Restore() => RestoreWindow();
     void OpenTrayPage(string page)
@@ -143,8 +157,9 @@ public sealed partial class MainWindow : WindowChrome
             c.DownloadStarting += (_, e) => e.Cancel = true;
             c.WebMessageReceived += async (_, e) => { if (!exiting && !web.IsDisposed && web.CoreWebView2 == c) await Message(e); };
             // Bootstrap contains only appearance, available before the first HTML paint.
-            await c.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup=" + JsonSerializer.Serialize(new { theme = profile.Theme, spin = startupSpin }) + ";");
+            await c.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup=" + JsonSerializer.Serialize(new { theme = profile.Theme, sequence = startupSequence }) + ";");
             if (exiting || IsDisposed) return;
+            c.DOMContentLoaded += (_, _) => LoadingVisibility();
             c.Navigate("https://kot.local/index.html"); initialized = true;
             if (!interfaceStarted && startup && profile.Tray) Hide();
         }

@@ -117,7 +117,7 @@ with sync_playwright() as p:
         expect(page.locator('#qualityButton')).to_be_disabled()
         page.evaluate("fixtureStatistics({state:'connected'})")
 
-        page.locator('.qr-node').first.click(); expect(page.locator('#shareQrImage')).to_be_visible()
+        page.locator('.qr-node').first.click(); page.locator('#nodeMenuQr').click(); expect(page.locator('#shareQrImage')).to_be_visible()
         expect(page.locator('#shareQrLink')).to_have_value('vless://11111111-1111-4111-8111-111111111111@example.com:443?security=tls#DE')
         page.locator('#copyNodeLink').click(); expect(page.locator('#toast')).to_have_text('Скопировано')
         page.locator('#copyNodeQr').click(); page.locator('#saveNodeQr').click(); page.locator('#closeShareQr').click()
