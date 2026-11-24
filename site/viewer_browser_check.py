@@ -74,7 +74,7 @@ def check():
                         page.locator('.kot-pet').press('Enter')
                         expect(page.locator('#install')).to_have_class('vw-install vw-wrap reveal is-purring')
                         expect(page.locator('.install-title-secret')).not_to_have_attribute('aria-hidden', 'true')
-                        expect(page.locator('[data-cat-status]')).to_have_text('Мяу, и интернет у тебя в руках.')
+                        expect(page.locator('[data-cat-status]')).to_have_text('Мяу.')
                         after = page.locator('.vw-install .kot-download').bounding_box()
                         assert abs(before['y'] - after['y']) < 1, (width, before, after)
                         page.clock.fast_forward(5100)

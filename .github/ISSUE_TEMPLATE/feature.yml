@@ -1,5 +1,5 @@
 name: Предложение
-description: Идея, которая сделает kot. удобнее.
+description: Предложение по работе kot.
 title: "[Идея] "
 body:
   - type: markdown

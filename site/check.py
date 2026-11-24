@@ -24,7 +24,11 @@ class SiteTests(unittest.TestCase):
         self.assertIn(description, readme)
         self.assertNotIn('noindex', markup)
         self.assertIn('<link rel="canonical" href="https://prodkot.github.io/kot/">', markup)
-        self.assertIn('Твой сервер. Один клик.', readme)
+        title = search(r"<title>([^<]+)</title>", markup).group(1)
+        social_title = search(r'<meta property="og:title" content="([^"]+)">', markup).group(1)
+        self.assertEqual(title, social_title)
+        self.assertIn("kot.", title)
+        self.assertIn("Windows", title)
 
     def test_build_cannot_overwrite_sources(self):
         for destination in (ROOT, ROOT / "demo", ROOT / "assets", ROOT.parent,

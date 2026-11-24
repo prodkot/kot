@@ -7,9 +7,9 @@
   </picture>
 </h1>
 
-<p align="center">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<p align="center">Клиент для Windows: подписки, серверы и правила маршрутизации в одном окне.</p>
 
-<p align="center"><strong><a href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows x64</a></strong> &nbsp;·&nbsp; <a href="https://prodkot.github.io/kot/#demo" title="Твой сервер. Один клик.">Сайт и демо</a> &nbsp;·&nbsp; <a href="docs/README.md">Документация</a></p>
+<p align="center"><strong><a href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows x64</a></strong> &nbsp;·&nbsp; <a href="https://prodkot.github.io/kot/#demo">Сайт и демо</a> &nbsp;·&nbsp; <a href="docs/README.md">Документация</a></p>
 
 [![Главный экран kot. с выбранным сервером и режимом TUN](docs/images/readme/showcase-demo-084.png)](docs/images/readme/connection-demo-084.png)
 
@@ -25,7 +25,7 @@
 
 [Подробнее о первом запуске →](docs/GUIDE.md)
 
-## Маршрут под твои задачи
+## Режимы и маршрутизация
 
 **TUN** направляет трафик приложений через виртуальный сетевой адаптер. **Системный прокси** подходит программам, использующим настройки прокси Windows. В режиме TUN клиент проверяет адаптер, DNS и прохождение трафика, прежде чем показать статус «Подключено».
 
