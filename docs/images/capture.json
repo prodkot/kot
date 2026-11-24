@@ -1,0 +1,76 @@
+{
+  "version": "0.8.5",
+  "sourceCommit": "3707fd09546bc822811f35de6fb7d2b18e82a247",
+  "renderer": "Chromium 153.0.8010.12",
+  "host": "synthetic bridge, no Windows host or VPN",
+  "viewport": {
+    "home": [
+      960,
+      640
+    ],
+    "other": [
+      960,
+      720
+    ]
+  },
+  "deviceScaleFactor": 1.5,
+  "uiSha256": {
+    "Windows/ui/about.js": "a7e4b57dcc2ba37772ed09012cb525d35f636de356542d6ef47de8192e94b631",
+    "Windows/ui/app.js": "924ba4698bc7356d0eddc6c01daa69e248e4b41d9907602a852af73ed416c6e4",
+    "Windows/ui/client-tools.js": "ee48f146ec8165d06b1835f57c30a764b763d490c8471f30d8c7e52fc0d32378",
+    "Windows/ui/dialog-ui.js": "b743edf58d7fa822030b72e64e66eebf5a050879ad6708aa00930e7c3d58f08f",
+    "Windows/ui/index.html": "c15cb1f6c6d603a057d191abf818fa645fc44513d4d20842d869ecfd01cc1a62",
+    "Windows/ui/journal.js": "ba45bd25088b4c747409b9ce32865c5496bb1368144a8725bfd1d0d9947baa66",
+    "Windows/ui/loading-motion.js": "fdb04c37c67e20602aebaca1c173cbce8ab8a2a2d5607c85e7b27357c55618be",
+    "Windows/ui/loading-ui.js": "9e4dee2b30b97c92cae56ba2cc8d480f8fb9bc2f840e122c4acbaa44353077ed",
+    "Windows/ui/native-bridge.js": "9d598a8d095e9d9a2a74cc8d1d32c5bb9c502ac028abeacf5ece09b9c51b55c8",
+    "Windows/ui/node-json.js": "d0b31f4702dd9f64521f372aebc59641e02d2e25aca4697c107214ae7630c3ea",
+    "Windows/ui/presentation.js": "355193463a3aee9a721fe846758908c8e6f7e03f6419ff963c02767cca0e1411",
+    "Windows/ui/routing.js": "03c23b0aea3f0094bbc97f4261e00a54227f507b245841a1179586cfb959ec4c",
+    "Windows/ui/services.js": "f6dc3d554d279a5dc2f148eccba06b59fa43675ea8b6fb6c3938d20a5d293fae",
+    "Windows/ui/startup.js": "96c31b8c6dc38e712fde854cbc0583bcdedac9951758ccdb0b756b8d880cb581",
+    "Windows/ui/statistics.js": "22ecb366bbc5cf403d4572d738de9f2c8a62eaf9da904b9a00a1b66d91be5bd4"
+  },
+  "images": [
+    {
+      "path": "docs/images/readme/connection.png",
+      "sha256": "3e20cef06aca2552c9e375d0e8bad2c9da14cc94bb9fb36963e39c1419724fb1"
+    },
+    {
+      "path": "site/assets/screens/home.png",
+      "sha256": "3e20cef06aca2552c9e375d0e8bad2c9da14cc94bb9fb36963e39c1419724fb1"
+    },
+    {
+      "path": "docs/images/readme/servers.png",
+      "sha256": "c84357e71b3e16c8150163dd9e92a6e134e0c41693a2989fdbde728880d44e0f"
+    },
+    {
+      "path": "site/assets/screens/servers.png",
+      "sha256": "7ef4aee039e790369687eaf886a64dc1062315f1ed0f278f5ea88c9a980378e9"
+    },
+    {
+      "path": "site/assets/screens/settings.png",
+      "sha256": "51b42a852acd6227e0f0e9cac2e88d560ec7c8fc65e87f99fa4024832cd6a902"
+    },
+    {
+      "path": "docs/images/routing-dark.png",
+      "sha256": "8eddc57f576349118a10d4aba813d8d65482199aea2775f3430e2a638e166a97"
+    },
+    {
+      "path": "site/assets/screens/routing.png",
+      "sha256": "8eddc57f576349118a10d4aba813d8d65482199aea2775f3430e2a638e166a97"
+    },
+    {
+      "path": "docs/images/geoip-dark.png",
+      "sha256": "74ed871b372bceb32d09dcab633ebb8799c0b8ac3329617a1f295467b1a6d716"
+    },
+    {
+      "path": "docs/images/statistics-dark.png",
+      "sha256": "7484e5cf03e0039c5e45d484bbc97cd932e061d0831576c96a6f3bcb27173bc0"
+    },
+    {
+      "path": "site/assets/screens/statistics.png",
+      "sha256": "7484e5cf03e0039c5e45d484bbc97cd932e061d0831576c96a6f3bcb27173bc0"
+    }
+  ]
+}
