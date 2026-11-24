@@ -25,6 +25,7 @@ FunctionEnd
 !insertmacro InitSkin "" "install"
 !insertmacro InitSkin "un" "uninstall"
 !macro FailInstall
+  !insertmacro SetupTrace "failed: $InstallError"
   IfSilent +2
   KotUI::Failure /NOUNLOAD "$InstallError"
   SetErrorLevel 1

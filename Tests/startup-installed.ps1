@@ -14,10 +14,32 @@ $receipt=Join-Path $profile 'startup-lifecycle.json'
 $moved=Join-Path $env:RUNNER_TEMP ('kot moved тест '+[Guid]::NewGuid().ToString('N'))
 $copy=Join-Path $env:RUNNER_TEMP ('KotQA '+[Guid]::NewGuid().ToString('N'))
 $success=$false; $running=$null; $ownedFixtureName='KotVPN-S-1-0-0'
+# Synthetic runner data only. Persist before cleanup, and print on failure because
+# the workflow intentionally uploads no candidate after a failing installation.
+$diagnostics=Join-Path $env:RUNNER_TEMP 'kot-reinstall-diagnostics'
+New-Item -ItemType Directory -Force $diagnostics | Out-Null
+$script:commandNumber=0
 function Run($path,$argument,[switch]$Failure) {
+  $script:commandNumber++
+  $tag='{0:D3}' -f $script:commandNumber
+  $log=Join-Path $diagnostics "$tag-setup.log"
+  $maintenance=Join-Path $profile 'maintenance-error.txt'
+  Remove-Item $maintenance -ErrorAction SilentlyContinue
+  if ($path -eq $Setup) { $argument=$argument.Replace('/S ',"/S /LOG=$log ") }
+  Write-Host "RUN $tag $([IO.Path]::GetFileName($path)) $argument"
+  $watch=[Diagnostics.Stopwatch]::StartNew()
   $p=Start-Process $path -ArgumentList $argument -PassThru
   try {
-    if (!$p.WaitForExit(120000)) { $p.Kill($true); throw 'Fixture process timed out.' }
+    if (!$p.WaitForExit(120000)) { $p.Kill($true); $p.WaitForExit(10000) | Out-Null; throw 'Fixture process timed out.' }
+    Write-Host "EXIT $tag code=$($p.ExitCode) elapsedMs=$($watch.ElapsedMilliseconds)"
+    if (Test-Path $log) { Get-Content $log -Encoding Unicode | Write-Host }
+    if ($p.ExitCode -ne 0) {
+      if (Test-Path "$log.extract.txt") { Get-Content "$log.extract.txt" | Write-Host }
+      if (Test-Path $maintenance) { Get-Content $maintenance | Write-Host }
+      Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath.StartsWith($target,[StringComparison]::OrdinalIgnoreCase) -or $_.ExecutablePath.StartsWith($moved,[StringComparison]::OrdinalIgnoreCase)) } | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath | Format-Table | Out-Host
+      Get-Service Schedule | Select-Object Name,Status | Format-Table | Out-Host
+      Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue | Select-Object TaskName,State | Format-Table | Out-Host
+    }
     if (!$Failure -and $p.ExitCode -ne 0) { throw "Fixture command failed: $argument ($($p.ExitCode))" }
     return $p.ExitCode
   } finally { $p.Dispose() }
@@ -74,6 +96,27 @@ try {
   Run $exe '--enable-startup' | Out-Null
   # A fresh scheduler invocation in the same session tests repeatability, not a login trigger.
   Launch-And-Observe
+  # Independent repetitions, never retry a failed installation. Every cycle must pass.
+  $stamp=Get-Content (Join-Path $target 'build-info.json') -Raw | ConvertFrom-Json
+  $expectedFiles=@(Get-ChildItem $target -Recurse -File | Where-Object { $_.FullName -notmatch '\\.kot-update-' } | ForEach-Object {
+    [PSCustomObject]@{Path=$_.FullName; Hash=(Get-FileHash $_.FullName).Hash}
+  })
+  for ($cycle=1; $cycle -le 12; $cycle++) {
+    Write-Host "REINSTALL CYCLE $cycle/12 begin"
+    Run $exe '--enable-startup' | Out-Null
+    Launch-And-Observe
+    Run $exe '--disable-startup' | Out-Null
+    Assert (@(Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue).Count -eq 0) 'cycle disable removes task'
+    Run $exe '--enable-startup' | Out-Null
+    Disable-ScheduledTask -TaskName $name | Out-Null
+    Run $Setup "/S /D=$target" | Out-Null
+    Assert (!(Get-ScheduledTask -TaskName $name).Settings.Enabled) 'cycle reinstall preserves external disable'
+    foreach ($file in $expectedFiles) { if (!(Test-Path $file.Path) -or (Get-FileHash $file.Path).Hash -ne $file.Hash) { throw "Cycle payload mismatch: $($file.Path)" } }
+    Write-Host "PASS cycle exact payload hashes ($($expectedFiles.Count) files)"
+    Assert (@(Get-ChildItem $target -Directory -Filter '.kot-update-*').Count -eq 0) 'cycle leaves no pending transaction'
+    Write-Host "REINSTALL CYCLE $cycle/12 passed"
+  }
+  Run $exe '--enable-startup' | Out-Null
   Copy-Item $target $copy -Recurse
   $before=$folder.GetTask($name).Xml
   Assert ((Run (Join-Path $copy 'Kot.exe') '--enable-startup' -Failure) -ne 0) 'unregistered KotQA-like copy cannot take over installed autostart'

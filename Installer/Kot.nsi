@@ -2,6 +2,8 @@ Unicode true
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"
+!include "FileFunc.nsh"
+!include "diagnostics.nsh"
 !ifndef VERSION
 !error "Pass the numeric product version"
 !endif
@@ -59,6 +61,11 @@ Function .onInit
   SetRegView 64
   SetShellVarContext all
   StrCpy $DesktopShortcut ${BST_CHECKED}
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/LOG=" $SetupLog
+  ClearErrors
+  !insertmacro SetupTrace "install.begin"
 FunctionEnd
 Section "kot." SEC_MAIN
   ; File no longer accounts for the application files, which live in the ZIP.
@@ -66,7 +73,9 @@ Section "kot." SEC_MAIN
   SetRegView 64
   SetShellVarContext all
   ${If} ${FileExists} "$INSTDIR\Kot.exe"
+    !insertmacro SetupTrace "shutdown.begin"
     ExecWait '$\"$INSTDIR\Kot.exe$\" --shutdown' $0
+    !insertmacro SetupTrace "shutdown.end exit=$0"
     ${If} $0 != 0
       StrCpy $InstallError "Не удалось закрыть kot. Закройте приложение и повторите установку."
       !insertmacro FailInstall
@@ -80,11 +89,16 @@ Section "kot." SEC_MAIN
   DetailPrint "Проверка подписи и установка файлов kot."
   ClearErrors
   StrCpy $0 -1
+  !insertmacro SetupTrace "extract.begin"
   ExecWait '$\"$PLUGINSDIR\Kot.Setup.Extract.exe$\" --extract $\"$EXEPATH$\" $\"$INSTDIR$\" $\"${VERSION}$\" $\"$PLUGINSDIR\extract-error.txt$\" $\"$PLUGINSDIR\extract-progress.txt$\"' $0
   ${If} ${Errors}
     StrCpy $0 1
   ${EndIf}
+  !insertmacro SetupTrace "extract.end exit=$0"
   ${If} $0 != 0
+    ${If} $SetupLog != ""
+      CopyFiles /SILENT "$PLUGINSDIR\extract-error.txt.details.txt" "$SetupLog.extract.txt"
+    ${EndIf}
     StrCpy $2 "Не удалось проверить или установить пакет kot. Прежние файлы восстановлены, если началась их замена."
     ClearErrors
     FileOpen $1 "$PLUGINSDIR\extract-error.txt" r
@@ -110,7 +124,9 @@ Section "kot." SEC_MAIN
   ${Else}
     Delete "$DESKTOP\kot..lnk"
   ${EndIf}
+  !insertmacro SetupTrace "shortcuts.begin"
   ExecWait '$\"$INSTDIR\Kot.exe$\" --register-shortcuts' $0
+  !insertmacro SetupTrace "shortcuts.end exit=$0"
   ${If} $0 != 0
     StrCpy $InstallError "Не удалось зарегистрировать ярлыки kot. Повторите установку."
     !insertmacro FailInstall
@@ -122,13 +138,16 @@ Section "kot." SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\KotVPN" "NoRepair" 1
+  !insertmacro SetupTrace "startup-repair.begin"
   ExecWait '$\"$INSTDIR\Kot.exe$\" --repair-startup' $0
+  !insertmacro SetupTrace "startup-repair.end exit=$0"
   ${If} $0 != 0
     StrCpy $InstallError "Файлы установлены, но не удалось обновить автозапуск. Повторите установку."
     !insertmacro FailInstall
   ${EndIf}
   IfSilent +2
   KotUI::Stage /NOUNLOAD "4"
+  !insertmacro SetupTrace "install.success"
 SectionEnd
 Var OwnsRegistration
 Section "Uninstall"

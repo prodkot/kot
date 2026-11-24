@@ -17,6 +17,9 @@ try
 }
 catch (Exception error)
 {
+    try { File.WriteAllText(args[4] + ".details.txt", $"{DateTimeOffset.UtcNow:O} {error.GetType().FullName} HRESULT=0x{error.HResult:X8}\n{error}", System.Text.Encoding.UTF8); }
+    catch (IOException) { }
+    catch (UnauthorizedAccessException) { }
     try { File.WriteAllText(args[4], error.Message[..Math.Min(error.Message.Length, 1500)], System.Text.Encoding.Unicode); }
     catch (IOException) { }
     catch (UnauthorizedAccessException) { }
