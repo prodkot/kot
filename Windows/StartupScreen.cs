@@ -12,7 +12,6 @@ public sealed class StartupScreen : UserControl
 {
     readonly PrivateFontCollection fonts = new();
     readonly Font regular, small;
-    readonly Bitmap image;
     Control? failure;
     readonly StartupArtwork artwork;
     internal double AnimationOriginMs => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - artwork.ElapsedMilliseconds;
@@ -34,7 +33,7 @@ public sealed class StartupScreen : UserControl
         artwork?.Show();
     }
 
-    public StartupScreen(string theme, Icon icon, Action minimize, Action maximize, Action close, Action drag, bool spin = false)
+    public StartupScreen(string theme, Icon icon, Action minimize, Action maximize, Action close, Action drag, string[]? sequence = null)
     {
         bool light = theme == "light";
         Color background = ColorTranslator.FromHtml(light ? "#f6f6f2" : "#151718");
@@ -49,17 +48,7 @@ public sealed class StartupScreen : UserControl
         Name = "startupScreen"; AccessibleName = "Загрузка kot."; Dock = DockStyle.Fill;
         AutoScaleMode = AutoScaleMode.Dpi; BackColor = background; ForeColor = muted; Font = regular;
         DoubleBuffered = true;
-        if (light)
-        {
-            using var source = new Bitmap(Path.Combine(AppContext.BaseDirectory, "ui", "brand-icon-light.png"));
-            image = new Bitmap(source);
-        }
-        else
-        {
-            using var large = new Icon(icon, new Size(256, 256));
-            image = large.ToBitmap();
-        }
-        var content = new StartupArtwork(image, spin) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
+        var content = new StartupArtwork(sequence ?? LoadingMotion.Sequence(), light) { Dock = DockStyle.Fill, BackColor = background, ForeColor = muted, Font = regular };
         artwork = content;
         var title = new Panel { Dock = DockStyle.Top, Height = 38, BackColor = side, Padding = new Padding(0, 0, 0, 1) };
         titleBar = title;
@@ -110,15 +99,15 @@ public sealed class StartupScreen : UserControl
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing) { image.Dispose(); regular.Dispose(); small.Dispose(); fonts.Dispose(); }
+        if (disposing) { regular.Dispose(); small.Dispose(); fonts.Dispose(); }
     }
 
     // Paint only the small loading artwork; window controls remain live and unanimated.
     sealed class StartupArtwork : Control
     {
-        readonly Bitmap image;
-        readonly bool spin;
-        Bitmap? pulseSurface;
+        readonly string[] sequence;
+        readonly Color ink, detail;
+        Form? owner;
         readonly System.Windows.Forms.Timer timer = new() { Interval = 15 };
         readonly Stopwatch clock = new();
         public double ElapsedMilliseconds => clock.Elapsed.TotalMilliseconds;
@@ -129,16 +118,18 @@ public sealed class StartupScreen : UserControl
         static extern bool SystemParametersInfoW(uint action, uint parameter,
             [MarshalAs(UnmanagedType.Bool)] out bool enabled, uint flags);
 
-        public StartupArtwork(Bitmap image, bool spin)
+        public StartupArtwork(string[] sequence, bool light)
         {
-            this.image = image; this.spin = spin;
+            this.sequence = sequence;
+            ink = ColorTranslator.FromHtml(light ? "#252a23" : "#f2f4ed");
+            detail = ColorTranslator.FromHtml(light ? "#55752a" : "#d4f58a");
             DoubleBuffered = true; ResizeRedraw = true; TabStop = false;
             AccessibleName = "kot. Загрузка…"; AccessibleRole = AccessibleRole.StaticText;
             VisibleChanged += (_, _) => UpdateAnimation();
             timer.Tick += (_, _) =>
             {
-                if (FindForm()?.WindowState == FormWindowState.Minimized) return;
-                // One region contains every pose of the rotating mark and the animated caption.
+                if (FindForm()?.WindowState == FormWindowState.Minimized) { UpdateAnimation(); return; }
+                // One region contains every pose of the moving mark and the animated caption.
                 var dpi = DeviceDpi / 96f;
                 int radius = (int)Math.Ceiling(76 * dpi);
                 Invalidate(new Rectangle(ClientSize.Width / 2 - radius, ClientSize.Height / 2 - radius,
@@ -146,10 +137,12 @@ public sealed class StartupScreen : UserControl
             };
         }
 
+        void OwnerChanged(object? sender, EventArgs e) => UpdateAnimation();
+
         void UpdateAnimation()
         {
             timer.Stop(); clock.Stop();
-            if (!Visible || !IsHandleCreated) return;
+            if (!Visible || !IsHandleCreated || FindForm()?.WindowState == FormWindowState.Minimized) return;
             reduced = SystemParametersInfoW(0x1042, 0, out bool enabled, 0) && !enabled;
             if (!reduced) { clock.Start(); timer.Start(); }
             Invalidate();
@@ -157,12 +150,17 @@ public sealed class StartupScreen : UserControl
 
         protected override void OnHandleCreated(EventArgs e)
         {
-            base.OnHandleCreated(e); UpdateAnimation();
+            base.OnHandleCreated(e);
+            owner = FindForm();
+            if (owner != null) { owner.Resize += OwnerChanged; owner.VisibleChanged += OwnerChanged; }
+            UpdateAnimation();
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
-            timer.Stop(); clock.Stop(); base.OnHandleDestroyed(e);
+            timer.Stop(); clock.Stop();
+            if (owner != null) { owner.Resize -= OwnerChanged; owner.VisibleChanged -= OwnerChanged; owner = null; }
+            base.OnHandleDestroyed(e);
         }
 
         protected override void WndProc(ref Message message)
@@ -186,48 +184,20 @@ public sealed class StartupScreen : UserControl
             return 1 - MathF.Pow(1 - t, 3);
         }
 
-        void DrawMark(Graphics target, float x, float y, float size, float angle, ImageAttributes attributes)
+        void DrawMark(Graphics target, float x, float y, float size, float opacity, double[] pose)
         {
             var state = target.Save();
-            target.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            target.PixelOffsetMode = PixelOffsetMode.Half;
-            target.TranslateTransform(x, y);
-            if (angle != 0) target.RotateTransform(angle);
-            target.ScaleTransform(size / image.Width, size / image.Height);
-            var bounds = new Rectangle(-image.Width / 2, -image.Height / 2, image.Width, image.Height);
-            target.DrawImage(image, bounds, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
-            target.Restore(state);
-        }
-
-        void DrawPulse(Graphics target, float x, float y, float size, float dpi, ImageAttributes attributes)
-        {
-            // The edges travel less than one device pixel at 96 DPI. Sample the mark on
-            // a finer grid, then reduce the same device-aligned tile for every pose.
-            int samples = (int)Math.Ceiling(4 / dpi);
-            if (samples <= 1)
-            {
-                DrawMark(target, x, y, size, 0, attributes);
-                return;
-            }
-            int radius = (int)Math.Ceiling(40 * dpi);
-            int left = ClientSize.Width / 2 - radius;
-            int top = (int)Math.Floor(ClientSize.Height / 2f - 20 * dpi) - radius;
-            var tile = new Rectangle(left, top, 2 * radius + 2, 2 * radius + 2);
-            int side = tile.Width * samples;
-            if (pulseSurface?.Width != side)
-            {
-                pulseSurface?.Dispose();
-                pulseSurface = new Bitmap(side, side, PixelFormat.Format32bppPArgb);
-            }
-            using (var buffer = Graphics.FromImage(pulseSurface))
-            {
-                buffer.Clear(BackColor);
-                DrawMark(buffer, (x - left) * samples, (y - top) * samples, size * samples, 0, attributes);
-            }
-            var state = target.Save();
-            target.PixelOffsetMode = PixelOffsetMode.Half;
-            target.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            target.DrawImage(pulseSurface, tile, 0, 0, side, side, GraphicsUnit.Pixel);
+            target.SmoothingMode = SmoothingMode.AntiAlias;
+            target.TranslateTransform(x - size * 1560 / 1800 / 2, y - size / 2);
+            target.ScaleTransform(size / 1800, size / 1800);
+            using var letterBrush = new SolidBrush(Color.FromArgb((int)(255 * opacity), ink));
+            using var dotBrush = new SolidBrush(Color.FromArgb((int)(255 * opacity), detail));
+            var letter = target.Save(); target.TranslateTransform((float)pose[3] * 272, 1600); target.ScaleTransform(1, -1);
+            PointF[] contour = [new(138,0),new(140,1440),new(416,1440),new(416,560),new(782,1080),new(1118,1080),new(728,540),new(1144,0),new(790,0),new(416,520),new(416,0)];
+            target.FillPolygon(letterBrush, contour); target.Restore(letter);
+            target.TranslateTransform(1277.17647f + (float)pose[0]*272, 1464 + (float)pose[1]*272);
+            target.RotateTransform((float)pose[2]);
+            target.FillRectangle(dotBrush, -136, -136, 272, 272);
             target.Restore(state);
         }
 
@@ -236,16 +206,11 @@ public sealed class StartupScreen : UserControl
             base.OnPaint(e);
             float dpi = DeviceDpi / 96f, seconds = (float)clock.Elapsed.TotalSeconds;
             float entered = reduced ? 1 : EntranceEase(seconds / .42f);
-            float breath = reduced ? 0 : .009f * (1 - MathF.Cos(Math.Max(0, seconds - .42f) * MathF.PI / 1.1f));
-            float size = 72 * dpi * (.88f + .12f * entered + breath);
+            float size = 72 * dpi * (.88f + .12f * entered);
             float centerY = ClientSize.Height / 2f - 20 * dpi + 6 * dpi * (1 - entered);
             var g = e.Graphics;
-            using var attributes = new ImageAttributes();
-            attributes.SetColorMatrix(new ColorMatrix { Matrix33 = entered });
-            if (spin || reduced)
-                DrawMark(g, ClientSize.Width / 2f, centerY, size, spin && !reduced ? Math.Max(0, seconds - .42f) * 225 % 360 : 0, attributes);
-            else
-                DrawPulse(g, ClientSize.Width / 2f, centerY, size, dpi, attributes);
+            DrawMark(g, ClientSize.Width / 2f, centerY, size, entered,
+                reduced ? [0,0,0,0] : LoadingMotion.Sample(sequence, clock.Elapsed.TotalMilliseconds));
             float labelProgress = reduced ? 1 : Math.Clamp((seconds - .08f) / .36f, 0, 1);
             int Mix(int background, int foreground) => (int)Math.Round(background + (foreground - background) * labelProgress);
             Color textColor = Color.FromArgb(Mix(BackColor.R, ForeColor.R), Mix(BackColor.G, ForeColor.G), Mix(BackColor.B, ForeColor.B));
@@ -275,7 +240,7 @@ public sealed class StartupScreen : UserControl
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { timer.Stop(); timer.Dispose(); clock.Stop(); pulseSurface?.Dispose(); }
+            if (disposing) { timer.Stop(); timer.Dispose(); clock.Stop(); }
             base.Dispose(disposing);
         }
     }

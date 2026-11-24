@@ -58,7 +58,7 @@ static class WebViewTests
         using var form = new Form { ClientSize = new Size(960, 640), ShowInTaskbar = false };
         using var web = new WebView2 { Dock = DockStyle.Fill };
         using var icon = new Icon(Path.Combine(AppContext.BaseDirectory, "kot.ico"));
-        using var loading = new StartupScreen("light", icon, () => { }, () => { }, () => { }, () => { }, spin: true);
+        using var loading = new StartupScreen("light", icon, () => { }, () => { }, () => { }, () => { }, sequence: ["hop", "roll", "nudge"]);
         Process? browser = null;
         bool browserResourcesReleased = false;
         try
@@ -85,8 +85,7 @@ static class WebViewTests
                     {
                         string samePhase = await core.ExecuteScriptAsync($$"""
                         matchMedia('(prefers-reduced-motion: reduce)').matches ||
-                          document.querySelector('#startupScreen img').getAnimations().some(a=>
-                            Math.abs(a.startTime+performance.timeOrigin-{{JsonSerializer.Serialize(startupOriginMs)}})<20)
+                          Math.abs(window.fixtureLoader.state.elapsed-(Date.now()-{{JsonSerializer.Serialize(startupOriginMs)}}))<50
                         """);
                         check(samePhase == "true", "WebView2 continues the native splash clock before the cover is hidden");
                         loading.Hide();
@@ -101,10 +100,10 @@ static class WebViewTests
                     string firstPaint = await core.ExecuteScriptAsync("""
                     (()=>document.documentElement.classList.contains('theme-light')&&
                       getComputedStyle(document.getElementById('startupScreen')).backgroundColor==='rgb(246, 246, 242)'&&
-                      document.querySelector('#startupScreen img').getAttribute('src')==='brand-icon-light.svg'&&
-                      (matchMedia('(prefers-reduced-motion: reduce)').matches||document.querySelector('#startupScreen img').getAnimations().some(a=>a.animationName==='startup-mark-spin')))()
+                      getComputedStyle(document.querySelector('#startupScreen .loader-point')).fill==='rgb(85, 117, 42)'&&
+                      (matchMedia('(prefers-reduced-motion: reduce)').matches||window.fixtureLoader.state.scheduled))()
                     """);
-                    check(firstPaint == "true", "saved light theme and shared spinning choice apply before the first snapshot in native WebView2");
+                    check(firstPaint == "true", "saved light theme and shared square trajectory apply before the first snapshot in native WebView2");
                     startupOriginMs = loading.AnimationOriginMs;
                     core.PostWebMessageAsJson($$$"""
                     {"kind":"snapshot","startupOriginMs":{{{JsonSerializer.Serialize(startupOriginMs)}}},"data":{"nodes":[],"selected":"","state":"idle","hasSubscription":false,"settings":{"theme":"light","accent":"lime","mode":"tun","tray":true},"version":"fixture"}}
@@ -113,7 +112,13 @@ static class WebViewTests
                 }
                 catch (Exception error) { readyError = error.Message; ready = true; }
             };
-            Complete(core.AddScriptToExecuteOnDocumentCreatedAsync("window.kotStartup={theme:'light',spin:true};"));
+            Complete(core.AddScriptToExecuteOnDocumentCreatedAsync("""
+            window.kotStartup={theme:'light',sequence:['hop','roll','nudge']};
+            Object.defineProperty(window,'KotLoading',{configurable:true,set(value){
+              const create=value.create;value.create=(host,options)=>{const owner=create(host,options);window.fixtureLoader??=owner;window.fixtureLastLoader=owner;return owner;};
+              Object.defineProperty(window,'KotLoading',{value,configurable:true});
+            }});
+            """));
             core.Navigate("https://kot.local/index.html");
             PumpUntil(() => ready, "production UI did not establish its WebView2 bridge");
             check(readyError == null, "production bridge delivers a snapshot in native WebView2");
@@ -128,15 +133,35 @@ static class WebViewTests
                   if(!document.querySelector('.main').inert||!document.querySelector('.sidebar').inert)throw Error('startup input released early');
                   sawReveal ||= getComputedStyle(document.querySelector('.main')).filter!=='none';
                   if(!matchMedia('(prefers-reduced-motion: reduce)').matches &&
-                     !document.querySelector('#startupScreen img').getAnimations().some(a=>a.animationName==='startup-mark-spin'&&a.playState==='running'))
-                    throw Error('startup spin stopped during exit');
+                     !window.fixtureLoader.state.scheduled)
+                    throw Error('startup point stopped during exit');
                 }
                 await pause(20);
               }
               if(!$('startupScreen').hidden||document.querySelector('.main').inert||document.querySelector('.sidebar').inert)throw Error('startup overlay');
+              if(fixtureLoader.state.active||fixtureLoader.state.scheduled)throw Error('loader callbacks retained');
               if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!sawReveal)throw Error('startup transition missing');
               if(document.body.classList.contains('revealing')||getComputedStyle(document.querySelector('.main')).filter!=='none')throw Error('startup blur retained');
               if($('selectedName').textContent!=='Добавить подписку'||!document.fonts.check('600 14px Manrope','Соединение'))throw Error('UI/font');
+              // Exercise the actual logo handler and animation in the installed renderer.
+              let meows=0;window.Audio=class {play(){meows++;return Promise.resolve();}};
+              const brand=$('brandButton');brand.focus();
+              for(let i=0;i<46;i++)brand.click();
+              if(brand.querySelector('.brand-egg-point'))throw Error('47 scene fired early');
+              brand.click();const scene=window.fixtureLastLoader;
+              if(!brand.querySelector('.brand-egg-point')||document.activeElement!==brand)throw Error('47 scene/focus');
+              if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+                await pause(250);
+                window.dispatchEvent(new CustomEvent('kot-window-visibility',{detail:false}));
+                const elapsed=scene.state.elapsed;await pause(100);
+                if(scene.state.scheduled||scene.state.elapsed!==elapsed)throw Error('hidden loader keeps running');
+                window.dispatchEvent(new CustomEvent('kot-window-visibility',{detail:true}));
+              }
+              for(let i=0;i<395;i++)brand.click();if(meows)throw Error('443 reward early');
+              brand.click();if(meows!==1)throw Error('443 reward lost');
+              for(let i=0;i<47;i++)brand.click(); // A second cycle during the first scene queues at rest.
+              for(let i=0;i<400&&brand.lastElementChild.style.transform;i++)await pause(20);
+              if(brand.lastElementChild.style.transform||window.fixtureLastLoader.state.scheduled)throw Error('logo scene retained');
               document.querySelector('[data-page=settings]').click();$('advancedButton').click();
               await pause(35);const before=Number(getComputedStyle($('advancedDialog')).opacity);
               $('closeAdvanced').click();const motion=$('advancedDialog').getAnimations()[0];

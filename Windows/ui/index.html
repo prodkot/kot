@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles/tokens.css">
 <link rel="stylesheet" href="styles/client.css">
 
+<link rel="stylesheet" href="styles/loading.css">
 </head>
 <body class="booting">
 <svg style="display:none" aria-hidden="true"><defs>
@@ -155,7 +156,7 @@
     </section>
   </main>
 </div>
-<div class="startup-screen" id="startupScreen" role="status"><span class="startup-mark" aria-hidden="true"><img src="brand-icon.svg" alt=""></span><p>Загрузка…</p></div>
+<div class="startup-screen" id="startupScreen" role="status"><span class="startup-mark" aria-hidden="true"></span><p>Загрузка…</p></div>
 <dialog aria-labelledby="addTitle" class="dialog" data-dirty-form="" id="addDialog"><div class="dialog-heading"><h2 id="addTitle">Добавить серверы</h2><button aria-controls="addDialogHelp" aria-expanded="false" aria-label="Справка: Добавить серверы" class="help-button" data-help="addDialogHelp" type="button">?</button><button aria-label="Закрыть" class="cross" id="cancelAdd" title="Закрыть" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></div><div class="dialog-body">
 
 <form id="addForm">
@@ -324,6 +325,8 @@ GB" rows="4" spellcheck="false"></textarea></div><div class="routing-block"><lab
 <script src="journal.js"></script>
 <script src="routing.js"></script>
 <script src="node-json.js"></script>
+<script src="loading-motion.js"></script>
+<script src="loading-ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

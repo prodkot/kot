@@ -25,6 +25,8 @@ For the server JSON dialog, `python Tests/node_json_ui.py` exercises the product
 
 ## Browser and demo matrix
 
+For shared modal lifecycle changes, run `python Tests/dialog_lifecycle_ui.py` and `python Tests/dialog_lifecycle_ui.py --group stress --cycles 1000`. The Chromium fixture checks actual open/closing/modal states, focus, session generations, exactly-once stack cleanup and effect retirement. It covers both normal finished promises, unequal effect durations, a deliberately paused backdrop, partial creation failure, cancellation, reopening, native close, reduced motion, main-thread delay, hidden iframe recovery with guarded focus retry, preservation of parent/new-control focus, pending update RPC, HWID close-event races and dirty/nested/JSON flows. Test-only source instrumentation exposes the existing state map for assertions; it does not ship in UI assets. Fault injection proves recovery from those conditions, not their occurrence in Windows. Run the unchanged motion, P5.1 and demo suites too, and retain actual WebView2/tray/DPI checks as a separate Windows requirement.
+
 For ping-card updates, `python Tests/ping_cards_ui.py` samples real Chromium frames before native acceptance and during checking/error/retry. It checks both rows, DOM identity, hover colours, selected state, control/icon bounds, per-node duplicate suppression, independent requests, menu focus, card selection, sorting and filtering. The matrix includes both themes, 630px width, 100/125/150% zoom and reduced motion. `dotnet run --project Tests/Kot.Tests.csproj -c Release -- --ping-service` links the production `PingService` to a single-thread owner fixture: a controlled HTTP probe failure and real loopback TCP samples check queue ordering, duplicates, cancellation, cleanup and fresh runs. ProbeCore is a test double; this does not verify native Xray process lifecycle, Windows or WebView2.
 
 For the server action popup, `python Tests/node_menu_ui.py` covers both themes, expanded/collapsed sidebar, 630px windows, 100/125/150% zoom, long names, bottom/right placement, repeated input, keyboard and focus, direct hiding and reduced-motion cleanup. It samples the popup edge and text bounds at 0/40/100/160/199ms, reverses at 20/100/170ms and separately records natural-speed RAF traces. Inspect the generated frames visually; passing geometry assertions alone is insufficient. JSON/QR actions retain their target IDs and payloads, and opening/dismissing a menu must not select or connect a server. These are Chromium fixtures, not native Windows/WebView2 or DPI evidence.
@@ -36,6 +38,7 @@ python site/check.py
 python site/demo_browser_check.py
 python Tests/architecture_ui.py
 python Tests/ui.py
+python Tests/loading_ui.py
 python Tests/journal_ui.py
 python Tests/flags_ui.py
 python Tests/subscriptions_ui.py
@@ -73,3 +76,7 @@ On local environments bound subprocess time and log size, close browsers, and cl
 ## Report honestly
 
 Separate passed, failed, blocked and not-run checks. Include the commit, environment, mock limitations and residual machine-specific issues. For Dev, report local results. For Beta, include the Actions results for that revision and keep any manual checks separate. A hosted TUN pass cannot establish that a previous failure on a user's particular adapter or subscription has been fixed.
+
+## Branded loading motion
+
+Run `python Tools/loading_motion.py` after editing the canonical choreography and `python Tools/loading_demo.py` to make the standalone review page. `Tests/loading_ui.py` verifies shared catalog identity, ground clearance, contact timing, ballistic acceleration, grounded rolling, weighted selection, exclusive 47th-click behavior, original 443rd-click sound, lifecycle, theme/zoom geometry and reduced motion. `Tests/ui.py` retains first-paint theme, shared native origin, live motion through exit, readiness count and input/RAF cleanup assertions. WindowTests exercise the actual native/WebView handoff on Windows; compilation alone is not execution. Capture normal playback and quarter-speed playback, inspect takeoff/apex/impact/contact/cycle seams and both theme frames.

@@ -5,10 +5,10 @@
     const light=theme==='light';
     document.documentElement.classList.toggle('theme-light',light);
     document.body.classList.toggle('theme-light',light);
-    const mark=$('startupScreen').querySelector('img'),source=light?'brand-icon-light.svg':'brand-icon.svg';
-    if(mark.getAttribute('src')!==source)mark.src=source;
   }
   startupTheme(window.kotStartup?.theme);
+  const startupLoader=window.KotLoading.create($('startupScreen').querySelector('.startup-mark'),{list:window.kotStartup?.sequence});
+  startupLoader.start();
   const app=document.querySelector('.app'), sidebarToggle=$('sidebarToggle');
   const narrowWindow=matchMedia('(max-width:700px)');
   const sidebarChoices=new Map();
@@ -73,9 +73,27 @@
       if(motion)motion.finished.then(finish).catch(()=>{if(reduce.matches)finish();});else finish();
     },4000);
   }
-  let brandClicks=0, meow;
+  let brandClicks=0, meow, brandScene, pendingBrandScenes=0;
+  function playBrandScene(){
+    // No extra hit target or counter. The native period remains Manrope 800.
+    if(brandScene?.state.active){pendingBrandScenes++;return;}
+    brandScene?.dispose();
+    const point=$('brandButton').lastElementChild;
+    point.classList.add('brand-egg-point');
+    brandScene=window.KotLoading.create(point,{variant:'protest',once:true,render:pose=>{
+      const side=parseFloat(getComputedStyle(point).fontSize)*.136;
+      point.style.transform=`translate(${pose[0]*side}px,${pose[1]*side}px)`;
+    },onfinish:()=>{
+      brandScene.dispose();
+      point.style.removeProperty('transform');
+      if(pendingBrandScenes){pendingBrandScenes--;playBrandScene();}
+    }});
+    brandScene.start();
+  }
   $('brandButton').addEventListener('click',()=>{
-    if(++brandClicks!==443)return;
+    ++brandClicks;
+    if(brandClicks===47)playBrandScene();
+    if(brandClicks!==443)return;
     brandClicks=0;
     meow??=new Audio('sounds/meow.ogg');meow.volume=.7;meow.currentTime=0;
     meow.play().catch(()=>toast('Не удалось воспроизвести мяу.'));
@@ -85,7 +103,8 @@
     const screen=$('startupScreen'),mark=screen.querySelector('.startup-mark'),caption=screen.querySelector('p');
     const main=document.querySelector('.main'),sidebar=document.querySelector('.sidebar'),started=[];
     try{
-      await Promise.all([document.fonts.ready,mark.querySelector('img').decode().catch(()=>{})]);
+      await document.fonts.ready;
+      startupLoader.syncOrigin(startupOriginMs);
       if(Number.isFinite(startupOriginMs)){
         const origin=performance.now()+(startupOriginMs-Date.now());
         for(const motion of screen.getAnimations({subtree:true}))motion.startTime=origin;
@@ -108,10 +127,10 @@
       await Promise.allSettled(started.map(motion=>motion.finished));
     }catch(e){toast(e.message);}
     finally{
-      screen.hidden=true;screen.getAnimations({subtree:true}).forEach(motion=>motion.cancel());
+      startupLoader.dispose();screen.hidden=true;screen.getAnimations({subtree:true}).forEach(motion=>motion.cancel());
       started.forEach(motion=>motion.cancel());
       document.body.classList.remove('booting','revealing');main.inert=false;sidebar.inert=false;
-      document.documentElement.classList.remove('startup-spin');
+
     }
   }
   function moveNav(){const active=document.querySelector('.nav-button[aria-current=page]');const pill=document.querySelector('.nav-indicator');pill.style.transform=`translateY(${active.offsetTop}px)`;pill.style.height=active.offsetHeight+'px';}
@@ -459,13 +478,14 @@
       $('hwidValue').value=device.hwid;$('deviceName').value=device.name;$('copyHwid').disabled=false;
     }catch(e){if(attempt===deviceAttempt&&!panel.hidden&&dialog.open&&!dialog.dataset.closing)$('hwidError').textContent=e.message;}
   });
-  $('closeDevice').addEventListener('click',closeDevice);$('advancedDialog').addEventListener('close',()=>{clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';});
+  function resetDevice(){clearHwid();$('deviceDialog').hidden=true;$('advancedContent').hidden=false;$('advancedTitle').textContent='Дополнительно';}
+  $('closeDevice').addEventListener('click',closeDevice);$('advancedDialog').addEventListener('close',()=>{if(!$('advancedDialog').open)resetDevice();});
   $('copyHwid').addEventListener('click',async()=>{
     const b=$('copyHwid'),attempt=deviceAttempt;b.disabled=true;$('hwidError').textContent='';
     try{await rpc('copyHwid');toast('HWID скопирован');}catch(e){if(attempt===deviceAttempt)$('hwidError').textContent=e.message;}
     finally{if(attempt===deviceAttempt&&!$('deviceDialog').hidden&&$('advancedDialog').open&&!$('advancedDialog').dataset.closing)b.disabled=false;}
   });
-  $('advancedButton').addEventListener('click',()=>{$('bypassDomains').value=model.settings.bypass||'';$('advancedError').textContent='';openDialog($('advancedDialog'));});$('closeAdvanced').addEventListener('click',()=>requestClose($('advancedDialog')));
+  $('advancedButton').addEventListener('click',()=>{if(!$('advancedDialog').open)resetDevice();$('bypassDomains').value=model.settings.bypass||'';$('advancedError').textContent='';openDialog($('advancedDialog'));});$('closeAdvanced').addEventListener('click',()=>requestClose($('advancedDialog')));
   $('saveRules').addEventListener('click',async()=>{const b=$('saveRules');b.disabled=true;try{await rpc('settings',{key:'bypass',value:$('bypassDomains').value});closeDialog($('advancedDialog'));toast('Правила сохранены');}catch(e){$('advancedError').textContent=e.message;}finally{b.disabled=false;}});
   ['diagnostics','copyErrorLog'].forEach(id=>$(id).addEventListener('click',async()=>{if(await request('copyLog'))toast('Полный лог скопирован');}));
   $('pingAll').addEventListener('click',()=>request('pingAll'));$('cancelPing').addEventListener('click',()=>request('cancelPing'));
@@ -560,5 +580,5 @@
   const journal=window.KotJournal({getModel:()=>model,getPage:()=>current,request,toast});
   const routing=window.KotRouting({getModel:()=>model,rpc,toast,dialogUI,openDialog,closeDialog,requestClose});
   new ResizeObserver(moveNav).observe(document.querySelector('.nav'));renderServers();moveNav();
-  if(host){bridge.start({snapshot:apply,navigate:page,notice:toast});request('ready');}else{document.body.classList.remove('booting');$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
+  if(host){bridge.start({snapshot:apply,navigate:page,notice:toast});request('ready');}else{document.body.classList.remove('booting');startupLoader.dispose();$('startupScreen').hidden=true;document.querySelector('.main').inert=false;document.querySelector('.sidebar').inert=false;toast('Откройте интерфейс через Kot.exe.');}
 })();

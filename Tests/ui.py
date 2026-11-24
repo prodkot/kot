@@ -48,23 +48,23 @@ def open_hwid(page):
     page.locator('#hwidButton').click()
 
 def check_startup(browser):
-    for theme, spin, reduced in [('dark',False,False),('light',False,False),('dark',True,False),('light',True,False),('light',True,True)]:
+    for theme, variant, reduced in [('dark','quiet',False),('light','quiet',False),('dark','hop',False),('light','roll',False),('light','hop',True)]:
         page=browser.new_page(viewport={'width':800,'height':600},reduced_motion='reduce' if reduced else 'no-preference')
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'spin':spin})+''';(()=>{
+        page.add_init_script(mock.replace("theme:'dark'",f"theme:'{theme}'",1)+'window.kotStartup='+json.dumps({'theme':theme,'sequence':[variant]*8})+''' ;(()=>{
+          Object.defineProperty(window,'KotLoading',{configurable:true,set(value){
+            const create=value.create;value.create=(host,options)=>{const owner=create(host,options);window.fixtureLoader??=owner;return owner;};
+            Object.defineProperty(window,'KotLoading',{value,configurable:true});
+          }});
           const send=chrome.webview.postMessage;
-          // Native artwork already ran for a while before this document existed.
-          window.fixtureStartupOrigin=Date.now()-2750;
-          window.startupReadyCount=0;
+          window.fixtureStartupOrigin=Date.now()-2750;window.startupReadyCount=0;
           chrome.webview.postMessage=message=>{
             if(message.action==='uiReady'){
               window.startupReadyCount++;
-              const scene=document.getElementById('startupScreen');
-              const pulse=scene.getAnimations({subtree:true}).find(a=>a.animationName==='startup-mark-breathe');
-              if(pulse)window.handoffError=pulse.startTime+performance.timeOrigin-window.fixtureStartupOrigin;
-              window.startupHandoff={visible:!document.getElementById('startupScreen').hidden,
+              window.handoffError=fixtureLoader.state.elapsed-(Date.now()-fixtureStartupOrigin);
+              window.startupHandoff={visible:!startupScreen.hidden,
                 inert:document.querySelector('.main').inert&&document.querySelector('.sidebar').inert,
-                image:document.querySelector('#startupScreen img').complete};
+                artwork:!!startupScreen.querySelector('svg .loader-point')};
             }
             setTimeout(()=>send(message),message.action==='ready'?1000:message.action==='uiReady'?180:0);
           };
@@ -72,41 +72,35 @@ def check_startup(browser):
         page.goto((root/'Windows/ui/index.html').as_uri())
         page.wait_for_function('()=>typeof fixtureSnapshot==="function"')
         expect(page.locator('#startupScreen')).to_be_visible()
-        # Before any profile snapshot, the saved theme already covers the first paint.
         assert page.evaluate('document.documentElement.classList.contains("theme-light")')==(theme=='light')
-        assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen")).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
-        assert page.locator('#startupScreen img').get_attribute('src')==('brand-icon-light.svg' if theme=='light' else 'brand-icon.svg')
-        page.wait_for_timeout(520)
-        animations=page.evaluate('document.querySelector("#startupScreen img").getAnimations().map(a=>a.animationName)')
-        assert ('startup-mark-spin' in animations)==(spin and not reduced)
-        if spin and not reduced:
-            assert page.evaluate('getComputedStyle(document.querySelector("#startupScreen img")).rotate') not in ['none','0deg']
+        assert page.evaluate('getComputedStyle(startupScreen).backgroundColor')==('rgb(246, 246, 242)' if theme=='light' else 'rgb(21, 23, 24)')
+        assert page.locator('#startupScreen .loader-point').evaluate('(e)=>getComputedStyle(e).fill')==('rgb(85, 117, 42)' if theme=='light' else 'rgb(212, 245, 138)')
+        samples=[]
+        for _ in range(12):
+            samples.append(page.locator('#startupScreen .loader-point').get_attribute('transform'))
+            page.wait_for_timeout(45)
+        assert page.evaluate('fixtureLoader.state.scheduled')== (not reduced)
+        if not reduced:
+            assert len(set(samples))>2,samples
         assert page.evaluate('document.querySelector(".main").inert&&document.querySelector(".sidebar").inert')
         page.wait_for_function('()=>window.startupHandoff')
-        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'image':True}
+        assert page.evaluate('window.startupHandoff')=={'visible':True,'inert':True,'artwork':True}
         if not reduced:
-            assert abs(page.evaluate('window.handoffError'))<4
+            assert abs(page.evaluate('window.handoffError'))<40
             page.wait_for_function('()=>document.body.classList.contains("revealing")')
             assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')!='none'
-            if spin:
-                sampling=page.evaluate('''async()=>{
-                  const mark=document.querySelector('#startupScreen img');
-                  const motion=mark.getAnimations().find(a=>a.animationName==='startup-mark-spin');
-                  const phaseError=motion.startTime+performance.timeOrigin-window.fixtureStartupOrigin;
-                  const firstTime=motion.currentTime, firstAngle=parseFloat(getComputedStyle(mark).rotate);
-                  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-                  const dt=motion.currentTime-firstTime, nextAngle=parseFloat(getComputedStyle(mark).rotate);
-                  return [phaseError,dt,(nextAngle-firstAngle+360)%360];
-                }''')
-                error,dt,angle=sampling
-                assert abs(error)<4 and dt>0 and abs(angle-dt*360/1600)<.05,sampling
+            sampling=page.evaluate('''async()=>{
+              const t=fixtureLoader.state.elapsed,now=performance.now();
+              await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+              return [fixtureLoader.state.elapsed-t,performance.now()-now,fixtureLoader.state.scheduled];
+            }''')
+            dt,wall,running=sampling;assert dt>0 and abs(dt-wall)<30 and running,sampling
             page.evaluate('fixtureSnapshot({});fixtureSnapshot({});')
         expect(page.locator('#startupScreen')).to_be_hidden()
         assert page.evaluate('window.startupReadyCount')==1
         assert not page.evaluate('document.querySelector(".main").inert||document.querySelector(".sidebar").inert||document.body.classList.contains("revealing")')
         assert page.evaluate('getComputedStyle(document.querySelector(".main")).filter')=='none'
-        assert not page.evaluate('document.querySelector("#startupScreen").getAnimations({subtree:true}).length')
-        assert not page.evaluate('document.documentElement.classList.contains("startup-spin")')
+        assert not page.evaluate('startupScreen.getAnimations({subtree:true}).length||fixtureLoader.state.scheduled||fixtureLoader.state.active')
         page.locator('[data-page=settings]').click();expect(page.locator('#page-settings')).to_be_visible()
         page.close()
     # Turning off motion during the reveal must not strand the app behind an inert overlay.
@@ -282,3 +276,11 @@ with sync_playwright() as p:
     assert not errors,errors
     browser.close()
 print(json.dumps({'ui':'passed','themes':2,'legacy_accents':'ignored','meow':'each 443rd activation','unsafe_labels':'text only','status':'host driven, no fake success timer','ping':'all, individual, cancel, settings, sorting','full_log':'copy from error','errors':errors},ensure_ascii=False))
+
+# The existing CI entry point must also cover the Beta 2 motion and modal fixes.
+# Run each suite as an isolated process; any failure fails this command and CI.
+import subprocess
+import sys
+for command in (('Tools/loading_motion.py','--check'),('Tools/loading_demo.py',),
+                ('Tests/loading_ui.py',),('Tests/dialog_lifecycle_ui.py',)):
+    subprocess.run([sys.executable, *command], cwd=root, check=True, timeout=480)
