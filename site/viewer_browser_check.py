@@ -34,18 +34,29 @@ def check():
                     page.on('response', lambda response: failures.append(response.url) if response.status >= 400 else None)
                     page.goto(url, wait_until='networkidle')
                     page.evaluate('() => document.fonts.ready')
-                    # The timer starts itself, then gives every manual action a fresh five seconds.
+                    # Selection stays put over time, including after a manual change.
                     page.clock.install()
-                    page.clock.fast_forward(5300)
-                    expect(page.locator('#view-servers')).to_have_attribute('aria-selected', 'true')
-                    page.locator('#view-settings').click()
-                    page.clock.fast_forward(4900)
-                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
-                    page.locator('#view-settings').click()
-                    page.clock.fast_forward(4900)
-                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
-                    page.clock.fast_forward(200)
+                    page.clock.fast_forward(15000)
                     expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
+                    page.locator('#view-settings').click()
+                    page.clock.fast_forward(15000)
+                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
+                    page.locator('[data-explore-next]').click()
+                    expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
+                    page.locator('#view-home').press('ArrowRight')
+                    expect(page.locator('#view-servers')).to_have_attribute('aria-selected', 'true')
+                    # Keep the same running body and tail animations across interruption and return.
+                    page.locator('.kot-pet').scroll_into_view_if_needed()
+                    page.evaluate("""() => {
+                        window.catMotion = ['.kot-resting', '.kot-tail'].map(selector =>
+                            document.querySelector(selector).getAnimations()[0]);
+                    }""")
+                    assert page.evaluate('window.catMotion.every(Boolean)')
+                    page.locator('.kot-pet').click()
+                    page.clock.fast_forward(5200)
+                    page.locator('.kot-pet').click()
+                    assert page.evaluate("""() => ['.kot-resting', '.kot-tail'].every((selector, i) =>
+                        document.querySelector(selector).getAnimations()[0] === window.catMotion[i])""")
                     page.close()
 
                     page = browser.new_page(viewport={'width': 1440, 'height': 1000}, reduced_motion='reduce')
@@ -96,7 +107,7 @@ def check():
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)
-    print('Viewer: Pages subpath, autoplay, repeated 5s pause, reduced motion, square colors, 7 viewport widths, cat text/restore, stable button position and no-JS downloads passed.')
+    print('Viewer: Pages subpath, manual selection stays fixed, reduced motion, square colors, 7 viewport widths, cat text/restore, stable button position and no-JS downloads passed.')
 
 
 if __name__ == '__main__':

@@ -24,7 +24,7 @@ Factories receive dependencies once from `app.js`: DOM lookup, `getModel`, `getP
 
 `native-bridge.js` owns request IDs, pending promises, deadlines and host message delivery. It knows no DOM or page implementation. `presentation.js` handles labels, country presentation and byte formatting without sending requests. `journal.js` owns pause/follow state and the paused snapshot. `routing.js` owns form drafts and renders native routing projections; actual matching/normalization remains in Core.
 
-`app.js` still owns startup, navigation, subscriptions/server lists, connection projection and update presentation. These are explicitly deferred extraction candidates, not a second architecture hidden behind new wrappers. Existing `about.js`, `services.js`, `client-tools.js` and `dialog-ui.js` retain their responsibilities.
+`app.js` owns startup, navigation, subscriptions/server lists, connection projection and update presentation. These remain candidates for extraction. Existing `about.js`, `services.js`, `client-tools.js` and `dialog-ui.js` retain their responsibilities.
 
 Both VPN buttons render the same host connection snapshot and share the `toggle` request. The sidebar shows progress during connection and disconnection. The home button can still cancel a connection attempt. The sidebar tooltip follows the selected server, including the resolved server in Auto mode.
 
@@ -47,7 +47,7 @@ The extraction preserves selector specificity and cascade order. Late P5.1 overr
 | Motion | CSS fast/control/normal/surface durations; JS enter/exit/backdrop/help durations; `--ease` |
 | Shadow | `--shadow-toast`; unique component shadows remain local |
 
-The compact button radius is 8px; input/control radius is 9px. Keeping separate tokens preserves the actual design instead of forcing unrelated components to match. Change `--control-height` for standard button height, `--field-height` for fields, and the appropriate radius token for that component family. `Tests/architecture_ui.py` overrides these values and verifies multiple real component selectors in both themes.
+The compact button radius is 8px; input/control radius is 9px. Separate tokens let each component family keep its own radius. Change `--control-height` for standard button height, `--field-height` for fields, and the appropriate radius token for that component family. `Tests/architecture_ui.py` overrides these values and verifies multiple real component selectors in both themes.
 
 JS animation duration tokens (`--motion-enter`, `--motion-exit`, `--motion-backdrop`, `--motion-help`) use **milliseconds** because Web Animations accepts numeric milliseconds. Keep their `ms` unit when editing. CSS transition tokens can use CSS time units. Startup artwork and unique page transitions retain local choreography; not every animation is a shared control token.
 

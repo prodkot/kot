@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 300" role="img" aria-labelledby="title desc">
   <title id="title">kot.</title>
-  <desc id="desc">Фирменная надпись kot. и знак подключения на графитовом фоне с лаймовым акцентом.</desc>
+  <desc id="desc">Надпись kot. и абстрактный знак на графитовом фоне с лаймовым акцентом.</desc>
   <defs>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#262c2b" stroke-width="1"/></pattern>
     <linearGradient id="fade"><stop stop-color="#111515"/><stop offset="1" stop-color="#111515" stop-opacity="0"/></linearGradient>

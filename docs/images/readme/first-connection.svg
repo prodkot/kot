@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 168" role="img" aria-labelledby="title desc">
+  <title id="title">Первое подключение</title>
+  <desc id="desc">Три шага: добавить подписку или сервер, выбрать сервер и подключиться.</desc>
+  <rect x="0.5" y="0.5" width="899" height="167" rx="18" fill="#151718" stroke="#303536"/>
+  <path d="M190 56h220M490 56h220" fill="none" stroke="#454d46" stroke-width="2"/>
+  <path d="m399 50 8 6-8 6m300-12 8 6-8 6" fill="none" stroke="#a8b3a2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#202425" stroke="#47514a" stroke-width="1.5">
+    <rect x="118" y="24" width="64" height="64" rx="16"/>
+    <rect x="418" y="24" width="64" height="64" rx="16"/>
+    <rect x="718" y="24" width="64" height="64" rx="16"/>
+  </g>
+  <g fill="none" stroke="#d5f88c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M150 43v26m-13-13h26"/>
+    <path d="M437 47h26M437 56h12M437 65h12m4-3 4 4 7-9"/>
+    <path d="M750 42v14m-9-9a13 13 0 1 0 18 0"/>
+  </g>
+  <g fill="#f2f4ed" font-family="Manrope, Arial, sans-serif" font-size="32" font-weight="600" text-anchor="middle">
+    <text x="150" y="137">Добавить</text>
+    <text x="450" y="137">Выбрать</text>
+    <text x="750" y="137">Подключить</text>
+  </g>
+</svg>

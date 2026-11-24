@@ -70,7 +70,7 @@ Cancel/stop invalidates queued connection attempts. Failure and disconnect use t
 
 `MainWindow.Bridge.Message` accepts only the exact local document origin, bounds message size, parses JSON and checks browser generation before replying. Long profile mutations go through the `operations` gate in `MainWindow.Commands`; cancellation/heartbeat paths remain reachable outside it. The snapshot projects display fields and omits server secrets. Explicit operations such as `readSubscription` return sensitive editing data only when requested; never log or cache these payloads in UI diagnostics.
 
-The current action dispatcher is intentionally explicit, without a new handler registry or generated protocol. It is still a shared contract. A new action needs native validation, caller handling, a demo response and tests. Typed/generated contract coverage remains follow-up work.
+The action dispatcher is a shared contract without a handler registry or generated protocol. A new action needs native validation, caller handling, a demo response and tests. Typed/generated contract coverage remains follow-up work.
 
 ## Native file ownership
 
