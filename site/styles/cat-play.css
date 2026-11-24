@@ -1,3 +1,9 @@
+@property --kot-blend {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
 /* Two overlaid titles share the original title's footprint. */
 .vw-install .install-title{position:relative}
 .vw-install h2>.install-title-default,.vw-install h2>.install-title-secret{color:inherit}
@@ -10,11 +16,13 @@
 .is-purring .install-title-secret{opacity:1;visibility:visible}
 
 /* The original silhouette stays unchanged. The thread and yarn are finer. */
-.vw-kot-art{touch-action:pan-y}
+.vw-kot-art{touch-action:pan-y;--kot-blend:0}
+.is-purring .vw-kot-art{--kot-blend:1}
 .vw-kot-art .kot-portrait{pointer-events:none}
 .kot-thread{stroke-width:1.8;opacity:.36}
 .kot-ball-position{stroke-width:2.6;opacity:.8}
 .kot-ball-spin>path{stroke-width:1.65}
+.kot-whiskers,.kot-fold{stroke-width:2;opacity:.24}
 .kot-happy-eyes{opacity:0}
 .kot-purr-lines{stroke-width:3.5;opacity:0}
 .kot-pet{display:none;position:absolute;left:22%;top:23%;width:61%;height:59%;padding:0;border:0;border-radius:38%;background:transparent;color:inherit;cursor:pointer;touch-action:pan-y}
@@ -35,13 +43,8 @@
  .is-purring .install-title-default{transform:translateY(-9px)}
  .is-purring .install-title-secret{transform:translateY(0)}
  .kot-sleepy-eyes,.kot-happy-eyes{transition:opacity .24s}
- .kot-purr-lines{transition:opacity .3s}
- .is-purring .kot-resting{animation:kot-content 1.5s ease-in-out infinite}
- .is-purring .kot-tail{animation:kot-content-tail 1.5s ease-in-out infinite}
- .is-purring .kot-purr-lines{animation:kot-purr 1.5s ease-in-out infinite}
- @keyframes kot-content{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.025)}}
- @keyframes kot-content-tail{0%,100%{transform:rotate(0deg)}45%{transform:rotate(10deg)}75%{transform:rotate(-3deg)}}
- @keyframes kot-purr{0%,100%{transform:translateY(1px);opacity:.3}50%{transform:translateY(-3px);opacity:.8}}
+ .vw-kot-art{transition:--kot-blend 1.1s cubic-bezier(.45,0,.55,1)}
+ .kot-purr-lines{transition:opacity .7s ease}
 }
 
 @media(max-width:840px){.install-title-secret{gap:2px}}

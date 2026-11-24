@@ -45,8 +45,8 @@
 @media(prefers-reduced-motion:no-preference){
  .kot-resting{animation:kot-rest 4.8s ease-in-out infinite}
  .kot-tail{animation:kot-tail-rest 10.8s ease-in-out infinite}
- @keyframes kot-rest{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.014)}}
- @keyframes kot-tail-rest{0%,8%,30%,100%{transform:rotate(0deg)}15%{transform:rotate(4deg)}22%{transform:rotate(-2deg)}}
+ @keyframes kot-rest{0%,100%{transform:scaleY(1)}50%{transform:scaleY(calc(1.014 + var(--kot-blend) * .011))}}
+ @keyframes kot-tail-rest{0%,8%,30%,100%{transform:rotate(0deg)}15%{transform:rotate(calc(4deg + var(--kot-blend) * 5deg))}22%{transform:rotate(calc(-2deg - var(--kot-blend) * 1deg))}}
 }
 @media(max-width:840px){
  .vw-header{gap:26px}
