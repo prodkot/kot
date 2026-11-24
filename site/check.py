@@ -28,7 +28,9 @@ class SiteTests(unittest.TestCase):
         social_title = search(r'<meta property="og:title" content="([^"]+)">', markup).group(1)
         self.assertEqual(title, social_title)
         self.assertIn("kot.", title)
-        self.assertIn("Windows", title)
+        self.assertIn("Твой сервер. Один клик.", title)
+        self.assertIn("Твой сервер. Один клик.", readme)
+        self.assertIn("<p>Сделано лапкам</p>", markup)
 
     def test_build_cannot_overwrite_sources(self):
         for destination in (ROOT, ROOT / "demo", ROOT / "assets", ROOT.parent,

@@ -91,7 +91,7 @@
     section.classList.add('is-purring');
     original.setAttribute('aria-hidden', 'true');
     secret.removeAttribute('aria-hidden');
-    if (!wasPurring) status.textContent = 'Мяу.';
+    if (!wasPurring) status.textContent = 'Мяу, и интернет у тебя в руках.';
     clearTimeout(restoreTimer);
     restoreTimer = setTimeout(restore, 5000);
   }
