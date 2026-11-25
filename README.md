@@ -1,46 +1,45 @@
-<p align="center">
-  <img src="docs/images/cover.svg" width="100%" alt="kot. Клиент для Windows">
-</p>
+<p align="center"><img src="Brand/kot-abstract-dark.svg" width="56" height="56" alt=""></p>
 
-<h1 align="center">kot. / Твой сервер. Один клик.</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Brand/kot-wordmark-dark.svg">
+    <img src="Brand/kot-wordmark-light.svg" width="98" alt="kot.">
+  </picture>
+</h1>
 
-<p align="center">Клиент для Windows. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
+<p align="center">VPN-клиент для Windows на базе Xray. Твои подписки, серверы и правила маршрутизации в одном окне.</p>
 
-<p align="center">
-  <a href="https://github.com/prodkot/kot/releases/latest"><strong>Скачать</strong></a> ·
-  <a href="https://prodkot.github.io/kot/">Сайт и демо</a> ·
-  <a href="docs/README.md">Документация</a>
-</p>
+<p align="center"><strong><a href="https://github.com/prodkot/kot/releases/latest">Скачать для Windows x64</a></strong> · <a href="https://prodkot.github.io/kot/#demo" title="Твой сервер. Один клик.">Сайт и демо</a> · <a href="docs/README.md">Документация</a></p>
 
-![Интерфейс kot. 0.8.0 с демонстрационными данными](docs/images/overview-dark.png)
+![Главный экран kot. с активным TUN, выбранным сервером и скоростью передачи данных](docs/images/readme/connection.png)
 
-## Начало работы
+*Интерфейс [0.8.5](https://github.com/prodkot/kot/releases/tag/v0.8.5). Браузерный снимок с демонстрационными сервером и трафиком.*
 
-1. Скачай Setup и установи kot.
-2. Добавь ссылку на подписку или сервер.
-3. Выбери сервер и нажми «Подключить».
+kot. is an open-source Windows VPN and proxy client powered by Xray, with TUN, system proxy and routing profiles. Bring your own server or subscription.
 
-**Windows 10 / 11, x64.** Для TUN нужны права администратора. Приложение бесплатное; сервер и подписка не входят в комплект.
+kot. не предоставляет VPN-серверы: нужна своя подписка или ссылка на сервер.
 
-## Возможности
+## Первое подключение
 
-- Несколько подписок, избранное, проверка задержки и автоматический выбор сервера.
-- Режимы TUN и системного прокси, маршруты для сайтов и приложений, настройка DNS.
-- Автоподключение, восстановление соединения, работа в трее и Kill Switch.
-- QR-коды, резервные копии, статистика, журнал и проверка соединения.
-- Управление zapret и Telegram-прокси.
+1. Установи kot. на Windows 10 или 11 (x64). При запуске подтверди запрос прав администратора.
+2. Нажми **+** и вставь ссылку на свою подписку или отдельный сервер.
+3. Выбери сервер и нажми **Подключить**. В режиме TUN клиент проверит адаптер, DNS и прохождение трафика перед тем, как показать «Подключено».
 
-Поддерживаются VLESS, VMess, Trojan, Shadowsocks и Hysteria2.
+В 0.8.5 доступны просмотр JSON сервера, меню обмена QR и сворачиваемая боковая панель с кнопкой подключения. [Инструменты клиента](docs/CLIENT-TOOLS.md) описывают импорт, проверки и работу с профилями; подробный список изменений есть в [истории версий](CHANGELOG.md).
 
-## Ссылки
+## Как проходит трафик
 
-- [Руководство](docs/GUIDE.md)
-- [Маршрутизация](docs/ROUTING.md)
-- [XHTTP](docs/XHTTP.md)
-- [Сборка и проверки](docs/BUILD.md)
-- [Участие в разработке](CONTRIBUTING.md)
-- [Добавление музыки](docs/MUSIC.md)
+kot. использует Xray и поддерживает VLESS, VMess, Trojan, Shadowsocks и Hysteria2. В режиме **TUN** трафик приложений проходит через виртуальный сетевой адаптер. **Системный прокси** подходит для программ, которые используют настройки прокси Windows.
 
-Ошибки и пожелания: [Issues](https://github.com/prodkot/kot/issues/new/choose). О проблемах безопасности сообщайте через [SECURITY.md](SECURITY.md). Перед публикацией журналов удали ключи и ссылки на подписки.
+В профиле маршрутизации можно отправить рабочие сайты через VPN, оставить локальные адреса доступными напрямую и заблокировать отдельные домены. Правила также поддерживают IP-подсети и приложения.
 
-Код клиента распространяется по лицензии [MIT](LICENSE.txt). Лицензии компонентов собраны в [THIRD-PARTY.txt](THIRD-PARTY.txt).
+<details>
+<summary>Посмотреть список серверов</summary>
+
+![Экран «Серверы» kot. 0.8.5 в светлой теме с примером подписки и результатами проверки задержки](docs/images/readme/servers.png)
+
+*Тот же интерфейс 0.8.5 в светлой теме. Подписка, серверы и пинг демонстрационные.*
+
+</details>
+
+[Руководство](docs/GUIDE.md) · [Примеры маршрутов](docs/ROUTING.md) · [История изменений](CHANGELOG.md) · [Лицензия MIT](LICENSE.txt)

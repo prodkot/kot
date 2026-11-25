@@ -8,6 +8,28 @@ namespace Kot.WindowTests;
 
 public static class ProbeTests
 {
+    static async Task CheckSinglePing(Node node, CancellationToken ct, Action<bool, string> check)
+    {
+        var ping = new PingService();
+        var states = new List<string>();
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ping.Changed += () =>
+        {
+            states.Add(ping.Get(node.Id)!.Status);
+            if (!ping.Busy) finished.TrySetResult();
+        };
+        var previous = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(previous ?? new SynchronizationContext());
+            ping.Start([node], new PingOptions { Mode = "tcp", Attempts = 1 });
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        await finished.Task.WaitAsync(ct);
+        check(states.Distinct().SequenceEqual(["checking", "ok"]) && states[^1] == "ok",
+            "a single TCP ping publishes checking immediately and completes without a queued frame");
+    }
+
     public static async Task Run(string executable, Action<bool, string> check)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -47,7 +69,9 @@ public static class ProbeTests
                 catch (Exception ex) when (!deadline.IsCancellationRequested && ex is SocketException or OperationCanceledException) { }
                 await Task.Delay(100, deadline.Token);
             }
-            await using (var probe = await ProbeCore.Start(Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{vlessPort}?security=none#Probe"), deadline.Token, executable))
+            var node = Subscriptions.ParseNode($"vless://{uuid}@127.0.0.1:{vlessPort}?security=none#Probe");
+            await CheckSinglePing(node, deadline.Token, check);
+            await using (var probe = await ProbeCore.Start(node, deadline.Token, executable))
             {
                 using (var outsider = new HttpClient(new HttpClientHandler { UseProxy = true, Proxy = new WebProxy("http://127.0.0.1:" + probe.Port) }))
                 using (var denied = await outsider.GetAsync($"http://127.0.0.1:{webPort}/", deadline.Token))

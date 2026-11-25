@@ -31,27 +31,30 @@ public sealed class Tunnel
     int apiPort;
     string apiSecret = "";
     IDisposable? proxyAuthentication;
-    Profile? automaticProfile;
+    public Node? SessionNode => State is "connected" or "connecting" ? activeNode : null;
+    string sessionSubscription = "";
+    public Node? LastConnectionNode(string subscriptionId) => sessionSubscription == subscriptionId ? activeNode : null;
     long lastAutomatic;
-    string preferredNode = "";
     public string AutomaticNode { get; private set; } = "";
     public async Task<bool> Probe(CancellationToken ct)
     {
         int port = ProxyPort, session = Session; bool tun = usesTun;
-        if (State != "connected" || port == 0) return false;
+        var observed = core;
+        if (State != "connected" || port == 0 || observed == null || observed.HasExited || !observed.XrayStarted) return false;
+        if (tun && !TunnelHealth.AdapterReady()) return false;
         using var handler = NetworkRequests.Handler(port);
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
         foreach (string target in healthTargets)
         {
-            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelDns.Probe(target, ct))) return State == "connected" && Session == session; }
+            try { using var r = await client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, ct); if (r.IsSuccessStatusCode && (!tun || await TunnelHealth.Probe(target, ct))) return State == "connected" && Session == session && core == observed && !observed.HasExited; }
             catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException && !ct.IsCancellationRequested) { AppLog.Write("health", e.GetType().Name); }
         }
         return false;
     }
-    public async Task<bool> ReadAutomaticNode(CancellationToken ct)
+    public async Task<bool> ReadAutomaticNode(Func<Profile> currentProfile, CancellationToken ct)
     {
-        var profile = automaticProfile;
-        if (profile == null || State != "connected") return false;
+        var profile = currentProfile();
+        if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true || profile.Selected != "auto" || AutomaticNode.Length == 0 || State != "connected") return false;
         if (MonotonicMilliseconds - lastAutomatic < profile.Automation.AutoMinutes * 60000L) return true;
         int generation = stopGeneration;
         int session = Session; lastAutomatic = MonotonicMilliseconds;
@@ -59,15 +62,17 @@ public sealed class Tunnel
         try { selected = await SelectAutomatic(profile, ct); }
         catch (UserError ex)
         {
-            if (Session == session && State == "connected") { await Stop(); Set("idle", ex.Message); }
+            if (Session == session && State == "connected" && profile == currentProfile()) { await Stop(); Set("idle", ex.Message); }
             return false;
         }
-        if (Session != session || State != "connected") return false;
+        if (Session != session || State != "connected" || profile != currentProfile()) return false;
         if (selected != AutomaticNode)
         {
-            preferredNode = selected;
             await Stop();
-            if (!ct.IsCancellationRequested && stopGeneration == generation + 1) await Connect(profile, ct);
+            var latest = currentProfile();
+            if (!ct.IsCancellationRequested && stopGeneration == generation + 1 && latest.ActiveSubscription == profile.ActiveSubscription &&
+                latest.Selected == "auto" && latest.CurrentSubscription?.RequiresConnectionConfirmation != true)
+                await Connect(latest, ct, selected);
         }
         return State == "connected";
     }
@@ -119,21 +124,32 @@ public sealed class Tunnel
         if (State != "idle") { await Stop(); return; }
         await Connect(profile);
     }
-    public async Task Connect(Profile profile, CancellationToken cancellationToken = default)
+    public Task Connect(Profile profile, CancellationToken cancellationToken = default) => Connect(profile, cancellationToken, null);
+    async Task Connect(Profile profile, CancellationToken cancellationToken, string? preferredNode)
     {
         int generation = Volatile.Read(ref stopGeneration);
         await gate.WaitAsync(cancellationToken);
         try
         {
             if (cancellationToken.IsCancellationRequested || generation != Volatile.Read(ref stopGeneration) || core != null || State != "idle") return;
-            Node? node = profile.Nodes.FirstOrDefault(n => n.Id == profile.Selected);
+            if (profile.CurrentSubscription?.RequiresConnectionConfirmation == true)
+            {
+                Set("idle", SavedSubscription.ConfirmConnection);
+                return;
+            }
+            Node? node = profile.ManualConnectionNode;
             bool automatic = profile.Selected == "auto";
-            if (automatic) node = AutomaticSelection.Candidates(profile).FirstOrDefault() ?? throw new UserError(AutomaticSelection.NoCandidates);
+            if (automatic)
+            {
+                var candidates = AutomaticSelection.Candidates(profile);
+                node = (preferredNode == null ? candidates.FirstOrDefault() : candidates.FirstOrDefault(n => n.Id == preferredNode))
+                    ?? throw new UserError(AutomaticSelection.NoCandidates);
+            }
             if (node == null) throw new UserError("Сначала добавьте подписку и выберите сервер.");
             AppLog.Register(profile);
             AppLog.Write("tunnel", "connect: protocol=" + node.Protocol + "; node=" + node.Id + "; mode=" + profile.ConnectionMode);
             PhysicalNetwork.Capture();
-            Session++; activeNode = node; CoreDetails = ""; CoreExitCode = null;
+            Session++; sessionSubscription = profile.ActiveSubscription; activeNode = automatic && preferredNode == null ? null : node; CoreDetails = ""; CoreExitCode = null;
             cancelled = false;
             attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             attempt.CancelAfter(TimeSpan.FromSeconds(60));
@@ -152,11 +168,9 @@ public sealed class Tunnel
             apiSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             int systemPort = 0;
             if (profile.ConnectionMode == "proxy") do { systemPort = ReservePort(); } while (systemPort == port || systemPort == apiPort);
-            automaticProfile = automatic ? profile : null;
             if (automatic)
             {
-                string selected = preferredNode.Length > 0 ? preferredNode : await SelectAutomatic(profile, ct);
-                preferredNode = "";
+                string selected = preferredNode ?? await SelectAutomatic(profile, ct);
                 node = AutomaticSelection.Candidates(profile).FirstOrDefault(n => n.Id == selected)
                     ?? throw new UserError(AutomaticSelection.NoCandidates);
             }
@@ -175,15 +189,19 @@ public sealed class Tunnel
             ct.ThrowIfCancellationRequested();
             portReservation.Dispose();
             core = XraySession.Start(CoreExe, json, ProviderAssets.Cache.DirectoryFor(node), "kot. Xray", text => AppLog.Write("tunnel-core", text));
-            AppLog.Write("tunnel", "waiting for proxy health");
+            AppLog.Write("tunnel", "waiting for complete core startup and traffic health");
             using var handler = NetworkRequests.Handler(port);
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-            bool healthy = false, proxyHealthy = false, tunPermitted = false; int healthIndex = 0;
+            bool healthy = false, proxyHealthy = false, dnsHealthy = false, tunPermitted = false; int healthIndex = 0;
             using var healthDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct); healthDeadline.CancelAfter(healthTimeout);
             while (!healthDeadline.IsCancellationRequested)
             {
                 ct.ThrowIfCancellationRequested();
                 if (core.HasExited) throw new UserError(await ExitReason(core));
+                // The HTTP listener can already answer while TUN creation is
+                // still pending (and may fail 15 seconds later on Windows).
+                if (!core.XrayStarted || usesTun && !TunnelHealth.AdapterReady())
+                { await Task.Delay(250, ct); continue; }
                 try
                 {
                     string target = healthTargets[healthIndex++ % healthTargets.Length];
@@ -197,6 +215,8 @@ public sealed class Tunnel
                             // interface before checking resolution with the guard on.
                             if (profile.KillSwitch && !tunPermitted) { KillSwitch.Arm(KillSwitch.TunnelInterface()); tunPermitted = true; }
                             if (!await TunnelDns.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
+                            dnsHealthy = true;
+                            if (!await TunnelHealth.Probe(target, healthDeadline.Token)) { await Task.Delay(250, healthDeadline.Token); continue; }
                         }
                         healthy = true; break;
                     }
@@ -210,6 +230,8 @@ public sealed class Tunnel
             if (!healthy)
             {
                 CoreDetails = CoreDiagnostics.Tail(Clean(await core.ReadRecentOutput(false)));
+                if (!core.XrayStarted || usesTun && !TunnelHealth.AdapterReady()) throw new UserError("Xray не завершил запуск" + (usesTun ? ": TUN Windows не готов." : ".") + " " + CoreDiagnostics.Summary(CoreDetails));
+                if (usesTun && proxyHealthy && dnsHealthy) throw new UserError("Сервер доступен, но трафик через TUN Windows не проходит. Подключение не установлено.");
                 if (usesTun && proxyHealthy) throw new UserError("Сервер доступен, но DNS Windows через туннель не отвечает. Переподключитесь или проверьте настройки DNS.");
                 throw new UserError("Сервер не ответил на проверку соединения. " + (CoreDetails.Length > 0 ? CoreDiagnostics.Summary(CoreDetails) : "Попробуйте другой сервер."));
             }
@@ -246,9 +268,12 @@ public sealed class Tunnel
     string Clean(string text) => AppLog.Clean(CoreDiagnostics.Redact(text, activeNode, Store.Folder, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
     async Task<string> ExitReason(NativeCore observed)
     {
-        CoreDetails = CoreDiagnostics.Tail(Clean(await observed.ReadRecentOutput(true)));
+        string output = Clean(await observed.ReadRecentOutput(true));
+        CoreDetails = CoreDiagnostics.Tail(output);
         CoreExitCode = observed.ExitCode;
         AppLog.Write("tunnel", "unexpected exit=" + CoreExitCode);
+        if (usesTun && CoreDiagnostics.TunAdapterFailed(output))
+            return "Windows не удалось запустить TUN-адаптер kot. VPN не подключён.\n" + CoreDiagnostics.Summary(CoreDetails);
         return $"Xray завершился (код {CoreExitCode}, 0x{unchecked((uint)CoreExitCode.Value):X8}).\n" + CoreDiagnostics.Summary(CoreDetails);
     }
     async Task StopCore()

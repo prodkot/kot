@@ -20,6 +20,16 @@ if (args.Length == 1 && args[0] == "--stdin-reject")
 {
     Console.Error.WriteLine("FATAL rejected-before-reading"); return 23;
 }
+if (args.Length == 2 && args[0] == "--readiness")
+{
+    Console.WriteLine("Creating adapter");
+    Console.WriteLine("accepted tcp:example.com:443 [kot-health -> proxy]");
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    while (!File.Exists(args[1])) await Task.Delay(50, timeout.Token);
+    Console.WriteLine("2026/11/11 17:12:02.927 [Warning] core: Xray " + Kot.Core.XrayRuntime.Version + " started");
+    for (int i = 0; i < 100; i++) Console.WriteLine(new string('x', 1000));
+    return 0;
+}
 
 if (args.Length == 2 && args[0] == "--service-assets")
 {
@@ -89,6 +99,19 @@ async Task NaturalExit(int code)
 try
 {
     await ServiceIntegrityChecks.Run(fixtureExe, folder, Check);
+    string releaseReadiness = Path.Combine(folder, "release-readiness");
+    var listenerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var child = new NativeCore(fixtureExe, ["--readiness", releaseReadiness], folder, "readiness fixture",
+        line => { if (line.StartsWith("accepted tcp:", StringComparison.Ordinal)) listenerReady.TrySetResult(); }))
+    {
+        await listenerReady.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Check(!child.XrayStarted, "a live core with an accepting HTTP listener does not imply completed startup");
+        File.WriteAllText(releaseReadiness, "continue");
+        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        string tail = await child.ReadRecentOutput(true);
+        Check(child.ExitCode == 0 && child.XrayStarted && !tail.Contains("core: Xray"),
+            "complete startup is latched even after traffic evicts its log line");
+    }
     string payload = string.Concat(Enumerable.Repeat("конфигурация 出口 ", 32768));
     await Task.WhenAll(Enumerable.Range(0, 3).Select(async i =>
     {

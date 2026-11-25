@@ -1,10 +1,10 @@
 /* Optional pages share the same host bridge as the connection screen. */
 'use strict';
-window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeDialog,page}) => {
+window.KotClientTools = ({getModel,getPage,rpc,toast,openDialog,closeDialog,page}) => {
   const $=id=>document.getElementById(id);
   const formatBytes=n=>{n=Math.max(0,Number(n)||0);const units=['Б','КиБ','МиБ','ГиБ','ТиБ'];let i=0;while(n>=1024&&i<4){n/=1024;i++;}return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:i?1:0}).format(n)+' '+units[i];};
   const routeName=r=>({vpn:'Через VPN',direct:'Напрямую',unknown:'Маршрут не определён'}[r]||'Не определено');
-  let qrNode='',qrAttempt=0,importing=false,toolsStarting=false,sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='';
+  let qrNode='',qrAttempt=0,importing=false,toolsStarting='',sharing=false,lastStatisticsKey='',lastNodeKey='',lastResultKey='',lastStatisticsPeriod='session';
   async function perform(action,data={}) {try{return await rpc(action,data);}catch(e){toast(e.message);return null;}}
   function nodeOptions(){
     const model=getModel(),nodes=model.nodes||[],key=JSON.stringify(nodes.map(n=>[n.id,n.name]));
@@ -27,13 +27,14 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     $('qualityButton').disabled=model.state!=='connected';$('qualityButton').title=model.state==='connected'?'Проверить адрес через подключённый VPN':'Сначала подключите VPN';
     $('toolsNode').disabled=busy||model.state==='connected';$('toolsWebsite').disabled=busy;
     $('toolsConnectionNote').textContent=model.state==='connected'?'Проверяется текущее VPN-соединение.':'При отключённом VPN проверяется выбранный сервер без изменения подключения.';
-    $('runDiagnostics').disabled=busy||!model.nodes?.length;$('cancelTools').hidden=!t.busy;$('copyDiagnostics').disabled=!t.steps?.length||busy;
-    $('toolsStatus').textContent=t.status?(t.server?t.server+' · ':'')+t.status:'Запустите проверку, чтобы найти причину проблем с соединением.';
+    $('runDiagnostics').disabled=busy||!model.nodes?.length;$('runDiagnostics').textContent=toolsStarting==='runDiagnostics'||t.busy&&t.kind==='diagnostics'?'Проверка…':t.kind==='diagnostics'&&(t.status||t.error)?'Проверить ещё раз':'Проверить';$('cancelTools').hidden=!t.busy;$('copyDiagnostics').disabled=!t.steps?.length||busy;
+    $('toolsStatus').textContent=t.status?(t.server?t.server+' · ':'')+t.status:'';$('toolsStatus').hidden=!t.status;
     $('toolsError').textContent=t.error||'';$('toolsError').hidden=!t.error;
     const key=JSON.stringify(t.steps||[]);if(key!==lastResultKey){lastResultKey=key;$('toolsResults').replaceChildren(...(t.steps||[]).map(s=>{const row=document.createElement('div');row.className='tool-result';row.dataset.status=s.status;const name=document.createElement('strong');name.textContent=s.name+(s.status==='ok'?' · OK':s.status==='error'?' · Ошибка':s.status==='checking'?' · Проверка':s.status==='cancelled'?' · Отменено':'');const detail=document.createElement('p');detail.textContent=s.detail;row.append(name,detail);return row;}));}
-    $('testQuality').disabled=busy||model.state!=='connected';$('cancelQuality').hidden=!t.busy||!quality;
+    $('testQuality').disabled=busy||model.state!=='connected';$('testQuality').textContent=toolsStarting==='testConnection'||t.busy&&quality?'Проверка…':quality&&(t.quality||t.status||t.error)?'Проверить ещё раз':'Проверить';$('cancelQuality').hidden=!t.busy||!quality;
     const q=quality?t.quality:null,settings=model.ping?.settings||{};
-    $('qualityAddress').textContent=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
+    const address=quality&&t.address?t.address:settings.url||'https://www.gstatic.com/generate_204';
+    if($('qualityAddress').textContent!==address)$('qualityAddress').textContent=address;
     $('qualityNote').textContent=model.state==='connected'?'HTTP-проверка через подключённый VPN. Адрес, число попыток и таймаут берутся из настроек пинга.':'Подключите VPN, чтобы проверить адрес.';
     $('qualityMedian').textContent=q?.medianMs!=null?q.medianMs+' мс':'Нет данных';
     $('qualitySuccess').textContent=q?q.successes+' / '+q.attempts+' ('+Math.round(q.successes/q.attempts*100)+'%)':'Нет данных';
@@ -46,12 +47,12 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
   $('qualityDialog').addEventListener('close',()=>{if(getModel().tools?.busy&&getModel().tools.kind==='connection')perform('cancelTools');});
   for(const id of ['cancelTools','cancelQuality'])$(id).addEventListener('click',()=>perform('cancelTools'));
   $('copyDiagnostics').addEventListener('click',async()=>{try{await rpc('copyDiagnostics');toast('Результат скопирован');}catch(e){toast(e.message);}});
-  async function start(action,id){if(toolsStarting||getModel().tools?.busy)return;const text=$('toolsWebsite').value.trim();try{const url=new URL(text);if(text.length>2048||url.protocol!=='https:'||url.username||url.password||url.hash)throw new Error();}catch{toast('Нужен HTTPS-адрес без логина, пароля и фрагмента');return;}toolsStarting=true;render();try{await rpc(action,{id,url:text});}catch(e){toast(e.message);}finally{toolsStarting=false;render();}}
+  async function start(action,id){if(toolsStarting||getModel().tools?.busy)return;const text=$('toolsWebsite').value.trim();try{const url=new URL(text);if(text.length>2048||url.protocol!=='https:'||url.username||url.password||url.hash)throw new Error();}catch{toast('Нужен HTTPS-адрес без логина, пароля и фрагмента');return;}toolsStarting=action;render();try{await rpc(action,{id,url:text});}catch(e){toast(e.message);}finally{toolsStarting='';render();}}
   $('toolsForm').addEventListener('submit',e=>{e.preventDefault();start('runDiagnostics',$('toolsNode').value);});
   async function startCheck(){
     if(toolsStarting||getModel().tools?.busy||getModel().state!=='connected')return;
-    toolsStarting=true;render();
-    try{await rpc('testConnection');}catch(e){toast(e.message);}finally{toolsStarting=false;render();}
+    toolsStarting='testConnection';render();
+    try{await rpc('testConnection');}catch(e){toast(e.message);}finally{toolsStarting='';render();}
   }
   $('testQuality').addEventListener('click',startCheck);
   async function share(id){
@@ -82,6 +83,7 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     canvas.setAttribute('aria-label',(bars?'Трафик по дням':'Скорость')+'. Скачано и отправлено. Максимум '+formatBytes(max)+(bars?'':' в секунду'));
   }
   function renderStatistics(period){
+    lastStatisticsPeriod=period; // Redraw the last rendered period after resize, without calling the page controller.
     if(getPage()!=='statistics')return;const model=getModel(),detail=model.statistics?.detail;
     const today=new Date(),dayKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),lastDay=dayKey(today),first=new Date(today);first.setDate(first.getDate()-(period==='week'?6:29));const firstDay=dayKey(first);
     const key=JSON.stringify([period,detail,lastDay,getModel().settings?.theme,$('trafficChart').clientWidth]);if(key===lastStatisticsKey)return;lastStatisticsKey=key;
@@ -96,6 +98,6 @@ window.KotClientTools = ({getModel,getPage,getPeriod,rpc,toast,openDialog,closeD
     $('trafficChartCaption').textContent=points.length?'Скачано: цвет акцента · отправлено: синий. '+(session?'Пробелы означают отсутствие измерений.':'Суммарный трафик ядра; итоги выше включают выбранный период.'):'График появится после накопления данных.';
     const labels=session?(points.length?[new Date(points[0].time).toLocaleTimeString('ru-RU'),new Date(points[points.length-1].time).toLocaleTimeString('ru-RU')]:[]):days.length?[new Date(days[0].date+'T12:00:00').toLocaleDateString('ru-RU'),new Date(days[days.length-1].date+'T12:00:00').toLocaleDateString('ru-RU')]:[];paint(points,!session,labels);
   }
-  new ResizeObserver(()=>{lastStatisticsKey='';if(getPage()==='statistics')renderStatistics(getPeriod());}).observe($('trafficChart'));
+  new ResizeObserver(()=>{lastStatisticsKey='';if(getPage()==='statistics')renderStatistics(lastStatisticsPeriod);}).observe($('trafficChart'));
   return {render,renderStatistics,share};
 };

@@ -95,8 +95,10 @@ def check():
                     frame.locator('[data-page=servers]').click()
                     expect(frame.locator('#serverList .country img')).to_have_count(4)
                     assert frame.locator('#serverList .country img').evaluate_all('async images => {await Promise.all(images.map(i=>i.decode()));return images.every(i=>i.naturalWidth>0);}')
-                    frame.locator('.favorite-node').nth(1).click()
-                    expect(frame.locator('.favorite-node').nth(1)).to_have_attribute('aria-pressed', 'true')
+                    expect(frame.locator('.favorite-node').nth(1)).to_be_hidden()
+                    frame.locator('#autoServer').click()
+                    expect(frame.locator('#selectedName')).to_have_text('Авто')
+                    frame.locator('[data-page=servers]').click()
                     frame.locator('#serverSearch').fill('Латвия')
                     expect(frame.locator('#serverList .server-card')).to_have_count(1)
                     frame.locator('#serverList .server-card').click()
@@ -172,6 +174,12 @@ def check():
                     expect(frame.locator('#toast')).to_have_text('Это действие доступно в установленной программе.')
                     frame.locator('#closeQuality').click()
                     frame.locator('.qr-node').first.click()
+                    frame.locator('#nodeMenuJson').click()
+                    expect(frame.locator('#nodeJsonNote')).to_have_text('В демоверсии нет конфигураций подключения.')
+                    expect(frame.locator('#copyNodeJson')).to_be_disabled()
+                    frame.locator('#closeNodeJson').click()
+                    frame.locator('.qr-node').first.click()
+                    frame.locator('#nodeMenuQr').click()
                     expect(frame.locator('#shareQrError')).to_have_text('Это действие доступно в установленной программе.')
                     frame.locator('#closeShareQr').click()
                     frame.locator('[data-page=settings]').click()
@@ -188,6 +196,10 @@ def check():
                     frame.locator('#routingImportForm [type=submit]').click()
                     expect(frame.locator('#routingImportError')).to_contain_text('В демо ссылки не загружаются')
                     frame.locator('#cancelRoutingImport').click()
+                    expect(frame.locator('#discardDialog')).to_be_visible()
+                    expect(frame.locator('#keepEditing')).to_be_focused()
+                    frame.locator('#discardChanges').click()
+                    expect(frame.locator('#routingImportDialog')).not_to_be_visible()
                     frame.locator('#routingActive').select_option('')
                     expect(frame.locator('#routingEmpty')).to_be_visible()
                     frame.locator('#closeRouting').click()
@@ -219,6 +231,21 @@ def check():
                     page.wait_for_timeout(1000)
                     expect(frame.locator('#stateLabel')).to_have_text('Не подключено')
                     frame.locator('[data-page=servers]').click()
+                    # Independent row requests retain DOM, deduplicate and queue in the demo too.
+                    state=frame.locator('#serverList').evaluate('''async list=>{
+                      const rows=[...list.children],pings=rows.map(r=>r.querySelector('.ping-node'));
+                      pings[0].click();pings[0].click();await Promise.resolve();
+                      const secondEnabled=!pings[1].disabled;
+                      pings[1].click();pings[1].click();await Promise.resolve();
+                      return {secondEnabled,same:rows.every((r,i)=>r===list.children[i]),
+                        statuses:pings.map(p=>p.dataset.status),progress:document.getElementById('pingProgress').textContent};
+                    }''')
+                    assert state['secondEnabled'] and state['same'] and state['statuses'][:2]==['checking','queued'],state
+                    assert state['progress']=='0 / 2',state
+                    expect(frame.locator('#pingAll')).to_be_enabled(timeout=5000)
+                    for index in range(2):
+                        expect(frame.locator('.ping-node').nth(index)).to_have_attribute('data-status','ok')
+                    assert frame.locator('.ping-node').evaluate_all('(pings)=>pings.slice(2).map(p=>p.dataset.status)') == state['statuses'][2:]
                     frame.locator('#pingAll').click()
                     expect(frame.locator('#cancelPing')).to_be_visible()
                     frame.locator('#cancelPing').click()
