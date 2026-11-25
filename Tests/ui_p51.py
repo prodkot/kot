@@ -300,7 +300,11 @@ def review_controls(browser):
         expect(p.locator('#shareQrLink')).to_have_value('vless://fixture@example.org:443')
         p.locator('#copyNodeLink').click()
         p.wait_for_function("fixtureRequests.some(r=>r.action==='copyNodeLink'&&r.data.id==='node')")
-        assert actions.evaluate('e=>getComputedStyle(e).justifyContent')=='flex-end'
+        alignment=actions.evaluate('''e=>({value:getComputedStyle(e).justifyContent,
+          right:e.getBoundingClientRect().right,buttonRight:e.lastElementChild.getBoundingClientRect().right})''')
+        # Chromium 159 serializes flex-end as flow-end; verify the rendered edge too.
+        assert alignment['value'] in ('flex-end','flow-end'),alignment
+        assert abs(alignment['right']-alignment['buttonRight'])<1,alignment
         dismiss(p)
     done(p);print('PASS P5.1 review: destructive contrast, 36px targets, help keyboard/scroll, QR native copy and secondary links',flush=True)
 
