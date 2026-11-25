@@ -121,7 +121,11 @@ window.KotDialogUI = ({rememberFocus,onStackChange}) => {
   }
   function dismissDiscard(){pendingDiscard=null;close($('discardDialog'));}
   $('closeDiscard').addEventListener('click',dismissDiscard);$('keepEditing').addEventListener('click',dismissDiscard);
-  $('discardChanges').addEventListener('click',()=>{const target=pendingDiscard;pendingDiscard=null;close($('discardDialog'));if(target)close(target);});
+  $('discardChanges').addEventListener('click',()=>{const target=pendingDiscard;pendingDiscard=null;
+    // Both close animations run together; either finalizer must use the same outside return target.
+    if(target){const parentState=states.get(target),discardState=states.get($('discardDialog'));if(parentState&&discardState)discardState.focus=parentState.focus;}
+    close($('discardDialog'));if(target)close(target);
+  });
   function positionHelp(){
     if(!help||!helpButton)return;
     const r=helpButton.getBoundingClientRect(),edge=12,width=Math.min(420,innerWidth-24);
