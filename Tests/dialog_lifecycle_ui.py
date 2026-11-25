@@ -135,6 +135,33 @@ def mechanics(browser, source, rows, cycles, modes=None):
 def applications(browser, source, rows, cycles):
     p=boot(browser,source)
     try:
+        # Exercise both possible completion orders without depending on frame timing.
+        for parent_first in (True, False):
+            native_before=p.evaluate("modalEvidence.native.filter(x=>x==='discardDialog').length")
+            p.evaluate('''parentFirst=>{
+              advancedButton.focus();advancedButton.click();
+              bypassDomains.value='draft.example';closeAdvanced.click();discardChanges.click();
+              const parent=modalStates.get(advancedDialog),discard=modalStates.get(discardDialog);
+              if(!parent.finish||!discard.finish)throw new Error('both closes must be pending');
+              if(parentFirst){parent.finish();discard.finish();}else{discard.finish();parent.finish();}
+            }''',parent_first)
+            expect(p.locator('dialog[open]')).to_have_count(0)
+            expect(p.locator('#advancedButton')).to_be_focused()
+            p.wait_for_function("n=>modalEvidence.native.filter(x=>x==='discardDialog').length===n+1",arg=native_before)
+            expect(p.locator('#advancedButton')).to_be_focused()
+            rows.append({'test':'nested-close-order','parent_first':parent_first})
+        for cancel in ('Escape','closeDiscard','keepEditing'):
+            p.locator('#advancedButton').click();p.locator('#bypassDomains').fill('draft.example')
+            p.locator('#closeAdvanced').click();expect(p.locator('#keepEditing')).to_be_focused()
+            if cancel=='Escape':p.keyboard.press('Escape')
+            else:p.locator('#'+cancel).click()
+            expect(p.locator('#discardDialog')).not_to_be_visible()
+            expect(p.locator('#closeAdvanced')).to_be_focused()
+            expect(p.locator('#bypassDomains')).to_have_value('draft.example')
+            p.locator('#closeAdvanced').click();p.locator('#discardChanges').click()
+            expect(p.locator('dialog[open]')).to_have_count(0)
+            expect(p.locator('#advancedButton')).to_be_focused()
+            rows.append({'test':'discard-cancel','action':cancel})
         for i in range(cycles):
             print('RUN application',i+1,'pending',flush=True)
             # Genuine pending RPC, real button handlers, then synchronous fast close.
