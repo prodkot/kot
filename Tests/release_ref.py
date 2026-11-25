@@ -17,8 +17,7 @@ class ReleaseReference(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.git('init', '-b', 'main')
-        (self.root / 'Core').mkdir()
-        (self.root / 'Core/ClientIdentity.cs').write_text('public const string Version = "0.8.0";')
+        (self.root / 'Directory.Build.props').write_text('<Project><PropertyGroup><VersionPrefix>0.8.0</VersionPrefix></PropertyGroup></Project>')
         self.git('add', '.')
         self.git('-c', 'user.name=Release fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'main')
         self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
@@ -36,6 +35,12 @@ class ReleaseReference(unittest.TestCase):
 
     def test_tag_on_main(self):
         self.assertEqual(release_ref.check(self.root, self.tag), '0.8.0')
+
+    def test_prerelease_cannot_be_published_as_stable(self):
+        props = self.root / 'Directory.Build.props'
+        props.write_text(props.read_text().replace('</PropertyGroup>', '<KotChannel>Beta</KotChannel><KotPrereleaseNumber>1</KotPrereleaseNumber></PropertyGroup>'))
+        with self.assertRaisesRegex(ValueError, 'prerelease'):
+            release_ref.check(self.root, self.manual)
 
     def test_tag_on_an_earlier_main_commit(self):
         previous = self.git('rev-parse', 'HEAD')

@@ -3,10 +3,11 @@ import ast
 import os
 import re
 from pathlib import Path
+import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = re.search(r'Version\s*=\s*"([0-9.]+)"', (ROOT/'Core/ClientIdentity.cs').read_text()).group(1)
+VERSION = ET.parse(ROOT / "Directory.Build.props").findtext("PropertyGroup/VersionPrefix")
 def literal(path, name):
     return next(ast.literal_eval(n.value) for n in ast.parse((ROOT / path).read_text()).body
                 if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))
@@ -20,7 +21,7 @@ window.chrome=''')
 MOCK = MOCK.replace("window.statisticsRequests.push(msg);setTimeout(()=>{window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:true}});},10);", '''
 window.fixtureRequests.push(msg);
 setTimeout(()=>{
-const data=msg.action==='readSubscription'?{id:'s',name:model.name,address:'https://example.org/subscription',local:false}:msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
+const data=msg.action==='readNodeJson'?{text:'{}',note:'После разбора',revision:'fixture'}:msg.action==='readSubscription'?{id:'s',name:model.name,address:'https://example.org/subscription',local:false}:msg.action==='readHwid'?{hwid:'A'.repeat(64),name:'kot. windows'}:msg.action==='readNodeQr'?{name:'Frankfurt',link:'vless://fixture@example.org:443',image:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='}:undefined;
 window.fixtureStatistics();listener({data:{kind:'reply',id:msg.id,ok:msg.action!==window.fixtureReject,error:'Не удалось сохранить настройки.',data}});
 },window.fixtureDelay||10);
 ''')
@@ -37,7 +38,7 @@ PAGES = ['home', 'servers', 'statistics', 'diagnostics', 'logs', 'services', 'se
 DIALOGS = [
  ('aboutDialog', 'settings', ['#aboutButton']),
  ('astraDialog', 'settings', ['#aboutButton', '#astraCredit']),
- ('addDialog', 'home', ['.sidebar [data-open-add]']),
+ ('addDialog', 'servers', ['#page-servers [data-open-add]']),
  ('advancedDialog', 'settings', ['#advancedButton']),
  ('deviceDialog', 'settings', ['#advancedButton', '#hwidButton']),
  ('pingDialog', 'servers', ['#pingSettings']),
@@ -51,7 +52,8 @@ DIALOGS = [
  ('routingRemoveDialog', 'settings', ['#routingButton', '#routingRemove']),
  ('geoIpDialog', 'settings', ['#routingButton', '#geoIpButton']),
  ('qualityDialog', 'servers', ['#qualityButton']),
- ('shareQrDialog', 'servers', ['[data-node=node0] .qr-node']),
+ ('shareQrDialog', 'servers', ['[data-node=node0] .qr-node', '#nodeMenuQr']),
+ ('nodeJsonDialog', 'servers', ['[data-node=node0] .qr-node', '#nodeMenuJson']),
  ('serviceSettingsDialog-zapret', 'services', ['[data-service-tab=zapret]', '#zapretSettings']),
  ('serviceSettingsDialog-telegram', 'services', ['[data-service-tab=telegram]', '#telegramSettings']),
  ('zapretTestDialog', 'services', ['[data-service-tab=zapret]', '#zapretTest']),
@@ -63,8 +65,11 @@ def close_all(page):
     for _ in range(6):
         if page.locator('dialog[open]').count() == 0:
             return
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(160)
+        if page.locator('#discardDialog').is_visible():
+            page.locator('#discardChanges').click()
+        else:
+            page.keyboard.press('Escape')
+        page.wait_for_timeout(240)
     assert not page.locator('dialog[open]').count(), 'dialog stack cannot be dismissed'
 
 def geometry(page, selector):

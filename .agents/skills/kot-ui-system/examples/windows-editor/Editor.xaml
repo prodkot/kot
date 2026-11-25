@@ -1,0 +1,15 @@
+<Window x:Class="KotEditor.Editor"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+ Title="Монтажная" Width="820" Height="600" MinWidth="520" MinHeight="540"
+ Background="{DynamicResource Kot.bg}" Loaded="Start">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource Kot.side}" Padding="{DynamicResource Kot.space-xs.inset}">
+      <TextBlock x:Name="Status" Text="Монтажный лист" Foreground="{DynamicResource Kot.text}"
+        FontFamily="{DynamicResource Kot.weight-body.face}" FontWeight="{DynamicResource Kot.weight-body}"
+        FontSize="{DynamicResource Kot.font-detail}"/>
+    </Border>
+    <wv:WebView2 x:Name="Canvas"/>
+  </DockPanel>
+</Window>

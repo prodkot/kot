@@ -95,14 +95,27 @@ class SiteTests(unittest.TestCase):
             self.assertIn("frame-src 'none'", demo)
             self.assertIn("font-src data:", demo)
             from xml.etree import ElementTree
-            project = ElementTree.parse(ROOT.parent / 'Windows/Kot.Windows.csproj')
-            self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/Version")}"', demo)
-            self.assertIn("data:font/ttf;base64,", demo)
+            project = ElementTree.parse(ROOT.parent / 'Directory.Build.props')
+            self.assertIn(f'data-demo-version="{project.findtext("PropertyGroup/VersionPrefix")}"', demo)
+            self.assertEqual((dest / "demo/fonts/Manrope.ttf").read_bytes(), (ROOT.parent / "Windows/ui/fonts/Manrope.ttf").read_bytes())
+            self.assertIn("data:font/ttf;base64,", (dest / "demo/styles/client.css").read_text())
+            self.assertEqual((dest / "demo/styles/tokens.css").read_bytes(), (ROOT.parent / "Windows/ui/styles/tokens.css").read_bytes())
             self.assertNotIn('fonts/Manrope.ttf', demo)
             self.assertLess(demo.index('src="bridge.js"'), demo.index('src="client.js"'))
-            self.assertEqual((dest / "demo/client.js").read_bytes(), (ROOT.parent / "Windows/ui/app.js").read_bytes())
-            self.assertEqual((dest / "demo/client-tools.js").read_bytes(), (ROOT.parent / "Windows/ui/client-tools.js").read_bytes())
-            self.assertEqual((dest / "demo/services.js").read_bytes(), (ROOT.parent / "Windows/ui/services.js").read_bytes())
+            for source in (ROOT.parent / 'Windows/ui').glob('*.js'):
+                target = 'client.js' if source.name == 'app.js' else source.name
+                self.assertEqual((dest / 'demo' / target).read_bytes(), source.read_bytes(), target)
+            references = []
+            class DemoReferences(HTMLParser):
+                def handle_starttag(self, tag, attrs):
+                    values = dict(attrs)
+                    if tag == 'script' and 'src' in values:
+                        references.append(values['src'])
+                    if tag == 'link' and values.get('rel') == 'stylesheet':
+                        references.append(values['href'])
+            DemoReferences().feed(demo)
+            for reference in references:
+                self.assertTrue((dest / 'demo' / reference).is_file(), reference)
             self.assertTrue((dest / "demo/demo.css").is_file())
             self.assertTrue((dest / "demo/bridge.js").is_file())
             self.assertEqual((dest / "demo/flags/de.svg").read_bytes(), (ROOT.parent / "Windows/ui/flags/de.svg").read_bytes())

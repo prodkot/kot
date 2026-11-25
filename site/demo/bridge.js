@@ -19,7 +19,9 @@
     updateStatistics();
     model.telemetry.count = model.telemetry.connections.length;
     model.geoIp.countries = [...new Set(model.routing.profiles.flatMap(profile => ['directCountries','proxyCountries','blockCountries'].flatMap(key => profile.rules[key] || [])))].map(code => ({ code, ready: false, updated: null }));
-    emit({ kind: 'snapshot', data: model });
+    const nextNode = model.selected === 'auto' ? null : model.nodes.find(n => n.id === model.selected)?.id;
+    const activeNode = model.state === 'connected' ? model.nodes.find(n => n.id === (nextNode || model.automaticNode)) : null;
+    emit({ kind: 'snapshot', data: { ...model, activeNode, nextNode, needsSelection: false } });
     document.getElementById('demo-failure').disabled = model.state !== 'connected';
   }
   function log(text, level = 'INFO') {
@@ -67,7 +69,7 @@
     }));
   }
   function reset() {
-    timers.forEach(clearTimeout); timers.clear(); tick = 0; subscriptionSequence = 1; routingSequence = 0;
+    timers.forEach(clearTimeout); timers.clear(); pingQueue=[]; tick = 0; subscriptionSequence = 1; routingSequence = 0;
     model = {
       version, name: 'Личная подписка', hasSubscription: true, nodes: samples(), selected: 'nl', automaticNode: 'nl',
       state: 'idle', error: '', warnings: [], backgroundError: '', favorites: [], updated: null,
@@ -85,8 +87,15 @@
     if (!pages.includes(page)) return;
     emit({ kind: 'navigate', page }); notify({ page });
   }
+  let pingQueue=[];
   function ping(nodes) {
-    if (model.ping.busy || !nodes.length) return;
+    nodes=nodes.filter(node=>!['checking','queued'].includes(node.ping?.status));
+    if (!nodes.length) return;
+    if (model.ping.busy) {
+      nodes.forEach(node=>{node.ping={status:'queued'};pingQueue.push(node);});
+      model.ping.total+=nodes.length;return;
+    }
+    pingQueue=[];
     model.ping.busy = true; model.ping.done = 0; model.ping.total = nodes.length;
     nodes.forEach(node => { node.ping = { status: 'checking' }; });
     let index = 0;
@@ -95,7 +104,9 @@
       node.ping = node.protocol === 'hysteria2' && model.ping.settings.mode === 'tcp'
         ? { status: 'unsupported', mode: 'tcp', error: 'Hysteria2 использует UDP. Выбери HTTP.' }
         : { status: 'ok', ms: node.latency, mode: model.ping.settings.mode, successes: model.ping.settings.attempts, attempts: model.ping.settings.attempts };
+      if (pingQueue.length) { nodes.push(...pingQueue); pingQueue=[]; }
       model.ping.done = index; model.ping.busy = index < nodes.length;
+      if (model.ping.busy) nodes[index].ping={status:'checking'};
       if (model.ping.busy) later('ping', next, 280);
       else { chooseAuto(); log('Проверка серверов завершена. Значения пинга демонстрационные.'); }
       snapshot();
@@ -103,8 +114,8 @@
     later('ping', next, 400);
   }
   function stopPing() {
-    stop('ping'); model.ping.busy = false;
-    model.nodes.forEach(node => { if (node.ping.status === 'checking') node.ping = { status: 'cancelled' }; });
+    stop('ping'); pingQueue=[]; model.ping.busy = false;
+    model.nodes.forEach(node => { if (['checking','queued'].includes(node.ping.status)) node.ping = { status: 'cancelled' }; });
   }
   async function action(name, data) {
     switch (name) {
@@ -138,10 +149,10 @@
         if (data.key === 'mode' && model.state === 'connected') connections();
         if (data.key === 'killSwitch' && !data.value) { model.settings.killSwitchActive = false; model.error = ''; }
         break;
-      case 'pingAll': ping(model.nodes); break;
+      case 'pingAll': if (!model.ping.busy) ping([...model.nodes]); break;
       case 'pingNode': ping(model.nodes.filter(node => node.id === data.id)); break;
       case 'cancelPing': stopPing(); break;
-      case 'pingSettings': model.ping.settings = { ...data }; break;
+      case 'pingSettings': stopPing(); model.ping.settings = { ...data }; break;
       case 'automationSettings': model.automation = { ...data }; break;
       case 'geoIpSettings': model.geoIp.refreshHours = data.refreshHours; break;
       case 'geoIpRefresh': throw Error('Загрузка баз GeoIP доступна в установленной программе. В демо сетевых запросов нет.');
@@ -215,6 +226,8 @@
         await new Promise(resolve => setTimeout(resolve, 500));
         model.updates.busy = false; model.updates.status = `Демо kot. ${version}. Настоящие обновления доступны в программе.`; break;
       case 'cancelUpdate': model.updates.busy = false; break;
+      case 'readNodeJson': return { text: null, note: 'В демоверсии нет конфигураций подключения.', revision: null };
+      case 'copyNodeJson': throw Error('В демоверсии нет конфигураций подключения.');
       case 'readHwid': return { hwid: 'DEMO-DEVICE-ID', name: `kot. windows (${version}) · пример` };
       case 'copyHwid': case 'copyLog': throw Error('Это пример. Копирование доступно в установленной программе.');
       case 'backupExport': case 'backupImport': throw Error('Резервные копии доступны в установленной программе.');
@@ -243,8 +256,9 @@
     snapshot(); navigate('home');
   });
   document.querySelectorAll('[data-page]').forEach(button => { button.setAttribute('aria-label', button.textContent.trim()); });
-  document.querySelector('#deviceDialog .dialog-note').textContent = 'Это вымышленный ID. Демо не читает данные твоего устройства.';
-  document.querySelector('#onlineUpdateDialog > .dialog-note:last-child').textContent = 'На сайте ничего не скачивается и не устанавливается. Эта проверка показывает только интерфейс.';
+  document.querySelector('#advancedDialogHelp .dialog-note:last-child').textContent = 'Это вымышленный ID. Демо не читает данные твоего устройства.';
+  document.querySelector('#onlineUpdateDialog .update-consequence').textContent = 'На сайте ничего не скачивается и не устанавливается.';
+  document.querySelector('#onlineUpdateDialogHelp .dialog-note').textContent = 'Эта проверка показывает только интерфейс. Настоящие обновления доступны в установленной программе.';
   document.getElementById('addTitle').textContent = 'Добавить пример';
   document.querySelector('label[for=profileLink]').textContent = 'Пример ссылки';
   document.getElementById('profileLink').placeholder = 'Настоящая ссылка не нужна';

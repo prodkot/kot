@@ -11,12 +11,12 @@ public sealed partial class MainWindow
     bool readingTelemetry;
     int liveSession = -1;
     UsageTracker usage = new(new UsageArchive());
-    readonly string usagePath = Path.Combine(Store.Folder, "traffic-history.json");
+    readonly string usagePath;
     string statisticsError = "";
     bool statisticsWritable = true;
     long lastStatisticsSave;
     DetailedUsageTracker details = new(new DetailedArchive());
-    readonly string detailsPath = Path.Combine(Store.Folder, "traffic-details.json");
+    readonly string detailsPath;
     string detailsError = "";
     bool detailsWritable = true;
     long lastDetailsSave;

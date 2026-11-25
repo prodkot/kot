@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
 import json
+import re
 from playwright.sync_api import sync_playwright, expect
 from build import build
 
@@ -34,19 +35,64 @@ def check():
                     page.on('response', lambda response: failures.append(response.url) if response.status >= 400 else None)
                     page.goto(url, wait_until='networkidle')
                     page.evaluate('() => document.fonts.ready')
-                    # The timer starts itself, then gives every manual action a fresh five seconds.
+                    # Selection stays put over time, including after a manual change.
                     page.clock.install()
-                    page.clock.fast_forward(5300)
+                    page.clock.fast_forward(15000)
+                    expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
+                    page.locator('#view-settings').click()
+                    page.clock.fast_forward(15000)
+                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
+                    page.locator('[data-explore-next]').click()
+                    expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
+                    page.locator('#view-home').press('ArrowRight')
                     expect(page.locator('#view-servers')).to_have_attribute('aria-selected', 'true')
-                    page.locator('#view-settings').click()
-                    page.clock.fast_forward(4900)
-                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
-                    page.locator('#view-settings').click()
-                    page.clock.fast_forward(4900)
-                    expect(page.locator('#view-settings')).to_have_attribute('aria-selected', 'true')
-                    page.clock.fast_forward(200)
+                    page.close()
+
+                    page = browser.new_page(viewport={'width': 375, 'height': 900}, has_touch=True)
+                    page.goto(url, wait_until='networkidle')
+                    page.clock.install()
+                    page.clock.fast_forward(15000)
+                    expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
+                    page.locator('[data-zoom]').evaluate("""element => {
+                        element.dispatchEvent(new PointerEvent('pointerdown', {pointerType: 'touch', isPrimary: true, pointerId: 1, clientX: 250, clientY: 100}));
+                        element.dispatchEvent(new PointerEvent('pointerup', {pointerType: 'touch', isPrimary: true, pointerId: 1, clientX: 150, clientY: 100}));
+                    }""")
+                    expect(page.locator('#view-servers')).to_have_attribute('aria-selected', 'true')
+                    page.clock.fast_forward(15000)
+                    expect(page.locator('#view-servers')).to_have_attribute('aria-selected', 'true')
+                    page.locator('[data-explore-prev]').click()
                     expect(page.locator('#view-home')).to_have_attribute('aria-selected', 'true')
                     page.close()
+
+                    # Check the selected screenshot, caption, counter and actual demo destination.
+                    screens = [
+                        ('home', 'Подключение', 'Выбираешь сервер и подключаешься', 'home'),
+                        ('servers', 'Серверы', 'Подписки и отдельные серверы в одном списке', 'servers'),
+                        ('routing', 'Правила', 'Выбираешь, какие сайты и приложения идут через сервер', 'settings'),
+                        ('statistics', 'Статистика', 'Сколько скачал и отправил', 'statistics'),
+                        ('settings', 'Настройки', 'Автозапуск, подключение при старте', 'settings'),
+                    ]
+                    for width in (1440, 375):
+                        page = browser.new_page(viewport={'width': width, 'height': 900}, reduced_motion='reduce', has_touch=width == 375)
+                        page.on('pageerror', lambda error: errors.append(str(error)))
+                        page.goto(url, wait_until='networkidle')
+                        frame = page.frame_locator('#client-demo')
+                        for position, (key, title, description, destination) in enumerate(screens, 1):
+                            tab = page.locator('#view-' + key)
+                            tab.click()
+                            expect(tab).to_have_attribute('aria-selected', 'true')
+                            expect(page.locator('[data-explorer-image]')).to_have_attribute('data-screen-key', key)
+                            expect(page.locator('[data-explorer-image]')).to_have_attribute('src', re.compile('/' + key + r'\.png$'))
+                            expect(page.locator('[data-explorer-number]')).to_have_text(f'{position:02}')
+                            expect(page.locator('[data-explorer-title]')).to_have_text(title)
+                            expect(page.locator('[data-explorer-copy]')).to_contain_text(description)
+                            expect(page.locator('[data-explorer-demo]')).to_have_attribute('data-demo-page', destination)
+                            page.locator('[data-explorer-demo]').click()
+                            expect(page.locator('[data-demo-loading]')).to_be_hidden()
+                            expect(frame.locator('#page-' + destination)).to_be_visible()
+                            page.locator('[data-close-demo]').click()
+                            expect(page.locator('#app-demo')).to_be_hidden()
+                        page.close()
 
                     page = browser.new_page(viewport={'width': 1440, 'height': 1000}, reduced_motion='reduce')
                     page.on('pageerror', lambda error: errors.append(str(error)))
@@ -96,7 +142,7 @@ def check():
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)
-    print('Viewer: Pages subpath, autoplay, repeated 5s pause, reduced motion, square colors, 7 viewport widths, cat text/restore, stable button position and no-JS downloads passed.')
+    print('Viewer: Pages subpath, manual selection stays fixed, reduced motion, square colors, 7 viewport widths, cat text/restore, stable button position and no-JS downloads passed.')
 
 
 if __name__ == '__main__':

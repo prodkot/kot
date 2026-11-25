@@ -4,6 +4,7 @@ namespace Kot.Windows;
 public sealed class PingService
 {
     readonly Dictionary<string, PingResult> results = [];
+    readonly Queue<(Node Node, PingOptions Options)> queued = new();
     CancellationTokenSource? attempt;
     Task running = Task.CompletedTask;
     public bool Busy { get; private set; }
@@ -19,6 +20,17 @@ public sealed class PingService
         Cancel(); await running;
         if (clear) { results.Clear(); Done = Total = 0; Error = ""; Changed?.Invoke(); }
     }
+    public void StartNode(Node node, PingOptions options)
+    {
+        options.Validate();
+        if (!Busy) { Start([node], options); return; }
+        if (attempt?.IsCancellationRequested != false)
+            throw new UserError("Проверка останавливается. Повторите после остановки.");
+        if (Get(node.Id)?.Status is "queued" or "checking") return;
+        queued.Enqueue((node, options));
+        results[node.Id] = new("queued", Mode: options.Mode);
+        Total++; Changed?.Invoke();
+    }
     public void Start(List<Node> nodes, PingOptions options)
     {
         if (Busy) throw new UserError("Проверка уже идёт. Остановите её перед новым запуском.");
@@ -27,7 +39,8 @@ public sealed class PingService
         var context = SynchronizationContext.Current ?? throw new InvalidOperationException("Ping requires UI context.");
         attempt = new CancellationTokenSource();
         Busy = true; Done = 0; Total = nodes.Count; Error = "";
-        foreach (var n in nodes) results[n.Id] = new("queued", Mode: options.Mode);
+        string initialStatus = nodes.Count == 1 ? "checking" : "queued";
+        foreach (var n in nodes) results[n.Id] = new(initialStatus, Mode: options.Mode);
         Changed?.Invoke();
         running = Run(nodes.ToArray(), options, attempt, context);
     }
@@ -44,22 +57,32 @@ public sealed class PingService
         AppLog.Write("ping", $"start count={nodes.Length} mode={options.Mode} timeout={options.TimeoutMs} attempts={options.Attempts} parallel={options.Parallelism}");
         try
         {
-            await Latency.Batch(nodes, options.Parallelism, async (node, token) =>
+            while (true)
             {
-                await Publish(() => results[node.Id] = new("checking", Mode: options.Mode));
-                PingResult result;
-                try { result = await Measure(node, options, token); }
-                catch (OperationCanceledException) when (token.IsCancellationRequested) { result = new("cancelled", Error: "Отменено", Mode: options.Mode); }
-                catch (Exception ex) { AppLog.Error("ping " + node.Id, ex); result = new("error", Error: AppLog.Clean(Store.Friendly(ex)), Mode: options.Mode); }
-                AppLog.Write("ping", $"node={node.Id} status={result.Status} ms={result.Ms} samples={result.Successes}/{result.Attempts}");
-                await Publish(() => { results[node.Id] = result; Done++; });
-            }, ct);
+                await Latency.Batch(nodes, options.Parallelism, async (node, token) =>
+                {
+                    if (nodes.Length > 1)
+                        await Publish(() => results[node.Id] = new("checking", Mode: options.Mode));
+                    PingResult result;
+                    try { result = await Measure(node, options, token); }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { result = new("cancelled", Error: "Отменено", Mode: options.Mode); }
+                    catch (Exception ex) { AppLog.Error("ping " + node.Id, ex); result = new("error", Error: AppLog.Clean(Store.Friendly(ex)), Mode: options.Mode); }
+                    AppLog.Write("ping", $"node={node.Id} status={result.Status} ms={result.Ms} samples={result.Successes}/{result.Attempts}");
+                    await Publish(() => { results[node.Id] = result; Done++; });
+                }, ct);
+                ct.ThrowIfCancellationRequested();
+                if (!queued.TryDequeue(out var next)) break;
+                nodes = [next.Node]; options = next.Options;
+                results[next.Node.Id] = new("checking", Mode: options.Mode); Changed?.Invoke();
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { AppLog.Write("ping", "cancelled"); }
         catch (Exception ex) { AppLog.Error("ping batch", ex); Error = AppLog.Clean(Store.Friendly(ex)); }
         finally
         {
-            foreach (var node in nodes) if (results[node.Id].Status is "queued" or "checking") results[node.Id] = new("cancelled", Error: "Отменено", Mode: options.Mode);
+            foreach (var id in results.Keys.ToArray())
+                if (results[id].Status is "queued" or "checking") results[id] = new("cancelled", Error: "Отменено", Mode: results[id].Mode);
+            queued.Clear();
             Busy = false; if (attempt == owner) attempt = null; owner.Dispose(); Changed?.Invoke();
         }
     }

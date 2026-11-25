@@ -5,6 +5,7 @@ import html
 import json
 import re
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -42,7 +43,7 @@ def build(destination, release):
     for folder in ("assets", "styles", "scripts"):
         shutil.copytree(source / folder, destination / folder, dirs_exist_ok=True)
     client = repository / "Windows" / "ui"
-    demo_version = re.search(r'<Version>([^<]+)</Version>', (repository / 'Windows/Kot.Windows.csproj').read_text()).group(1)
+    demo_version = ET.parse(repository / 'Directory.Build.props').findtext('PropertyGroup/VersionPrefix')
     # Both buttons work without JavaScript and always use the validated stable Setup.
     landing = destination / "index.html"
     markup = landing.read_text(encoding="utf-8")
@@ -54,28 +55,21 @@ def build(destination, release):
     landing.write_text(markup, encoding="utf-8")
     # Reuse the real client UI in an isolated browser demo, with a mock WebView bridge.
     demo = destination / "demo"
-    demo.mkdir(exist_ok=True)
+    shutil.copytree(client, demo, dirs_exist_ok=True)
     markup = (client / "index.html").read_text(encoding="utf-8")
+    # Sandboxed demo has an opaque origin: inline only its font bytes in CSS.
     font = base64.b64encode((client / "fonts/Manrope.ttf").read_bytes()).decode("ascii")
-    markup = markup.replace('url("fonts/Manrope.ttf")', f'url("data:font/ttf;base64,{font}")')
-    markup = markup.replace("style-src 'unsafe-inline'", "style-src 'self' 'unsafe-inline'")
+    stylesheet = demo / "styles/client.css"
+    stylesheet.write_text(stylesheet.read_text(encoding="utf-8").replace(
+        'url("../fonts/Manrope.ttf")', f'url("data:font/ttf;base64,{font}")'), encoding="utf-8")
+    markup = markup.replace("font-src 'self'", "font-src data:")
     markup = re.sub(r"connect-src [^;]+", "connect-src 'none'", markup)
     markup = re.sub(r"media-src [^;]+", "media-src 'self'", markup)
-    markup = markup.replace("font-src 'self'", "font-src data:")
     markup = markup.replace('</head>', '<link rel="stylesheet" href="demo.css">\n</head>')
     markup = markup.replace('<body', f'<body data-demo-version="{html.escape(demo_version, quote=True)}"', 1)
     markup = markup.replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n<script src="client.js"></script>')
     (demo / "index.html").write_text(markup, encoding="utf-8")
     shutil.copy2(client / "app.js", demo / "client.js")
-    shutil.copy2(client / "client-tools.js", demo / "client-tools.js")
-    shutil.copy2(client / "services.js", demo / "services.js")
-    shutil.copy2(client / "about.js", demo / "about.js")
-    shutil.copy2(client / "astra.jpg", demo / "astra.jpg")
-    shutil.copy2(client / "brand-icon.svg", demo / "brand-icon.svg")
-    shutil.copy2(client / "brand-icon-light.svg", demo / "brand-icon-light.svg")
-    shutil.copy2(client / "startup.js", demo / "startup.js")
-    shutil.copytree(client / "sounds", demo / "sounds", dirs_exist_ok=True)
-    shutil.copytree(client / "flags", demo / "flags", dirs_exist_ok=True)
     shutil.copy2(source.parent / "licenses/flag-icons-MIT.txt", demo / "flags/LICENSE.txt")
     for name in ("bridge.js", "demo.css"):
         shutil.copy2(source / "demo" / name, demo / name)

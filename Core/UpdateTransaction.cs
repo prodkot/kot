@@ -41,6 +41,21 @@ public sealed class UpdateTransaction
         using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         input.CopyTo(output); output.Flush(true);
     }
+    static void ReplaceRestoredFile(string temporary, string target)
+    {
+        // Windows may briefly keep the old image mapped after the app exits.
+        for (int attempt = 0; ; attempt++)
+        {
+            SafePath(temporary);
+            SafePath(target);
+            try { File.Move(temporary, target, true); return; }
+            catch (Exception ex) when (OperatingSystem.IsWindows() && attempt < 40
+                && ex is (IOException or UnauthorizedAccessException) && (ex.HResult & 0xffff) is (5 or 32 or 33))
+            {
+                Thread.Sleep(200);
+            }
+        }
+    }
     // The caller must hold its installation lock and stop every process using
     // the destination. In particular, a running Kot.exe cannot restore itself.
     public static string? PendingRecovery(string destination)
@@ -115,7 +130,7 @@ public sealed class UpdateTransaction
             if (change.Existed)
             {
                 string temporary = target + ".kot-restore-" + Guid.NewGuid().ToString("N");
-                try { CopyDurable(backup, temporary); File.Move(temporary, target, true); }
+                try { CopyDurable(backup, temporary); ReplaceRestoredFile(temporary, target); }
                 finally { if (File.Exists(temporary)) File.Delete(temporary); }
             }
             else File.Delete(target);
